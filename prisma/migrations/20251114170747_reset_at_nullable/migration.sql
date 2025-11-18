@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "PublicUsage" ALTER COLUMN "resetAt" DROP NOT NULL,
+ALTER COLUMN "resetAt" DROP DEFAULT;
