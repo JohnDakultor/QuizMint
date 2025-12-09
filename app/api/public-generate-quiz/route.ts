@@ -319,7 +319,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "deepseek/deepseek-chat-v3.1:free",
+        model: "tngtech/deepseek-r1t2-chimera:free",
         messages: [
           {
             role: "system",
