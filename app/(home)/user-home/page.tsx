@@ -37,77 +37,76 @@ export default function Dashboard() {
   }, []);
 
   const handleDownloadWord = async () => {
-  if (!quiz) return;
+    if (!quiz) return;
 
-  if (!user || user.subscriptionPlan !== "premium") {
-    setShowSubscribeModal(true);
-    return;
-  }
-
-  try {
-    const res = await fetch("/api/download-file", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quiz, format: "word" }),
-    });
-
-    if (!res.ok) {
-      const data = await res.json();
-      alert(data.error || "Failed to download Word file");
+    if (!user || user.subscriptionPlan !== "premium") {
+      setShowSubscribeModal(true);
       return;
     }
 
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "QuizMint.docx";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error(err);
-    alert("Error downloading Word file");
-  }
-};
+    try {
+      const res = await fetch("/api/download-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quiz, format: "word" }),
+      });
 
-const handleDownloadPPT = async () => {
-  if (!quiz) return;
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Failed to download Word file");
+        return;
+      }
 
-  if (!user || user.subscriptionPlan !== "premium") {
-    setShowSubscribeModal(true);
-    return;
-  }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "QuizMint.docx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Error downloading Word file");
+    }
+  };
 
-  try {
-    const res = await fetch("/api/download-file", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quiz, format: "ppt" }),
-    });
+  const handleDownloadPPT = async () => {
+    if (!quiz) return;
 
-    if (!res.ok) {
-      const data = await res.json();
-      alert(data.error || "Failed to download PPT file");
+    if (!user || user.subscriptionPlan !== "premium") {
+      setShowSubscribeModal(true);
       return;
     }
 
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "QUizMint.pptx";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error(err);
-    alert("Error downloading PPT file");
-  }
-};
+    try {
+      const res = await fetch("/api/download-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quiz, format: "ppt" }),
+      });
 
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Failed to download PPT file");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "QUizMint.pptx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Error downloading PPT file");
+    }
+  };
 
   const handleFileUpload = async (file: File) => {
     if (!user) return setShowSubscribeModal(true);
@@ -136,52 +135,59 @@ const handleDownloadPPT = async () => {
   };
 
   const generateQuizFromPrompt = async () => {
-  if (!prompt.trim() && !uploadedFile) return; 
-  setLoading(true);
-  setQuiz(null);
-  setError("");
+    if (!prompt.trim() && !uploadedFile) return;
+    setLoading(true);
+    setQuiz(null);
+    setError("");
 
-  try {
-    const difficulty = user?.aiDifficulty || "easy";
-    const adaptiveLearning = user?.adaptiveLearning ?? false; // read from DB
+    try {
+      const difficulty = user?.aiDifficulty || "easy";
+      const adaptiveLearning = user?.adaptiveLearning ?? false; // read from DB
 
-    if (uploadedFile) {
-      const formData = new FormData();
-      formData.append("file", uploadedFile);
-      formData.append("prompt", prompt);
+      if (uploadedFile) {
+        const formData = new FormData();
+        formData.append("file", uploadedFile);
+        formData.append("prompt", prompt);
 
-      // send DB-controlled values
-      formData.append("difficulty", difficulty);
-      formData.append("adaptiveLearning", adaptiveLearning ? "true" : "false");
+        // send DB-controlled values
+        formData.append("difficulty", difficulty);
+        formData.append(
+          "adaptiveLearning",
+          adaptiveLearning ? "true" : "false"
+        );
 
-      const res = await fetch("/api/upload-file", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) setError(data.error || "Failed to generate quiz from file");
-      else {
-        setQuiz(data.quiz);
-        setUploadedFile(null);
+        const res = await fetch("/api/upload-file", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok)
+          setError(data.error || "Failed to generate quiz from file");
+        else {
+          setQuiz(data.quiz);
+          setUploadedFile(null);
+        }
+      } else {
+        const res = await fetch("/api/generate-quiz", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: prompt,
+            difficulty,
+            adaptiveLearning,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok)
+          setError(data.error || "Failed to generate quiz from prompt");
+        else setQuiz(data.quiz);
       }
-    } else {
-      const res = await fetch("/api/generate-quiz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: prompt,
-          difficulty,
-          adaptiveLearning
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) setError(data.error || "Failed to generate quiz from prompt");
-      else setQuiz(data.quiz);
+    } catch (err) {
+      setError("Failed to generate quiz");
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    setError("Failed to generate quiz");
-  } finally {
-    setLoading(false);
-  }
-};
-
+  };
 
   const handleCopy = async () => {
     if (!quiz) return;
@@ -302,34 +308,42 @@ const handleDownloadPPT = async () => {
               className="w-full max-w-2xl"
             >
               <Card className="mb-10 w-full max-w-2xl border-zinc-200 dark:border-zinc-800">
-                <CardHeader className="flex justify-between items-center">
-                  <CardTitle className="text-xl font-semibold">
-                    🧩 Generated Quiz
-                  </CardTitle>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={handleCopy}>
-                      <Copy className="w-4 h-4 mr-1" /> Copy
-                    </Button>
-                    <Button size="sm" onClick={handleDownloadPDF}>
-                      <FileDown className="w-4 h-4 mr-1" /> PDF
-                    </Button>
-                    <Button size="sm" onClick={handleDownloadWord}>
-    <FileDown className="w-4 h-4 mr-1" /> Word
-  </Button>
-  <Button size="sm" onClick={handleDownloadPPT}>
-    <FileDown className="w-4 h-4 mr-1" /> PPT
-  </Button>
+                <CardHeader className="relative pb-4">
 
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-red-500 hover:bg-red-100 dark:hover:bg-red-900 p-1"
-                      onClick={() => setQuiz(null)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardHeader>
+  {/* X BUTTON (TOP RIGHT ALWAYS) */}
+  <button
+    onClick={() => setQuiz(null)}
+    className="absolute right-2 top-2 text-gray-500 hover:text-red-500"
+  >
+    <X className="w-5 h-5" />
+  </button>
+
+  {/* TITLE */}
+  <CardTitle className="text-xl font-semibold mb-3">
+    🧩 Generated Quiz
+  </CardTitle>
+
+  {/* ACTION BUTTONS */}
+  <div className="flex flex-wrap gap-2 w-full">
+    <Button size="sm" variant="outline" onClick={handleCopy}>
+      <Copy className="w-4 h-4 mr-1" /> Copy
+    </Button>
+
+    <Button size="sm" onClick={handleDownloadPDF}>
+      <FileDown className="w-4 h-4 mr-1" /> PDF
+    </Button>
+
+    <Button size="sm" onClick={handleDownloadWord}>
+      <FileDown className="w-4 h-4 mr-1" /> Word
+    </Button>
+
+    <Button size="sm" onClick={handleDownloadPPT}>
+      <FileDown className="w-4 h-4 mr-1" /> PPT
+    </Button>
+  </div>
+
+</CardHeader>
+
                 <CardContent>
                   <div className="max-h-96 overflow-y-auto border p-5 rounded-lg bg-linear-to-br from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-800 shadow-sm">
                     <div
