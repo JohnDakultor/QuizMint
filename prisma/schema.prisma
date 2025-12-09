@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../lib/generated/prisma"
@@ -15,24 +9,23 @@ datasource db {
 }
 
 model User {
-  id       Int      @id @default(autoincrement())
-  username String   @unique
-  email    String   @unique
-  password String
-  quizUsage Int     @default(0)
-  lastQuizAt   DateTime?
+  id                 Int       @id @default(autoincrement())
+  email              String    @unique
+  password           String
+  username           String    @unique
+  quizUsage          Int       @default(0)
+  lastQuizAt         DateTime?
+  subscriptionEnd    DateTime?
+  subscriptionPlan   String?
+  subscriptionStart  DateTime?
+  subscriptionStatus String?
+  stripeCustomerId   String?
+  adaptiveLearning   Boolean?  @default(false)
+  aiDifficulty       String?
+  quizzes            Quiz[]
 
-  subscriptionPlan     String?   // "free", "pro", "premium"
-  subscriptionStatus   String?   // "active", "canceled"
-  subscriptionStart    DateTime? // when the subscription started
-  subscriptionEnd      DateTime? // when it will expire
-  stripeCustomerId    String?
-
-  features           Json?
-
-  quizzes  Quiz[]
+  resetTokens        PasswordResetToken[]
 }
-
 
 model Quiz {
   id           Int        @id @default(autoincrement())
@@ -40,26 +33,39 @@ model Quiz {
   instructions String
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
-  questions    Question[]
   userId       Int
+  questions    Question[]
   user         User       @relation(fields: [userId], references: [id])
 }
 
 model Question {
-  id        Int      @id @default(autoincrement())
-  question  String
-  options   String[] // PostgreSQL array
-  answer    String
+  id       Int      @id @default(autoincrement())
+  question String
+  options  String[]
+  answer   String
+  quizId   Int
+  quiz     Quiz     @relation(fields: [quizId], references: [id])
 
-  quizId    Int
-  quiz      Quiz     @relation(fields: [quizId], references: [id])
+  explanation  String?  
+  hint         String? 
+
 }
 
 model PublicUsage {
-  id        String   @id                      
-  count     Int      @default(0)              
-  resetAt   DateTime?       
-  updatedAt DateTime @updatedAt
+  id        String    @id
+  count     Int       @default(0)
+  resetAt   DateTime?
+  updatedAt DateTime  @updatedAt
+  createdAt DateTime  @default(now())
+  ip        String?
+}
+
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  expiresAt DateTime
   createdAt DateTime @default(now())
-  ip       String?
 }

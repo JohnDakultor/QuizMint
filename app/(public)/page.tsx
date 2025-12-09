@@ -484,7 +484,7 @@ export default function Home() {
       </CardHeader>
       <CardContent className="flex flex-col justify-between h-full text-center">
         <div>
-          <p className="text-3xl font-bold">$20/mo</p>
+          <p className="text-3xl font-bold">$5.00/mo</p>
           <ul className="text-sm text-zinc-600 dark:text-zinc-400 mt-3 space-y-2 list-disc list-inside">
             <li>Unlimited quizzes</li>
             <li>AI difficulty control</li>
@@ -507,7 +507,7 @@ export default function Home() {
       </CardHeader>
       <CardContent className="flex flex-col justify-between h-full text-center">
         <div>
-          <p className="text-3xl font-bold">$49/mo</p>
+          <p className="text-3xl font-bold">$15.00/mo</p>
           <ul className="text-sm text-zinc-600 dark:text-zinc-400 mt-3 space-y-2 list-disc list-inside">
             <li>Unlimited quizzes</li>
             <li>AI difficulty & adaptive learning control</li>

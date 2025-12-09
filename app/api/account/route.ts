@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
         subscriptionStatus: true,
         subscriptionEnd: true,
         stripeCustomerId: true,
+        aiDifficulty: true,          // FIXED
+        adaptiveLearning: true,      // FIXED
       },
     });
 
@@ -34,6 +36,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch account info" }, { status: 500 });
   }
 }
+
 
 // POST: Cancel current subscription
 export async function POST(req: NextRequest) {
@@ -73,12 +76,43 @@ export async function POST(req: NextRequest) {
     // Update database
     await prisma.user.update({
       where: { email },
-      data: { subscriptionStatus: "cancelled", subscriptionEnd: new Date(), subscriptionPlan: "free", quizUsage: 0 },
+      data: { subscriptionStatus: "cancelled", subscriptionEnd: new Date(), subscriptionPlan: "free", quizUsage: 0, aiDifficulty: "easy", adaptiveLearning: false },
     });
 
     return NextResponse.json({ message: "Subscription cancelled" });
   } catch (err: any) {
     console.error(err);
     return NextResponse.json({ error: err.message || "Failed to cancel subscription" }, { status: 500 });
+  }
+}
+
+
+export async function POST_AI_DIFFICULTY(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+   const userId = session.user.id;
+   const { difficulty } = await req.json();
+
+   if (userId === "string"){
+    const numericId = parseInt(userId, 10);
+    await prisma.user.update({
+      where: { id: numericId },
+      data: { aiDifficulty: difficulty },
+    });
+  } else {
+    await prisma.user.update({
+      where: { email: userId },
+      data: { aiDifficulty: difficulty },
+    });
+  }
+
+    return NextResponse.json({ message: "AI difficulty updated" });
+  } catch (err: any) {
+    console.error(err);
+    return NextResponse.json({ error: err.message || "Failed to update AI difficulty" }, { status: 500 });
   }
 }

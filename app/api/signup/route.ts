@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
         username,
         email,
         subscriptionPlan: "free",
+        aiDifficulty: "easy",
         password: hashedPassword,
       },
     });

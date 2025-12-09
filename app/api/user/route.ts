@@ -4,6 +4,23 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 
+// export async function GET() {
+//   const session = await getServerSession(authOptions);
+//   if (!session?.user?.email) {
+//     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+//   }
+
+//   const user = await prisma.user.findUnique({
+//     where: { email: session.user.email },
+//     select: { quizUsage: true },
+//   });
+
+//   if (!user) {
+//     return NextResponse.json({ error: "User not found" }, { status: 404 });
+//   }
+
+//   return NextResponse.json({ quizUsage: user.quizUsage });
+// }
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -12,12 +29,17 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
-    select: { quizUsage: true },
+    select: {
+      id: true,
+      email: true,
+      subscriptionPlan: true,
+      quizUsage: true,
+    },
   });
 
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ quizUsage: user.quizUsage });
+  return NextResponse.json({ user });
 }

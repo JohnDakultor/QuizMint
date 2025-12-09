@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,22 @@ export default function Subscription() {
   const [selectedPlan, setSelectedPlan] = useState<"pro" | "premium" | null>(
     null
   );
+  const [subscription, setSubscription] = useState<{
+    isPro: boolean;
+    isPremium: boolean;
+    plan: string | null;
+    active: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    const loadSub = async () => {
+      const res = await fetch("/api/subscription");
+      const data = await res.json();
+      setSubscription(data);
+    };
+
+    loadSub();
+  }, []);
 
   const handleSubscribe = async (plan: "pro" | "premium") => {
     setLoading(true);
@@ -40,14 +56,14 @@ export default function Subscription() {
       id: "pro",
       title: "Pro Plan",
       description: "For teachers, students & everyday use",
-      price: "$20 / month",
+      price: "$5.00 / month",
       color: "blue",
     },
     {
       id: "premium",
       title: "Premium Plan",
       description: "Unlimited power users & institutions",
-      price: "$49 / month",
+      price: "$15.00 / month",
       color: "purple",
     },
   ] as const;
@@ -81,21 +97,27 @@ export default function Subscription() {
             <p className="text-3xl font-bold mt-4">{plan.price}</p>
 
             <Button
-              className={`mt-6 w-full ${
-                plan.color === "purple"
-                  ? "bg-purple-600 hover:bg-purple-700 text-white"
-                  : "bg-blue-600 hover:bg-blue-700 text-white"
-              }`}
-              onClick={() => handleSubscribe(plan.id)}
-              disabled={loading}
-            >
-              {loading && selectedPlan === plan.id ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : null}
-              {loading && selectedPlan === plan.id
-                ? "Processing..."
-                : `Subscribe to ${plan.title}`}
-            </Button>
+  className={`mt-6 w-full ${
+    plan.color === "purple"
+      ? "bg-purple-600 hover:bg-purple-700 text-white"
+      : "bg-blue-600 hover:bg-blue-700 text-white"
+  }`}
+  onClick={() => handleSubscribe(plan.id)}
+  disabled={
+    loading ||
+    (subscription?.isPro && plan.id === "pro") ||
+    (subscription?.isPremium && plan.id === "premium")
+  }
+>
+  {subscription?.isPro && plan.id === "pro"
+    ? "Subscribed"
+    : subscription?.isPremium && plan.id === "premium"
+    ? "Subscribed"
+    : loading && selectedPlan === plan.id
+    ? "Processing..."
+    : `Subscribe to ${plan.title}`}
+</Button>
+
 
             {plan.id === "premium" && (
               <Badge className="absolute top-4 right-4 bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-100 px-2 py-1">

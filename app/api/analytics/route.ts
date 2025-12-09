@@ -1,0 +1,225 @@
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-option";
+import { prisma } from "@/lib/prisma";
+
+type SimpleQuiz = {
+  id: number;
+  title: string;
+  createdAt: string;
+  difficulty: string;
+  adaptiveLearning: boolean;
+  questions: { id: number; question: string }[];
+};
+
+// detect question type helper
+function detectQuestionType(text: string) {
+  if (!text) return "Other";
+  const lower = text.toLowerCase();
+  if (/\btrue\b.*\bfalse\b|\bfalse\b.*\btrue\b/.test(lower)) return "True/False";
+  if (/_+|___/.test(text)) return "Fill-in-blank";
+  if (/[A-D]\)|\boption\b|\bchoices\b/.test(text)) return "Multiple Choice";
+  return "Multiple Choice";
+}
+
+// OpenRouter fetch helper
+async function callOpenRouterForInsights(payload: any) {
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) return null;
+
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20000); // 20s timeout
+
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("OpenRouter error:", res.status, text);
+      return null;
+    }
+
+    const json = await res.json();
+    return json?.choices?.[0]?.message?.content ?? null;
+  } catch (err) {
+    console.error("OpenRouter fetch failed:", err);
+    return null;
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: {
+        id: true,
+        aiDifficulty: true,
+        quizzes: {
+          orderBy: { createdAt: "desc" },
+          take: 200,
+          select: {
+            id: true,
+            title: true,
+            createdAt: true,
+            questions: { select: { id: true, question: true, hint: true } },
+          },
+        },
+      },
+    });
+
+    if (!user)
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    const allQuizzes: SimpleQuiz[] = user.quizzes.map((q) => ({
+      id: q.id,
+      title: q.title,
+      createdAt: q.createdAt.toISOString(),
+      difficulty: (user.aiDifficulty || "easy").toLowerCase(),
+      adaptiveLearning: q.questions.some((qq) => !!qq.hint),
+      questions: q.questions.map((qq) => ({ id: qq.id, question: qq.question })),
+    }));
+
+    const totalQuizzes = allQuizzes.length;
+    const adaptiveQuizzes = allQuizzes.filter((q) => q.adaptiveLearning).length;
+
+    const difficultyCounts = { easy: 0, medium: 0, hard: 0 };
+    allQuizzes.forEach((q) => {
+      const d = q.difficulty.toLowerCase();
+      difficultyCounts[d as keyof typeof difficultyCounts] =
+        (difficultyCounts[d as keyof typeof difficultyCounts] || 0) + 1;
+    });
+
+    const questionTypeCounts: Record<string, number> = {};
+    allQuizzes.forEach((q) =>
+      q.questions.forEach((qq) => {
+        const type = detectQuestionType(qq.question);
+        questionTypeCounts[type] = (questionTypeCounts[type] || 0) + 1;
+      })
+    );
+
+    const questionDistribution = allQuizzes.map((q) => ({
+      title: q.title,
+      questions: q.questions.length,
+    }));
+
+    const questionCounts = questionDistribution.map((d) => d.questions);
+    const avgQuestions =
+      questionCounts.length > 0
+        ? Math.round(questionCounts.reduce((a, b) => a + b, 0) / questionCounts.length)
+        : 0;
+    const medianQuestions =
+      questionCounts.length > 0
+        ? (() => {
+            const s = [...questionCounts].sort((a, b) => a - b);
+            const mid = Math.floor(s.length / 2);
+            return s.length % 2 === 0 ? Math.round((s[mid - 1] + s[mid]) / 2) : s[mid];
+          })()
+        : 0;
+
+    // Top 10 quizzes (most questions)
+    const topQuizzes = allQuizzes
+      .sort((a, b) => b.questions.length - a.questions.length)
+      .slice(0, 10);
+
+    // Radar profile metrics
+    const radarProfile = [
+      { metric: "Adaptive Learning", score: (adaptiveQuizzes / totalQuizzes) * 10 },
+      { metric: "Avg Questions", score: avgQuestions },
+      { metric: "Median Questions", score: medianQuestions },
+      { metric: "Question Type Diversity", score: Object.keys(questionTypeCounts).length },
+    ];
+
+    // Trend last 30 days
+    const trendData: { date: string; quizzes: number }[] = [];
+    const now = new Date();
+    const dayMap = new Map<string, number>();
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - (29 - i));
+      const key = d.toLocaleDateString();
+      dayMap.set(key, 0);
+    }
+    allQuizzes.forEach((q) => {
+      const key = new Date(q.createdAt).toLocaleDateString();
+      if (dayMap.has(key)) dayMap.set(key, (dayMap.get(key) || 0) + 1);
+    });
+    dayMap.forEach((count, date) => trendData.push({ date, quizzes: count }));
+
+    // AI Insights (formalized text)
+    const systemPrompt =
+      "You are an analytics assistant that summarizes quiz creation behavior and provides actionable recommendations in formal language suitable for end users.";
+
+    const fullDataSnapshot = {
+      totalQuizzes,
+      adaptiveQuizzes,
+      difficultyCounts,
+      avgQuestions,
+      medianQuestions,
+      questionTypeCounts,
+      trendLast30: trendData,
+    };
+
+    const userPrompt = `
+Please analyze the following user quiz analytics and provide:
+1) Key Patterns (2-4 points)
+2) Weaknesses or Gaps (2-3 points)
+3) Actionable Recommendations (3 points)
+
+Format the output in formal language suitable for users.
+
+Data snapshot:
+${JSON.stringify(fullDataSnapshot, null, 2)}
+`;
+
+    const aiPayload = {
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    };
+
+    let insights =
+      (await callOpenRouterForInsights(aiPayload)) || "No AI insights are available at this time.";
+
+    return NextResponse.json({
+      totalQuizzes,
+      adaptiveQuizzes,
+      difficultyDistribution: [
+        { name: "Easy", value: difficultyCounts.easy },
+        { name: "Medium", value: difficultyCounts.medium },
+        { name: "Hard", value: difficultyCounts.hard },
+      ],
+      trendData,
+      questionDistribution,
+      questionTypeData: Object.entries(questionTypeCounts).map(([type, count]) => ({
+        type,
+        count,
+      })),
+      avgQuestions,
+      medianQuestions,
+      allQuizzes,
+      topQuizzes,
+      radarProfile,
+      insights,
+    });
+  } catch (err: any) {
+    console.error("Analytics API error:", err);
+    return NextResponse.json(
+      { error: err.message || "Failed to fetch analytics" },
+      { status: 500 }
+    );
+  }
+}

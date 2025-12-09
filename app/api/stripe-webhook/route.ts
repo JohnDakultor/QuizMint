@@ -30,16 +30,31 @@ export async function POST(req: NextRequest) {
       const subscription = event.data.object as Stripe.Subscription;
       const { email, stripeCustomerId } = await getCustomer(subscription);
 
-      const plan =
-        subscription.items.data[0].price.id === process.env.STRIPE_PREMIUM_PRICE_ID
-          ? "premium"
-          : "pro";
+        const plan =
+  subscription.items.data[0].price.id === process.env.STRIPE_PRICE_PREMIUM
+    ? "premium"
+    : "pro";
 
-      const updateData: any = {
-        subscriptionPlan: plan,
-        subscriptionStatus: subscription.status,
-        stripeCustomerId,
-      };
+const updateData = await prisma.user.update({
+  where: { email: email },
+  data: {
+    subscriptionPlan: plan,
+    subscriptionStatus: subscription.status,
+    stripeCustomerId: stripeCustomerId
+  },
+});
+
+
+      // const plan =
+      //   subscription.items.data[0].price.id === process.env.STRIPE_PREMIUM_PRICE_ID
+      //     ? "premium"
+      //     : "pro";
+
+      // const updateData: any = {
+      //   subscriptionPlan: plan,
+      //   subscriptionStatus: subscription.status,
+      //   stripeCustomerId,
+      // };
 
       if (subscription.created) updateData.subscriptionStart = new Date(subscription.created * 1000);
 
@@ -66,7 +81,7 @@ export async function POST(req: NextRequest) {
       const subscription = event.data.object as Stripe.Subscription;
       const { email } = await getCustomer(subscription);
 
-      const updateData: any = { subscriptionStatus: "canceled" };
+      const updateData: any = { subscriptionStatus: "cancelled" };
 
       let subscriptionEnd: Date | null = null;
       if ((subscription as any).current_period_end) {
