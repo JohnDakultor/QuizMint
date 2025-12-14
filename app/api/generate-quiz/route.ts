@@ -985,7 +985,7 @@ export async function POST(req: NextRequest) {
       if (hoursSinceLastQuiz < COOLDOWN_HOURS) {
         const nextFreeAt = new Date(new Date(user.lastQuizAt).getTime() + COOLDOWN_HOURS * 60 * 60 * 1000);
         return NextResponse.json(
-          { error: "Free limit reached. Come back later.", nextFreeAt, quizUsage: user.quizUsage },
+          { error: "Free limit reached. Come back later. or subscribe to a paid plan", nextFreeAt, quizUsage: user.quizUsage },
           { status: 403 }
         );
       }

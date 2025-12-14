@@ -31,6 +31,20 @@ export default function Home() {
   const [countdown, setCountdown] = useState("");
   const quizRef = useRef<HTMLDivElement>(null);
 
+  const [showAdsModal, setShowAdsModal] = useState(false);
+  const [adsShown, setAdsShown] = useState(false);
+
+  useEffect(() => {
+    if (showAdsModal) {
+      try {
+        // @ts-ignore
+        (adsbygoogle = window.adsbygoogle || []).push({});
+      } catch (e) {
+        console.error("Adsense error:", e);
+      }
+    }
+  }, [showAdsModal]);
+
   // Fetch backend-driven public usage on mount
   useEffect(() => {
     let mounted = true;
@@ -163,6 +177,11 @@ export default function Home() {
           remaining: data.usage.remaining,
           nextFreeAt: data.usage.nextFreeAt ?? null,
         });
+
+        if (data.usage.count === 3 && !adsShown) {
+          setAdsShown(true);
+          setShowAdsModal(true);
+        }
       } else if (data.count !== undefined || data.nextFreeAt) {
         // fallback for legacy shape
         setUsage({
@@ -440,93 +459,141 @@ export default function Home() {
       </section>
 
       {/* PRICING */}
-    <section
-  id="pricing"
-  className="mt-24 w-full max-w-5xl mx-auto text-center"
->
-  <h2 className="text-3xl font-bold mb-8">Individual Plans</h2>
-  <div className="grid sm:grid-cols-3 gap-6 items-stretch">
+      <section
+        id="pricing"
+        className="mt-24 w-full max-w-5xl mx-auto text-center"
+      >
+        <h2 className="text-3xl font-bold mb-8">Individual Plans</h2>
+        <div className="grid sm:grid-cols-3 gap-6 items-stretch">
+          {/* Free Plan */}
+          <Card className="h-full flex flex-col border border-zinc-200 dark:border-zinc-800">
+            <CardHeader>
+              <CardTitle className="text-center">Free</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col justify-between h-full text-center">
+              <div>
+                <p className="text-3xl font-bold">$0/mo</p>
+                <ul className="text-sm text-zinc-600 dark:text-zinc-400 mt-3 space-y-2 list-disc list-inside">
+                  <li>3 quizzes per 3 hours</li>
+                  <li>Basic AI generation</li>
+                  <li>Export to PDF</li>
+                </ul>
+              </div>
+              <Button
+                onClick={() =>
+                  document
+                    .getElementById("hero")
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
+                variant="outline"
+                className="mt-4 w-full"
+              >
+                Try Now
+              </Button>
+            </CardContent>
+          </Card>
 
-    {/* Free Plan */}
-    <Card className="h-full flex flex-col border border-zinc-200 dark:border-zinc-800">
-      <CardHeader>
-        <CardTitle className="text-center">Free</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col justify-between h-full text-center">
-        <div>
-          <p className="text-3xl font-bold">$0/mo</p>
-          <ul className="text-sm text-zinc-600 dark:text-zinc-400 mt-3 space-y-2 list-disc list-inside">
-            <li>3 quizzes per 3 hours</li>
-            <li>Basic AI generation</li>
-            <li>Export to PDF</li>
-          </ul>
+          {/* Pro Plan (featured) */}
+          <Card className="h-full flex flex-col border-2 border-blue-500 shadow-2xl transform scale-105 z-10 bg-blue-50 dark:bg-blue-900">
+            <CardHeader>
+              <CardTitle className="text-center text-blue-800 dark:text-blue-100">
+                Pro
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col justify-between h-full text-center">
+              <div>
+                <p className="text-3xl font-bold">$5.00/mo</p>
+                <ul className="text-sm text-zinc-600 dark:text-zinc-400 mt-3 space-y-2 list-disc list-inside">
+                  <li>Unlimited quizzes</li>
+                  <li>AI difficulty control</li>
+                  <li>Google Forms export</li>
+                  <li>Priority support</li>
+                </ul>
+              </div>
+              <Link href="/sign-up">
+                <Button className="bg-blue-600 hover:bg-blue-700 mt-4 w-full text-white">
+                  Upgrade
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          {/* Premium Plan */}
+          <Card className="h-full flex flex-col border-yellow-500 shadow-lg shadow-yellow-200 dark:shadow-yellow-900/30">
+            <CardHeader>
+              <CardTitle className="text-center">Premium</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col justify-between h-full text-center">
+              <div>
+                <p className="text-3xl font-bold">$15.00/mo</p>
+                <ul className="text-sm text-zinc-600 dark:text-zinc-400 mt-3 space-y-2 list-disc list-inside">
+                  <li>Unlimited quizzes</li>
+                  <li>AI difficulty & adaptive learning control</li>
+                  <li>Export to Google Forms, PDF, & CSV</li>
+                  <li>Priority email support</li>
+                  <li>Advanced analytics & performance tracking</li>
+                </ul>
+              </div>
+              <Link href="/sign-up">
+                <Button className="bg-yellow-500 hover:bg-yellow-600 mt-4 w-full">
+                  Upgrade to Premium
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          {showAdsModal && (
+            <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
+              <div className="relative bg-white dark:bg-zinc-900 rounded-xl shadow-xl w-full max-w-md p-4 sm:p-6">
+                {/* CLOSE BUTTON */}
+                <button
+                  onClick={() => setShowAdsModal(false)}
+                  className="absolute right-3 top-3 text-zinc-400 hover:text-red-500"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+
+                <h2 className="text-lg font-semibold text-center mb-2">
+                  Enjoying QuizMint?
+                </h2>
+
+                <p className="text-sm text-zinc-600 dark:text-zinc-300 text-center mb-4">
+                  You’ve used all 3 free quizzes. Support us by viewing this ad
+                  or upgrade for unlimited access.
+                </p>
+
+                {/* GOOGLE ADS */}
+                <div className="border rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 p-2 mb-4">
+                  <ins
+                    className="adsbygoogle"
+                    style={{ display: "block" }}
+                    data-ad-client="ca-pub-8981480808378326"
+                    data-ad-slot="9481380484"
+                    data-ad-format="auto"
+                    data-full-width-responsive="true"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Button
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    onClick={() => setShowAdsModal(false)}
+                  >
+                    Continue
+                  </Button>
+
+                  <Link href="#pricing">
+                    <Button variant="outline" className="w-full">
+                      View Pricing
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-        <Button
-          onClick={() =>
-            document
-              .getElementById("hero")
-              ?.scrollIntoView({ behavior: "smooth" })
-          }
-          variant="outline"
-          className="mt-4 w-full"
-        >
-          Try Now
-        </Button>
-      </CardContent>
-    </Card>
-
-    {/* Pro Plan (featured) */}
-    <Card className="h-full flex flex-col border-2 border-blue-500 shadow-2xl transform scale-105 z-10 bg-blue-50 dark:bg-blue-900">
-      <CardHeader>
-        <CardTitle className="text-center text-blue-800 dark:text-blue-100">
-          Pro
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col justify-between h-full text-center">
-        <div>
-          <p className="text-3xl font-bold">$5.00/mo</p>
-          <ul className="text-sm text-zinc-600 dark:text-zinc-400 mt-3 space-y-2 list-disc list-inside">
-            <li>Unlimited quizzes</li>
-            <li>AI difficulty control</li>
-            <li>Google Forms export</li>
-            <li>Priority support</li>
-          </ul>
-        </div>
-        <Link href="/sign-up">
-          <Button className="bg-blue-600 hover:bg-blue-700 mt-4 w-full text-white">
-            Upgrade
-          </Button>
-        </Link>
-      </CardContent>
-    </Card>
-
-    {/* Premium Plan */}
-    <Card className="h-full flex flex-col border-yellow-500 shadow-lg shadow-yellow-200 dark:shadow-yellow-900/30">
-      <CardHeader>
-        <CardTitle className="text-center">Premium</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col justify-between h-full text-center">
-        <div>
-          <p className="text-3xl font-bold">$15.00/mo</p>
-          <ul className="text-sm text-zinc-600 dark:text-zinc-400 mt-3 space-y-2 list-disc list-inside">
-            <li>Unlimited quizzes</li>
-            <li>AI difficulty & adaptive learning control</li>
-            <li>Export to Google Forms, PDF, & CSV</li>
-            <li>Priority email support</li>
-            <li>Advanced analytics & performance tracking</li>
-          </ul>
-        </div>
-        <Link href="/sign-up">
-          <Button className="bg-yellow-500 hover:bg-yellow-600 mt-4 w-full">
-            Upgrade to Premium
-          </Button>
-        </Link>
-      </CardContent>
-    </Card>
-    
-  </div>
-</section>
-
+      </section>
     </div>
   );
 }

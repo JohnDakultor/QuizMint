@@ -309,40 +309,38 @@ export default function Dashboard() {
             >
               <Card className="mb-10 w-full max-w-2xl border-zinc-200 dark:border-zinc-800">
                 <CardHeader className="relative pb-4">
+                  {/* X BUTTON (TOP RIGHT ALWAYS) */}
+                  <button
+                    onClick={() => setQuiz(null)}
+                    className="absolute right-2 top-2 text-gray-500 hover:text-red-500"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
 
-  {/* X BUTTON (TOP RIGHT ALWAYS) */}
-  <button
-    onClick={() => setQuiz(null)}
-    className="absolute right-2 top-2 text-gray-500 hover:text-red-500"
-  >
-    <X className="w-5 h-5" />
-  </button>
+                  {/* TITLE */}
+                  <CardTitle className="text-xl font-semibold mb-3">
+                    🧩 Generated Quiz
+                  </CardTitle>
 
-  {/* TITLE */}
-  <CardTitle className="text-xl font-semibold mb-3">
-    🧩 Generated Quiz
-  </CardTitle>
+                  {/* ACTION BUTTONS */}
+                  <div className="flex flex-wrap gap-2 w-full">
+                    <Button size="sm" variant="outline" onClick={handleCopy}>
+                      <Copy className="w-4 h-4 mr-1" /> Copy
+                    </Button>
 
-  {/* ACTION BUTTONS */}
-  <div className="flex flex-wrap gap-2 w-full">
-    <Button size="sm" variant="outline" onClick={handleCopy}>
-      <Copy className="w-4 h-4 mr-1" /> Copy
-    </Button>
+                    <Button size="sm" onClick={handleDownloadPDF}>
+                      <FileDown className="w-4 h-4 mr-1" /> PDF
+                    </Button>
 
-    <Button size="sm" onClick={handleDownloadPDF}>
-      <FileDown className="w-4 h-4 mr-1" /> PDF
-    </Button>
+                    <Button size="sm" onClick={handleDownloadWord}>
+                      <FileDown className="w-4 h-4 mr-1" /> Word
+                    </Button>
 
-    <Button size="sm" onClick={handleDownloadWord}>
-      <FileDown className="w-4 h-4 mr-1" /> Word
-    </Button>
-
-    <Button size="sm" onClick={handleDownloadPPT}>
-      <FileDown className="w-4 h-4 mr-1" /> PPT
-    </Button>
-  </div>
-
-</CardHeader>
+                    <Button size="sm" onClick={handleDownloadPPT}>
+                      <FileDown className="w-4 h-4 mr-1" /> PPT
+                    </Button>
+                  </div>
+                </CardHeader>
 
                 <CardContent>
                   <div className="max-h-96 overflow-y-auto border p-5 rounded-lg bg-linear-to-br from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-800 shadow-sm">

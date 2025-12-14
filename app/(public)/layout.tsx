@@ -28,6 +28,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
+      <head>
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8981480808378326"
+     crossOrigin="anonymous"></script>
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-linear-to-b from-white to-zinc-50 dark:from-black dark:to-zinc-900 text-zinc-900 dark:text-zinc-50`}
       >
@@ -59,4 +63,6 @@ export default function RootLayout({
       </body>
     </html>
   );
-}
+
+  
+}     
