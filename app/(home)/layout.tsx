@@ -24,8 +24,8 @@ export default async function HomeLayout({ children }: { children: React.ReactNo
   }
 
   return (
-    <html lang="en">
-      <body
+    <>
+      <div
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-white text-gray-900 flex flex-col min-h-screen`}
       >
         <ClientLayout>
@@ -34,7 +34,7 @@ export default async function HomeLayout({ children }: { children: React.ReactNo
             {children}
           </main>
         </ClientLayout>
-      </body>
-    </html>
+      </div>
+    </>
   );
 }

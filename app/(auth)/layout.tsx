@@ -24,8 +24,8 @@ export default function AuthLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body
+    <>
+      <div
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50 flex flex-col min-h-screen`}
       >
         {/* Minimal Top Branding */}
@@ -40,7 +40,7 @@ export default function AuthLayout({
         <main className="flex flex-1 items-center justify-center w-full px-6">
           {children}
         </main>
-      </body>
-    </html>
+      </div>
+    </>
   );
 }

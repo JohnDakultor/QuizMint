@@ -7,8 +7,8 @@ export default function ResetPasswordLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="bg-neutral-700 text-white min-h-screen">{children}</body>
-    </html>
+    <>
+      <div className="bg-neutral-700 text-white min-h-screen">{children}</div>
+    </>
   );
 }
