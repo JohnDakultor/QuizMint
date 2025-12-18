@@ -12,16 +12,33 @@ export default function PublicLayout({
     <>
       {/* Navbar */}
       <nav className="flex justify-between items-center w-full max-w-6xl mx-auto px-6 py-6">
-        <div className="flex items-center gap-2">
+        {/* Left: Logo + Public Links */}
+        <div className="flex items-center gap-8">
           <Link
-            href="/user-home"
+            href="/"
             className="flex items-center space-x-2 text-2xl font-bold"
           >
             <Sparkles className="text-blue-500 h-6 w-6" />
             <span>QuizMint</span>
           </Link>
+
+          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-600">
+            <Link
+              href="/about"
+              className="hover:text-zinc-900 dark:hover:text-zinc-50 transition"
+            >
+              About
+            </Link>
+            <Link
+              href="/contact"
+              className="hover:text-zinc-900 dark:hover:text-zinc-50 transition"
+            >
+              Contact
+            </Link>
+          </div>
         </div>
 
+        {/* Right: Auth Actions */}
         <div className="flex gap-3">
           <Button variant="ghost" asChild>
             <Link href="/sign-in">Login</Link>
@@ -42,9 +59,22 @@ export default function PublicLayout({
       <footer className="text-center mb-6 text-sm text-zinc-500">
         © {new Date().getFullYear()} QuizMint
 
-        <div className="mt-2">
-          <Link href="/terms">Terms of Service</Link> |{" "}
-          <Link href="/privacy">Privacy Policy</Link>
+        <div className="mt-2 space-x-3">
+          <Link href="/about" className="hover:underline">
+            About
+          </Link>
+          <span>·</span>
+          <Link href="/contact" className="hover:underline">
+            Contact
+          </Link>
+          <span>·</span>
+          <Link href="/terms" className="hover:underline">
+            Terms of Service
+          </Link>
+          <span>·</span>
+          <Link href="/privacy" className="hover:underline">
+            Privacy Policy
+          </Link>
         </div>
       </footer>
     </>
