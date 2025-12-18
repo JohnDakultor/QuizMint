@@ -144,7 +144,6 @@
 //   console.error("Failed to parse AI quiz JSON:", err);
 // }
 
-
 //     // Increment usage
 //     const newCount = usage.count + 1;
 //     const updatedUsage = await prisma.publicUsage.update({
@@ -177,11 +176,10 @@
 //   }
 // }
 
-
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { v4 as uuidv4 } from "uuid";
+import { publicQuizRateLimit } from "@/lib/ratelimit";
 
 const FREE_LIMIT = 3;
 const COOLDOWN_HOURS = 3;
@@ -250,8 +248,26 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    let sessionId = req.cookies.get("publicSessionId")?.value;
+   
     const ip = await getClientIp(req);
+
+    const { success, reset, remaining } = await publicQuizRateLimit.limit(
+      `public-quiz:${ip}`
+    );
+
+    if (!success) {
+      return NextResponse.json(
+        {
+          error: "Too many requests. Please wait a moment before trying again.",
+          remaining,
+          resetAt: new Date(reset),
+        },
+        { status: 429 }
+      );
+    }
+
+    let sessionId = req.cookies.get("publicSessionId")?.value;
+    
 
     let usage = null;
 
@@ -286,7 +302,9 @@ export async function POST(req: NextRequest) {
 
     // Check free limit
     if (usage.count >= FREE_LIMIT) {
-      const newReset = new Date(now.getTime() + COOLDOWN_HOURS * 60 * 60 * 1000);
+      const newReset = new Date(
+        now.getTime() + COOLDOWN_HOURS * 60 * 60 * 1000
+      );
       await prisma.publicUsage.update({
         where: { id: usage.id },
         data: { resetAt: newReset },
@@ -310,27 +328,30 @@ export async function POST(req: NextRequest) {
     }
 
     // Call AI API (your existing code)
-    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "HTTP-Referer": "https://quizmint.ai",
-        "X-Title": "QuizMint AI",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "tngtech/deepseek-r1t2-chimera:free",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an AI that generates quizzes from text. Always return output strictly in JSON format, never in paragraphs. Format:\n" +
-              '{ "title": string, "instructions": string, "questions": [ { "question": string, "options": [string], "answer": string } ] }',
-          },
-          { role: "user", content: text },
-        ],
-      }),
-    });
+    const aiResponse = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "HTTP-Referer": "https://quizmint.ai",
+          "X-Title": "QuizMint AI",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "tngtech/deepseek-r1t2-chimera:free",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an AI that generates quizzes from text. Always return output strictly in JSON format, never in paragraphs. Format:\n" +
+                '{ "title": string, "instructions": string, "questions": [ { "question": string, "options": [string], "answer": string } ] }',
+            },
+            { role: "user", content: text },
+          ],
+        }),
+      }
+    );
 
     const data = await aiResponse.json();
     let quiz = null;
@@ -351,7 +372,10 @@ export async function POST(req: NextRequest) {
       where: { id: usage.id },
       data: {
         count: newCount,
-        resetAt: newCount >= FREE_LIMIT ? new Date(now.getTime() + COOLDOWN_HOURS * 60 * 60 * 1000) : null,
+        resetAt:
+          newCount >= FREE_LIMIT
+            ? new Date(now.getTime() + COOLDOWN_HOURS * 60 * 60 * 1000)
+            : null,
         ip, // update IP in case it changed
       },
     });
