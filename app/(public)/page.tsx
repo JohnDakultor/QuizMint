@@ -261,7 +261,7 @@ export default function Home() {
       y += 6;
     });
 
-    pdf.save("QuizMint-Quiz.pdf");
+    pdf.save("QuizMintAI-Quiz.pdf");
   };
 
   return (
@@ -278,7 +278,7 @@ export default function Home() {
           Turn Any Text into a Quiz Instantly ⚡
         </h1>
         <p className="text-lg text-zinc-600 dark:text-zinc-400 mb-8">
-          Paste any document, lesson, or article — and let QuizMint’s AI create
+          Paste any document, lesson, or article — and let QuizMintAI’s AI create
           smart, engaging quizzes in seconds.
         </p>
 
@@ -555,7 +555,7 @@ export default function Home() {
                 </button>
 
                 <h2 className="text-lg font-semibold text-center mb-2">
-                  Enjoying QuizMint?
+                  Enjoying QuizMintAI?
                 </h2>
 
                 <p className="text-sm text-zinc-600 dark:text-zinc-300 text-center mb-4">

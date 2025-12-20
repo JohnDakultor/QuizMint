@@ -19,7 +19,7 @@ export default function PublicLayout({
             className="flex items-center space-x-2 text-2xl font-bold"
           >
             <Sparkles className="text-blue-500 h-6 w-6" />
-            <span>QuizMint</span>
+            <span>QuizMintAI</span>
           </Link>
 
           <div className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-600">
@@ -57,7 +57,7 @@ export default function PublicLayout({
       {/* Footer */}
       <Separator className="my-16 max-w-6xl mx-auto" />
       <footer className="text-center mb-6 text-sm text-zinc-500">
-        © {new Date().getFullYear()} QuizMint
+        © {new Date().getFullYear()} QuizMintAI
 
         <div className="mt-2 space-x-3">
           <Link href="/about" className="hover:underline">

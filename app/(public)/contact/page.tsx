@@ -130,10 +130,10 @@ export default function ContactPage() {
         <div className="text-center text-sm text-zinc-500 dark:text-zinc-400">
           You can also reach us at{" "}
           <a
-            href="mailto:support@quizmint.com"
+            href="mailto:support@quizmintai.com"
             className="text-blue-600 hover:underline dark:text-blue-400"
           >
-            support@quizmint.com
+            support@quizmintai.com
           </a>
         </div>
       </div>

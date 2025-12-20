@@ -25,7 +25,7 @@ export default function Navigation() {
             className="flex items-center space-x-2 text-yellow-400 text-2xl font-bold"
           >
             <Sparkles className="text-blue-500 h-6 w-6" />
-            <span>QuizMint</span>
+            <span>QuizMintAI</span>
           </Link>
 
           <div className="flex items-center space-x-6 ml-auto">

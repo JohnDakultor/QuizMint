@@ -10,7 +10,7 @@ export default function AboutUsPage() {
         {/* Header */}
         <div className="text-center space-y-4">
           <h1 className="text-4xl font-bold text-zinc-900 dark:text-zinc-50">
-            About QuizMint
+            About QuizMintAI
           </h1>
           <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto">
             Smarter quizzes. Faster learning. Powered by AI.
@@ -23,7 +23,7 @@ export default function AboutUsPage() {
             <CardTitle className="text-2xl">Our Mission</CardTitle>
           </CardHeader>
           <CardContent className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            QuizMint was built to make learning more effective and accessible.
+            QuizMintAI was built to make learning more effective and accessible.
             Our mission is to help students, professionals, and educators turn
             any content into meaningful quizzes using AI — saving time while
             improving understanding and retention.
@@ -38,7 +38,7 @@ export default function AboutUsPage() {
               <CardTitle>AI-Powered Learning</CardTitle>
             </CardHeader>
             <CardContent className="text-zinc-600 dark:text-zinc-400">
-              QuizMint uses advanced AI to generate quizzes from text, documents,
+              QuizMintAI uses advanced AI to generate quizzes from text, documents,
               and prompts — helping you learn faster with personalized
               difficulty and adaptive feedback.
             </CardContent>
@@ -64,7 +64,7 @@ export default function AboutUsPage() {
           </CardHeader>
           <CardContent className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
             Your data matters to us. We are committed to protecting your
-            information and being transparent about how it is used. QuizMint
+            information and being transparent about how it is used. QuizMintAI
             follows industry best practices for security and privacy.
           </CardContent>
         </Card>
@@ -73,7 +73,7 @@ export default function AboutUsPage() {
         <Card className="border-zinc-200 dark:border-zinc-800">
           <CardHeader className="flex flex-row items-center gap-3">
             <Users className="h-6 w-6 text-blue-600" />
-            <CardTitle>Who QuizMint Is For</CardTitle>
+            <CardTitle>Who QuizMintAI Is For</CardTitle>
           </CardHeader>
           <CardContent className="text-zinc-600 dark:text-zinc-400">
             <ul className="list-disc list-inside space-y-2">
