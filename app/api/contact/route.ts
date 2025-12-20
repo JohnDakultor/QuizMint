@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     }
 
     await resend.emails.send({
-      from: "QuizMint Contact <support@quizmintai.com>",
+      from: "QuizMint Contact <onboarding@resend.dev>",
       to: [process.env.CONTACT_RECEIVER_EMAIL!],
       replyTo: email,
       subject: `New Contact Message from ${name}`,
