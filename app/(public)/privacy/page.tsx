@@ -94,13 +94,6 @@ export default function PrivacyPage() {
         </p>
       </section>
 
-      <section className="space-y-2">
-        <h2 className="text-2xl font-semibold">10. Contact Us</h2>
-        <p className="text-gray-700">
-          If you have questions about this Privacy Policy, contact us at <a href="mailto:support@quizmint.com" className="text-blue-600 underline">support@quizmint.com</a>.
-        </p>
-      </section>
-
       <p className="text-gray-500 text-sm">© QuizMint</p>
     </div>
   );

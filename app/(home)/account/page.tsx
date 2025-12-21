@@ -25,6 +25,7 @@ type UserSubscription = {
   adaptiveLearning?: boolean;
 };
 
+import { useRouter } from "next/navigation";
 export default function Account() {
   const [user, setUser] = useState<UserSubscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,6 +36,8 @@ export default function Account() {
   const [difficulty, setDifficulty] =
     useState<UserSubscription["aiDifficulty"]>("medium");
   const [adaptiveLearning, setAdaptiveLearning] = useState<boolean>(false);
+
+  const router = useRouter();
 
   const fetchAccount = async () => {
     setLoading(true);
@@ -247,7 +250,7 @@ export default function Account() {
           <div className="mt-6 flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
-                onClick={() => (window.location.href = "/subscription")}
+                onClick={() => router.push("/subscription")}
                 className="flex-1 bg-sky-600 hover:bg-sky-700 text-white"
                 disabled={isActive}
               >
@@ -256,7 +259,7 @@ export default function Account() {
 
               <Button
                 variant="ghost"
-                onClick={() => alert("Contact support at support@example.com")}
+                onClick={() => router.push("/support")}
                 className="px-4"
               >
                 Support
