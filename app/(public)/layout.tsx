@@ -56,10 +56,26 @@ export default function PublicLayout({
 
       {/* Footer */}
       <Separator className="my-16 max-w-6xl mx-auto" />
-      <footer className="text-center mb-6 text-sm text-zinc-500">
-        © {new Date().getFullYear()} QuizMintAI
+      <footer className="text-center mb-6 text-sm text-zinc-500 space-y-2">
+        <div>© {new Date().getFullYear()} QuizMintAI</div>
 
         <div className="mt-2 space-x-3">
+          {/* Main Pages */}
+          <Link href="/ai-quiz-generator" className="hover:underline">
+            AI Quiz Generator
+          </Link>
+          <span>·</span>
+          <Link href="/quiz-generator-for-students" className="hover:underline">
+            For Students
+          </Link>
+          <span>·</span>
+          <Link href="/quiz-generator-for-corporate" className="hover:underline">
+            For Corporate
+          </Link>
+        </div>
+
+        <div className="mt-2 space-x-3">
+          {/* Legal & Info */}
           <Link href="/about" className="hover:underline">
             About
           </Link>
