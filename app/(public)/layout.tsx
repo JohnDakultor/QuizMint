@@ -69,8 +69,8 @@ export default function PublicLayout({
             For Students
           </Link>
            <span>·</span>
-          <Link href="/quiz-generator-for-students" className="hover:underline">
-            For Students
+          <Link href="/quiz-generator-for-teachers" className="hover:underline">
+            For Teachers
           </Link>
           <span>·</span>
           <Link href="/quiz-generator-for-corporate" className="hover:underline">
