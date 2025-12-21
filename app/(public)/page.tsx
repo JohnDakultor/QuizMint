@@ -621,7 +621,7 @@ export const metadata = {
     title: "AI Quiz Generator | QuizMintAI",
     description:
       "Turn any text into a quiz instantly with QuizMintAI. Free tier and premium plans available.",
-    url: "https://quizmintai.com",
+    url: "https://www.quizmintai.com",
     siteName: "QuizMintAI",
     type: "website",
   },
@@ -642,7 +642,7 @@ const structuredData = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   name: "QuizMintAI",
-  url: "https://quizmintai.com",
+  url: "https://www.quizmintai.com",
   description:
     "AI-powered quiz generator to instantly create quizzes from any text.",
   applicationCategory: "Education",
@@ -653,21 +653,21 @@ const structuredData = {
       name: "Free Plan",
       price: "0.00",
       priceCurrency: "USD",
-      url: "https://quizmintai.com/sign-up",
+      url: "https://www.quizmintai.com/sign-up",
     },
     {
       "@type": "Offer",
       name: "Pro Plan",
       price: "5.00",
       priceCurrency: "USD",
-      url: "https://quizmintai.com/sign-up",
+      url: "https://www.quizmintai.com/sign-up",
     },
     {
       "@type": "Offer",
       name: "Premium Plan",
       price: "15.00",
       priceCurrency: "USD",
-      url: "https://quizmintai.com/sign-up",
+      url: "https://www.quizmintai.com/sign-up",
     },
   ],
 };
