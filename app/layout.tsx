@@ -15,6 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "QuizMint | AI Quiz Generator",
+  icons: "/favicon.ico",
   description:
     "Turn any text, document, or lesson into an interactive quiz instantly using AI.",
 };
