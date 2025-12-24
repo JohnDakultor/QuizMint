@@ -721,11 +721,11 @@ export default function Home() {
           },
           {
             q: "Can I use this for exams?",
-            a: "Yes. Pro and Enterprise plans support structured assessments.",
+            a: "Yes. Pro and Premium plans support structured assessments.",
           },
           {
-            q: "Do you support teams?",
-            a: "Enterprise plans include team and API access.",
+            q: "Is your pricing fair?",
+            a: "Yes. Our pricing is competitively priced.",
           },
         ].map((f, i) => (
           <div
