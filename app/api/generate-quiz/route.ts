@@ -661,9 +661,7 @@
 //   }
 // }
 
-
-  // app/api/generate-quiz/route.ts
-
+// app/api/generate-quiz/route.ts
 
 // app/api/generate-quiz/route.ts
 // import { NextRequest, NextResponse } from "next/server";
@@ -863,7 +861,6 @@
 //   }
 // }
 
-
 /////
 //////   use that last one code comment it works fine without the urls documents and youtube stuff
 //////
@@ -884,6 +881,18 @@ import ytdl from "ytdl-core";
 import axios from "axios";
 import { XMLParser } from "fast-xml-parser";
 import { generateQuizAI } from "@/lib/ai";
+
+import { fetchTranscript } from "@/lib/youtube-transcript";
+
+
+interface YouTubeSnippet {
+  title: string;
+  description: string;
+}
+
+interface YouTubeAPIResponse {
+  items?: { snippet?: YouTubeSnippet }[];
+}
 
 const COOLDOWN_HOURS = 3;
 const FREE_QUIZ_LIMIT = 3;
@@ -914,127 +923,251 @@ async function extractTextFromURL(url: string) {
   }
 }
 
+// Transform Youtube Data
+async function transformYoutubeData(data: any[]) {
+  let text = "";
+
+  data.forEach((item: any) => {
+    text += item.text + "\n";
+  });
+  return {
+    data: data,
+    text: text.trim(),
+  };
+}
+
 // Extract YouTube transcript
-async function extractYouTubeTranscript(url: string): Promise<string> {
+// Extract YouTube transcript
+async function extractYouTubeTranscript(videoId: string) {
   try {
-    const parser = new XMLParser();
-    const info = await ytdl.getInfo(url);
+    const transcript = await fetchTranscript(videoId);
 
-    if (!info.player_response.captions) return "";
+    // 🔹 DEBUG LOGS
+    console.log("✅ Raw transcript array:", transcript); // full array
+    transcript.forEach((line, i) => {
+      
+    });
 
-    const tracks =
-      info.player_response.captions.playerCaptionsTracklistRenderer.captionTracks;
+    // Transform to text string for AI
+    const transformData = await transformYoutubeData(transcript);
+    console.log("✅ Transformed text for AI:", transformData.text);
 
-    if (!tracks || !tracks.length) return "";
-
-    // Pick English first, fallback to first track
-    const track = tracks.find((t) => t.languageCode === "en") || tracks[0];
-    const res = await axios.get(track.baseUrl);
-    const parsed = parser.parse(res.data);
-
-    // Build transcript string
-    const texts = parsed.transcript?.text ?? [];
-    const transcript = texts
-      .map((t: any) => (typeof t === "string" ? t : t["#text"] || ""))
-      .join("\n");
-
-    return transcript;
+    return transformData.text;
   } catch (err) {
     console.error("❌ Failed to extract YouTube transcript:", err);
     return "";
   }
 }
 
-// Fetch YouTube metadata as fallback
-async function fetchYouTubeMetadata(videoId: string) {
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) return "";
-  try {
-    const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`
-    );
-    const data = (await res.json()) as {
-      items?: { snippet?: { title?: string; description?: string } }[];
-    };
-    const snippet = data.items?.[0]?.snippet;
-    if (!snippet) return "";
-    return `${snippet.title || ""}\n\n${snippet.description || ""}`;
-  } catch (err) {
-    console.error("❌ Failed to fetch YouTube metadata:", err);
-    return "";
-  }
-}
 
 // ---- POST Handler ----
+// export async function POST(req: NextRequest) {
+//   try {
+//     const session = await getServerSession(authOptions);
+//     if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+//     const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+//     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+//     const now = new Date();
+//     const subscriptionPlan = user.subscriptionPlan || "free";
+//     const subscriptionStatus = user.subscriptionStatus || "active";
+//     const isFree = subscriptionPlan === "free" || subscriptionStatus === "cancelled";
+
+//     // Free tier cooldown
+//     if (isFree && user.quizUsage >= FREE_QUIZ_LIMIT && user.lastQuizAt) {
+//       const hoursSinceLastQuiz = (now.getTime() - new Date(user.lastQuizAt).getTime()) / 1000 / 60 / 60;
+//       if (hoursSinceLastQuiz < COOLDOWN_HOURS) {
+//         const nextFreeAt = new Date(new Date(user.lastQuizAt).getTime() + COOLDOWN_HOURS * 60 * 60 * 1000);
+//         return NextResponse.json(
+//           { error: "Free limit reached. Come back later. or subscribe to a paid plan", nextFreeAt, quizUsage: user.quizUsage },
+//           { status: 403 }
+//         );
+//       }
+//       await prisma.user.update({ where: { id: user.id }, data: { quizUsage: 0 } });
+//       user.quizUsage = 0;
+//     }
+
+//     // Stripe subscription check
+//     let isProOrPremium = false;
+//     if (user.stripeCustomerId) {
+//       const customer = (await stripe.customers.retrieve(user.stripeCustomerId)) as Stripe.Customer;
+//       if (customer.subscriptions?.data?.length) {
+//         const subscription = customer.subscriptions.data[0];
+//         if (subscription?.status === "active") {
+//           isProOrPremium = subscription.items.data.some(
+//             (item) =>
+//               item.price.id === process.env.STRIPE_PRICE_PRO ||
+//               item.price.id === process.env.STRIPE_PRICE_PREMIUM
+//           );
+//         }
+//       }
+//     }
+
+//     // Parse request body safely
+//     const body = await req.json();
+//     const text = body.text?.trim();
+//     const adaptiveLearning = user.adaptiveLearning ?? false;
+
+//     if (!text) return NextResponse.json({ error: "No input provided" }, { status: 400 });
+
+//     const safeDifficulty = isFree ? "easy" : user.aiDifficulty || "easy";
+
+//     // Determine content source
+//     let content = text;
+//     if (isURL(content)) {
+//   if (content.includes("youtube.com") || content.includes("youtu.be")) {
+//     const urlObj = new URL(content);
+//     const videoId = urlObj.searchParams.get("v") || urlObj.pathname.split("/").pop();
+//     if (!videoId) return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
+
+//     let extractedText = await extractYouTubeTranscript(content);
+
+//     // Fallback to title + description if no transcript
+//     // if (!extractedText?.trim()) {
+//     //   extractedText = await fetchYouTubeMetadata(videoId);
+//     // }
+
+//     // if (!extractedText?.trim()) {
+//     //   extractedText = `⚠️ Limited content: only video ID ${videoId} is available.`;
+//     // }
+
+//     content = extractedText;
+//   } else {
+//     content = await extractTextFromURL(content);
+//   }
+// }
+
+//     if (!content?.trim()) return NextResponse.json({ error: "Content Not Available" }, { status: 400 });
+
+//     // Truncate for AI
+//     if (content.length > 8000) content = content.slice(0, 8000);
+
+//     // Generate quiz
+//     const quiz = await generateQuizAI(content, safeDifficulty, adaptiveLearning, isProOrPremium, "");
+
+//     // sanitize questions according to adaptiveLearning
+// const safeQuestions = quiz.questions.map((q: any) => ({
+//   question: q.question,
+//   options: q.options,
+//   answer: q.answer,
+//   explanation: adaptiveLearning ? q.explanation ?? null : null,
+//   hint: adaptiveLearning ? q.hint ?? null : null,
+// }));
+
+//     const savedQuiz = await prisma.quiz.create({
+//       data: {
+//         title: quiz.title,
+//         instructions: quiz.instructions,
+//         userId: user.id,
+//         questions: { create: safeQuestions },
+//       },
+//       include: { questions: true },
+//     });
+
+//     if (isFree) {
+//       await prisma.user.update({
+//         where: { id: user.id },
+//         data: { quizUsage: user.quizUsage + 1, lastQuizAt: now },
+//       });
+//     }
+
+//     return NextResponse.json({
+//       message: "Quiz generated successfully",
+//       quiz: savedQuiz,
+//       quizUsage: isFree ? user.quizUsage + 1 : null,
+//       remaining: isFree ? FREE_QUIZ_LIMIT - (user.quizUsage + 1) : null,
+//     });
+//   } catch (err: any) {
+//     console.error("Server error:", err);
+//     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+//   }
+// }
+
+async function fetchYouTubeMetadata(videoId: string) {
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${process.env.YT_API_KEY}`
+  );
+
+  if (!res.ok) {
+    throw new Error(`YouTube API error: ${res.status}`);
+  }
+
+  // Cast the unknown JSON to our interface
+  const data = (await res.json()) as YouTubeAPIResponse;
+
+  const snippet = data.items?.[0]?.snippet;
+
+  return {
+    title: snippet?.title || "",
+    description: snippet?.description || "",
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session?.user?.email)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+    if (!user)
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const now = new Date();
     const subscriptionPlan = user.subscriptionPlan || "free";
-    const subscriptionStatus = user.subscriptionStatus || "active";
-    const isFree = subscriptionPlan === "free" || subscriptionStatus === "cancelled";
+    const isFree = subscriptionPlan === "free";
 
-    // Free tier cooldown
-    if (isFree && user.quizUsage >= FREE_QUIZ_LIMIT && user.lastQuizAt) {
-      const hoursSinceLastQuiz = (now.getTime() - new Date(user.lastQuizAt).getTime()) / 1000 / 60 / 60;
-      if (hoursSinceLastQuiz < COOLDOWN_HOURS) {
-        const nextFreeAt = new Date(new Date(user.lastQuizAt).getTime() + COOLDOWN_HOURS * 60 * 60 * 1000);
-        return NextResponse.json(
-          { error: "Free limit reached. Come back later. or subscribe to a paid plan", nextFreeAt, quizUsage: user.quizUsage },
-          { status: 403 }
-        );
-      }
-      await prisma.user.update({ where: { id: user.id }, data: { quizUsage: 0 } });
-      user.quizUsage = 0;
-    }
-
-    // Stripe subscription check
-    let isProOrPremium = false;
-    if (user.stripeCustomerId) {
-      const customer = (await stripe.customers.retrieve(user.stripeCustomerId)) as Stripe.Customer;
-      if (customer.subscriptions?.data?.length) {
-        const subscription = customer.subscriptions.data[0];
-        if (subscription?.status === "active") {
-          isProOrPremium = subscription.items.data.some(
-            (item) =>
-              item.price.id === process.env.STRIPE_PRICE_PRO ||
-              item.price.id === process.env.STRIPE_PRICE_PREMIUM
-          );
-        }
-      }
-    }
-
-    // Parse request body safely
+    // Parse body
     const body = await req.json();
-    const text = body.text?.trim();
-    const adaptiveLearning = user.adaptiveLearning ?? false;
-
-    if (!text) return NextResponse.json({ error: "No input provided" }, { status: 400 });
-
-    const safeDifficulty = isFree ? "easy" : user.aiDifficulty || "easy";
+    let text = body.text?.trim();
+    if (!text)
+      return NextResponse.json({ error: "No input provided" }, { status: 400 });
 
     // Determine content source
     let content = text;
+
     if (isURL(content)) {
   if (content.includes("youtube.com") || content.includes("youtu.be")) {
-    const urlObj = new URL(content);
-    const videoId = urlObj.searchParams.get("v") || urlObj.pathname.split("/").pop();
-    if (!videoId) return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
-
-    let extractedText = await extractYouTubeTranscript(content);
-
-    // Fallback to title + description if no transcript
-    if (!extractedText?.trim()) {
-      extractedText = await fetchYouTubeMetadata(videoId);
+    // Premium check
+    if (isFree) {
+      return NextResponse.json(
+        { error: "YouTube link generation is premium only" },
+        { status: 403 }
+      );
     }
 
+    // Extract video ID correctly
+    let videoId: string | undefined;
+    try {
+      const urlObj = new URL(content);
+      if (urlObj.hostname.includes("youtu.be")) {
+        videoId = urlObj.pathname.split("/").pop()?.split("?")[0]; // remove query string
+      } else {
+        videoId = urlObj.searchParams.get("v") || undefined;
+      }
+    } catch (err) {
+      return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
+    }
+
+    if (!videoId) {
+      return NextResponse.json({ error: "Could not extract video ID" }, { status: 400 });
+    }
+
+    // Try fetching transcript
+    let extractedText = await extractYouTubeTranscript(videoId);
+
+    // Fallback: use video title + description if transcript is empty
     if (!extractedText?.trim()) {
-      extractedText = `⚠️ Limited content: only video ID ${videoId} is available.`;
+      try {
+        const { title, description } = await fetchYouTubeMetadata(videoId);
+        extractedText = `${title}\n\n${description}`;
+      } catch (err) {
+        console.warn("Fallback metadata fetch failed:", err);
+        extractedText = `⚠️ Limited content: only video ID ${videoId} available.`;
+      }
     }
 
     content = extractedText;
@@ -1044,24 +1177,32 @@ export async function POST(req: NextRequest) {
 }
 
 
+    if (!content?.trim())
+      return NextResponse.json(
+        { error: "Content Not Available" },
+        { status: 400 }
+      );
 
-    if (!content?.trim()) return NextResponse.json({ error: "Content Not Available" }, { status: 400 });
-
-    // Truncate for AI
     if (content.length > 8000) content = content.slice(0, 8000);
 
-    // Generate quiz
-    const quiz = await generateQuizAI(content, safeDifficulty, adaptiveLearning, isProOrPremium, "");
+    const safeDifficulty = isFree ? "easy" : user.aiDifficulty || "easy";
 
+    const quiz = await generateQuizAI(
+      content,
+      safeDifficulty,
+      user.adaptiveLearning ?? false,
+      false,
+      ""
+    );
 
-    // sanitize questions according to adaptiveLearning
-const safeQuestions = quiz.questions.map((q: any) => ({
-  question: q.question,
-  options: q.options,
-  answer: q.answer,
-  explanation: adaptiveLearning ? q.explanation ?? null : null,
-  hint: adaptiveLearning ? q.hint ?? null : null,
-}));
+    // Sanitize questions
+    const safeQuestions = quiz.questions.map((q: any) => ({
+      question: q.question,
+      options: q.options,
+      answer: q.answer,
+      explanation: user.adaptiveLearning ? q.explanation ?? null : null,
+      hint: user.adaptiveLearning ? q.hint ?? null : null,
+    }));
 
     const savedQuiz = await prisma.quiz.create({
       data: {
@@ -1088,8 +1229,9 @@ const safeQuestions = quiz.questions.map((q: any) => ({
     });
   } catch (err: any) {
     console.error("Server error:", err);
-    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Internal server error" },
+      { status: 500 }
+    );
   }
 }
-
-

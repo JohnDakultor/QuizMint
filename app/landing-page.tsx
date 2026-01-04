@@ -675,7 +675,7 @@ export default function Home() {
                 "Unlimited quizzes",
                 "AI difficulty & adaptive learning control",
                 "Export to Documents, PDF, & PPT",
-                "Priority email support",
+                "Paste YouTube urls",
                 "Advanced analytics, performance tracking, and AI insight",
               ],
             },
