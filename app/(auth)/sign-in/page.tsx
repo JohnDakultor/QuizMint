@@ -10,12 +10,15 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, LogIn } from "lucide-react";
 import { signIn, getSession } from "next-auth/react";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [accepted, setAccepted] = useState(false);
+
+  const [showPassword, setShowPassword] = useState(false);
 
   const router = useRouter();
 
@@ -110,19 +113,30 @@ export default function SignIn() {
             </div>
 
             {/* Password */}
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                required
-                value={form.password}
-                onChange={(e) =>
-                  setForm({ ...form, password: e.target.value })
-                }
-              />
-            </div>
+              <div className="space-y-2">
+  <Label htmlFor="password">Password</Label>
+
+  <div className="relative">
+    <Input
+      id="password"
+      type={showPassword ? "text" : "password"}
+      placeholder="••••••••"
+      required
+      className="pr-10 border-zinc-300 dark:border-zinc-700"
+      onChange={(e) => setForm({ ...form, password: e.target.value })}
+      value={form.password}
+    />
+
+    <button
+      type="button"
+      onClick={() => setShowPassword((prev) => !prev)}
+      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+      aria-label={showPassword ? "Hide password" : "Show password"}
+    >
+      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+    </button>
+  </div>
+</div>
 
             {/* Forgot password */}
             <div className="flex justify-end text-sm">
