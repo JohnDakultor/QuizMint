@@ -380,7 +380,7 @@ const paymentMethods = [
     color: "from-purple-500 to-purple-700",
     textColor: "text-white",
     gradient: "bg-gradient-to-r from-purple-600 to-purple-800",
-    available: false, // Coming soon
+    available: true, // Coming soon
   },
   {
     id: "paypal",
