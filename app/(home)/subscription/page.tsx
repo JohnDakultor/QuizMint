@@ -380,7 +380,7 @@ const paymentMethods = [
     color: "from-purple-500 to-purple-700",
     textColor: "text-white",
     gradient: "bg-gradient-to-r from-purple-600 to-purple-800",
-    available: true, // Coming soon
+    available: false, // Coming soon
   },
   {
     id: "paypal",
@@ -464,7 +464,6 @@ export default function Subscription() {
       body: JSON.stringify({ action: 'get' })
     })
       .then(res => res.json())
-      .then(data => console.log('Current state:', data))
       .catch(error => console.error('Error:', error));
   }, []);
 
