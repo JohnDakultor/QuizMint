@@ -259,11 +259,14 @@ export async function POST(req: NextRequest) {
           where: { email },
           data: { 
             subscriptionStatus: "cancelled", 
-            subscriptionEnd: new Date(),
+            subscriptionEnd: null, //new Date()
             subscriptionPlan: "free",
             adaptiveLearning: false,
             aiDifficulty: "easy",
-            quizUsage: 0
+            quizUsage: 0,
+            subscriptionStart: null,
+            paypalCustomerId: null,
+            stripeCustomerId: null
           },
         });
 
