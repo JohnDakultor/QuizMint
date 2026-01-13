@@ -475,7 +475,7 @@ export default function Dashboard() {
       q.options.forEach((opt: string, j: number) => {
         textToCopy += `   ${String.fromCharCode(97 + j)}) ${opt}\n`;
       });
-      textToCopy += `   ✅ Answer: ${q.answer}\n\n`;
+      textToCopy += `    Answer: ${q.answer}\n\n`;
     });
     await navigator.clipboard.writeText(textToCopy);
     alert("Copied formatted quiz to clipboard!");
@@ -635,7 +635,7 @@ export default function Dashboard() {
         {/* ================= INPUT CARD ================= */}
         <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-[480px] h-[550px]">
           <CardHeader>
-            <CardTitle className="text-xl font-semibold">📝 Create Quiz Input</CardTitle>
+            <CardTitle className="text-xl font-semibold"> Create Quiz Input</CardTitle>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
               Paste text, write instructions, or upload a document.
             </p>
@@ -686,7 +686,7 @@ export default function Dashboard() {
 
             {uploadedFile && (
               <div className="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
-                <span>📄 {uploadedFile.name}</span>
+                <span> {uploadedFile.name}</span>
                 <Button size="sm" variant="outline" onClick={() => setUploadedFile(null)}>
                   Remove
                 </Button>
@@ -698,7 +698,7 @@ export default function Dashboard() {
         {/* ================= OUTPUT CARD (ALWAYS VISIBLE) ================= */}
         <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-[520px] h-[550px] flex flex-col">
           <CardHeader className="relative">
-            <CardTitle className="text-xl font-semibold">🧩 Generated Quiz</CardTitle>
+            <CardTitle className="text-xl font-semibold"> Generated Quiz</CardTitle>
 
             {quiz && (
               <button
@@ -733,7 +733,7 @@ export default function Dashboard() {
                   <ul className="ml-4 list-disc space-y-1">
                     {q.options.map((opt: string, j: number) => <li key={j}>{opt}</li>)}
                   </ul>
-                  <p className="mt-2 text-sm text-green-600">✅ Answer: <strong>{q.answer}</strong></p>
+                  <p className="mt-2 text-sm text-green-600"> Answer: <strong>{q.answer}</strong></p>
                   {q.explanation && <p className="mt-1 text-sm text-zinc-500">📝 {q.explanation}</p>}
                 </div>
               ))

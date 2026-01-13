@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import Image from "next/image";
+import icon from "@/public/icon.png"
 
 export default function PublicLayout({
   children,
@@ -18,7 +20,12 @@ export default function PublicLayout({
             href="/"
             className="flex items-center space-x-2 text-2xl font-bold"
           >
-            <Sparkles className="text-blue-500 h-6 w-6" />
+            {/* <Sparkles className="text-blue-500 h-6 w-6" /> */}
+            <Image
+              src={icon}
+              alt="Logo"
+              className="w-15 h-15"
+            />
             <span>QuizMintAI</span>
           </Link>
 

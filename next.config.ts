@@ -39,6 +39,7 @@ const ContentSecurityPolicy = `
     'self'
     'unsafe-inline'
     'unsafe-eval'
+    https://www.paypal.com
     https://pagead2.googlesyndication.com
     https://partner.googleadservices.com;
   style-src
@@ -56,6 +57,7 @@ const ContentSecurityPolicy = `
     'self'
     https:;
   frame-src
+    https://www.paypal.com
     https://pagead2.googlesyndication.com
     https://googleads.g.doubleclick.net;
   frame-ancestors 'self';
@@ -66,6 +68,7 @@ const ContentSecurityPolicy = `
   worker-src 'self';
   manifest-src 'self';
 `;
+
 
 const nextConfig: NextConfig = {
   async headers() {

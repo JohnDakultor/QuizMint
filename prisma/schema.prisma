@@ -20,6 +20,7 @@ model User {
   subscriptionStart  DateTime?
   subscriptionStatus String?
   stripeCustomerId   String?
+  paypalCustomerId   String?
   adaptiveLearning   Boolean?  @default(false)
   aiDifficulty       String?
   quizzes            Quiz[]
@@ -27,6 +28,29 @@ model User {
   resetTokens        PasswordResetToken[]
 
   policyAcceptances  UserPolicyAcceptance[]
+
+  paypalSubscriptions PayPalSubscription[]
+}
+
+
+model PayPalSubscription {
+  id               String   @id @default(cuid())
+  subscriptionId   String   @unique
+  planId           String
+  planType         String   // "pro" or "premium"
+  status           String   // ACTIVE, CANCELLED, SUSPENDED, EXPIRED
+  userId           Int
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startTime        DateTime
+  nextBillingTime  DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([status])
+  @@index([subscriptionId])
+  
+  @@map("paypal_subscriptions")
 }
 
 model Quiz {

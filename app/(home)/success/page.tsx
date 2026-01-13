@@ -72,18 +72,14 @@ export default function SuccessPage() {
       <p className="text-lg text-zinc-700 dark:text-zinc-300 mb-2">
         Thank you for subscribing to the <strong>{session?.plan || "Premium Plan"}</strong>.
       </p>
-      {session?.amount && (
-        <p className="text-md text-zinc-600 dark:text-zinc-400">
-          Amount charged: <strong>{session.amount}</strong>
-        </p>
-      )}
+      
       <p className="mt-6 text-zinc-700 dark:text-zinc-300">
-        You now have full access to all premium features.
+        You now have full access to all {session?.plan}.
       </p>
 
       <Button
         className="mt-8 bg-blue-600 hover:bg-blue-700"
-        onClick={() => router.push("/user-home")}
+        onClick={() => router.push("/home")}
       >
         Go to Home
       </Button>

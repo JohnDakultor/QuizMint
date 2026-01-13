@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "../globals.css";
+import Image from "next/image";
+import icon from "@/public/icon.png"
 
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -31,7 +33,12 @@ export default function AuthLayout({
         {/* Minimal Top Branding */}
         <header className="flex justify-center py-8">
           <Link href="/" className="flex items-center gap-2">
-            <Sparkles className="text-blue-500 h-6 w-6" />
+            {/* <Sparkles className="text-blue-500 h-6 w-6" /> */}
+            <Image
+                          src={icon}
+                          alt="Logo"
+                          className="w-15 h-15"
+                        />
             <span className="font-bold text-xl">QuizMint</span>
           </Link>
         </header>

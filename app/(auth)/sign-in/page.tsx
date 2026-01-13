@@ -71,7 +71,7 @@ export default function SignIn() {
       ]);
 
       // 4️⃣ Redirect to dashboard
-      router.push("/user-home");
+      router.push("/home");
     } catch (err) {
       console.error(err);
       setError("Something went wrong. Please try again.");

@@ -14,6 +14,9 @@ import {
   ChevronLeft,
 } from "lucide-react";
 
+import Image from "next/image";
+import icon from "@/public/icon.png"
+
 export default function Navigation() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -45,7 +48,7 @@ export default function Navigation() {
   }, []);
 
   const tabs = [
-    { href: "/user-home", icon: <Home size={22} />, label: "Home" },
+    { href: "/home", icon: <Home size={22} />, label: "Home" },
     { href: "/subscription", icon: <CreditCard size={22} />, label: "Subscription" },
     { href: "/account", icon: <User size={22} />, label: "Account" },
   ];
@@ -66,7 +69,11 @@ export default function Navigation() {
                 href="/user-home"
                 className="flex items-center space-x-2 text-yellow-400 text-lg font-bold"
               >
-                <Sparkles className="text-blue-400 h-5 w-5" />
+                <Image
+                              src={icon}
+                              alt="Logo"
+                              className="w-15 h-15"
+                            />
                 <span>QuizMintAI</span>
               </Link>
             )}
