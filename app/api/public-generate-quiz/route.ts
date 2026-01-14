@@ -327,7 +327,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No text provided" }, { status: 400 });
     }
 
-    // Call AI API (your existing code)
+    
     const aiResponse = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
       {

@@ -66,7 +66,7 @@ export default function Navigation() {
           <div className="flex items-center justify-between mb-6">
             {!collapsed && (
               <Link
-                href="/user-home"
+                href="/home"
                 className="flex items-center space-x-2 text-yellow-400 text-lg font-bold"
               >
                 <Image
