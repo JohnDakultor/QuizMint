@@ -499,7 +499,7 @@ export async function POST(req: NextRequest) {
     // Step 3: Create subscription
     console.log(`\n🔄 Step 3: Creating subscription`);
     
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://quizmintai.com";
     
     const subscriptionBody = {
       plan_id: planId,
