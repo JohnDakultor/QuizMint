@@ -411,8 +411,7 @@ const paymentMethods = [
     textColor: "text-white",
     gradient: "bg-gradient-to-r from-gray-900 to-black",
     available: false, // Coming soon
-  }
-
+  },
 ];
 
 export default function Subscription() {
@@ -436,35 +435,36 @@ export default function Subscription() {
   const [planToSubscribe, setPlanToSubscribe] = useState<
     "pro" | "premium" | null
   >(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<string>("");
 
-  const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID!;
-  const PAYPAL_ENV =
-    process.env.NEXT_PUBLIC_PAYPAL_ENVIRONMENT === "production"
-      ? "production"
-      : "sandbox";
+  // const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID!;
+  // const PAYPAL_ENV =
+  //   process.env.NEXT_PUBLIC_PAYPAL_ENVIRONMENT === "production"
+  //     ? "production"
+  //     : "sandbox";
 
-  const initialOptions = {
-    clientId: PAYPAL_CLIENT_ID,
-    "enable-funding": "venmo",
-    "disable-funding": "",
-    "buyer-country": "US",
-    currency: "USD",
-    "data-page-type": "product-details",
-    components: "buttons",
-    "data-sdk-integration-source": "developer-studio",
-  };
+  // const initialOptions = {
+  //   clientId: PAYPAL_CLIENT_ID,
+  //   "enable-funding": "venmo",
+  //   "disable-funding": "",
+  //   "buyer-country": "US",
+  //   currency: "USD",
+  //   "data-page-type": "product-details",
+  //   components: "buttons",
+  //   "data-sdk-integration-source": "developer-studio",
+  // };
 
   useEffect(() => {
-    fetch('/api/paypal/debug-subs', {
-      method: 'POST',
+    fetch("/api/paypal/debug-subs", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ action: 'get' })
+      body: JSON.stringify({ action: "get" }),
     })
-      .then(res => res.json())
-      .catch(error => console.error('Error:', error));
+      .then((res) => res.json())
+      .catch((error) => console.error("Error:", error));
   }, []);
 
   // Load subscription status
@@ -578,7 +578,7 @@ export default function Subscription() {
       return;
     }
 
-    const method = paymentMethods.find(m => m.id === selectedPaymentMethod);
+    const method = paymentMethods.find((m) => m.id === selectedPaymentMethod);
     if (!method?.available) {
       alert(`${method?.name} is coming soon! Please select PayPal for now.`);
       return;
@@ -603,7 +603,8 @@ export default function Subscription() {
   };
 
   return (
-    <PayPalScriptProvider options={initialOptions}>
+    // <PayPalScriptProvider options={initialOptions}>
+    <div>
       <div className="max-w-4xl mx-auto mt-20 px-4 text-center">
         <h1 className="text-4xl font-bold mb-12">
           Choose Your Subscription Plan
@@ -666,245 +667,279 @@ export default function Subscription() {
           ))}
         </div>
 
-    {showPaymentModal && planToSubscribe && (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3">
-    <div className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl max-w-xs sm:max-w-sm w-full overflow-hidden border border-gray-300 dark:border-gray-700">
-      {/* Modal Header - Ultra Compact */}
-      <div className="bg-linear-to-r from-gray-900 to-black p-3 text-white">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5">
-            <CreditCard className="w-5 h-5" />
-            <div>
-              <h2 className="text-sm font-bold">Payment</h2>
-              <p className="text-gray-300 text-[10px]">
-                Choose method
-              </p>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] text-gray-300">Plan</div>
-            <div className="font-semibold text-xs">
-              {planToSubscribe === "pro" ? "Pro" : "Premium"}
-            </div>
-          </div>
-        </div>
-        
-        {/* Amount Display - Ultra Compact */}
-        <div className="bg-black/30 p-2 rounded">
-          <div className="text-[10px] text-gray-300">Total</div>
-          <div className="text-xl font-bold">
-            {SYMBOLS[currencyData.currency] || currencyData.currency}
-            {currencyData.prices[planToSubscribe]}.00
-            <span className="text-[10px] font-normal ml-0.5">/mo</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Payment Methods - Ultra Compact */}
-      <div className="p-3 space-y-2 max-h-[50vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-0.5">
-          <div className="flex items-center gap-1">
-            <Zap className="w-3.5 h-3.5 text-yellow-500" />
-            <h3 className="text-xs font-semibold text-gray-800 dark:text-gray-200">
-              Methods
-            </h3>
-          </div>
-          <div className="text-[10px] text-gray-500 dark:text-gray-400">
-            {paymentMethods.filter(m => m.available).length}/{paymentMethods.length}
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          {paymentMethods.map((method) => {
-            const isSelected = selectedPaymentMethod === method.id;
-            const isAvailable = method.available;
-            
-            return (
-              <div
-                key={method.id}
-                className={`relative border rounded p-2 cursor-pointer transition-all duration-150 ${
-                  isSelected
-                    ? `border-blue-400 dark:border-blue-400 shadow-sm ${method.gradient}`
-                    : isAvailable
-                    ? "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-                    : "border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30"
-                } ${isSelected ? method.textColor : "bg-white dark:bg-gray-800"}`}
-                onClick={() => isAvailable && setSelectedPaymentMethod(method.id)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="relative shrink-0">
-                      {isAvailable ? (
-                        <div
-                          className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                            isSelected
-                              ? "border-white bg-blue-400"
-                              : "border-gray-300 dark:border-gray-500"
-                          }`}
-                        >
-                          {isSelected && (
-                            <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
-                          )}
-                        </div>
-                      ) : (
-                        <Lock className="w-3.5 h-3.5 text-gray-400" />
-                      )}
-                    </div>
-                    
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1">
-                        <span className="text-lg leading-none">{method.icon}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1">
-                            <span className={`font-medium text-xs truncate ${
-                              isSelected 
-                                ? "text-white" 
-                                : isAvailable
-                                ? "text-gray-800 dark:text-gray-200"
-                                : "text-gray-500 dark:text-gray-400"
-                            }`}>
-                              {method.name}
-                            </span>
-                            <Badge 
-                              variant="outline" 
-                              className={`text-[9px] px-1 py-0 leading-none h-3.5 ${
-                                isAvailable
-                                  ? "border-green-500 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20"
-                                  : "border-yellow-500 text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20"
-                              }`}
-                            >
-                              {isAvailable ? "✓" : "⏳"}
-                            </Badge>
-                          </div>
-                          <div className={`text-[10px] truncate ${
-                            isSelected 
-                              ? "text-gray-200" 
-                              : isAvailable
-                              ? "text-gray-500 dark:text-gray-400"
-                              : "text-gray-400 dark:text-gray-500"
-                          }`}>
-                            {method.description}
-                          </div>
-                        </div>
-                      </div>
+        {showPaymentModal && planToSubscribe && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3">
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl max-w-xs sm:max-w-sm w-full overflow-hidden border border-gray-300 dark:border-gray-700">
+              {/* Modal Header - Ultra Compact */}
+              <div className="bg-linear-to-r from-gray-900 to-black p-3 text-white">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <CreditCard className="w-5 h-5" />
+                    <div>
+                      <h2 className="text-sm font-bold">Payment</h2>
+                      <p className="text-gray-300 text-[10px]">Choose method</p>
                     </div>
                   </div>
-                  
-                  {isSelected && isAvailable && (
-                    <Radio className="w-3.5 h-3.5 text-white shrink-0" />
-                  )}
+                  <div className="text-right">
+                    <div className="text-[10px] text-gray-300">Plan</div>
+                    <div className="font-semibold text-xs">
+                      {planToSubscribe === "pro" ? "Pro" : "Premium"}
+                    </div>
+                  </div>
                 </div>
 
-                {!isAvailable && (
-                  <div className="mt-1 pt-1 border-t border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-0.5 text-[10px]">
-                      <Zap className="w-2.5 h-2.5 text-yellow-500 shrink-0" />
-                      <span className="text-yellow-600 dark:text-yellow-400 truncate">
-                        Coming soon
-                      </span>
+                {/* Amount Display - Ultra Compact */}
+                <div className="bg-black/30 p-2 rounded">
+                  <div className="text-[10px] text-gray-300">Total</div>
+                  <div className="text-xl font-bold">
+                    {SYMBOLS[currencyData.currency] || currencyData.currency}
+                    {currencyData.prices[planToSubscribe]}.00
+                    <span className="text-[10px] font-normal ml-0.5">/mo</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Methods - Ultra Compact */}
+              <div className="p-3 space-y-2 max-h-[50vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-0.5">
+                  <div className="flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 text-yellow-500" />
+                    <h3 className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                      Methods
+                    </h3>
+                  </div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                    {paymentMethods.filter((m) => m.available).length}/
+                    {paymentMethods.length}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  {paymentMethods.map((method) => {
+                    const isSelected = selectedPaymentMethod === method.id;
+                    const isAvailable = method.available;
+
+                    return (
+                      <div
+                        key={method.id}
+                        className={`relative border rounded p-2 cursor-pointer transition-all duration-150 ${
+                          isSelected
+                            ? `border-blue-400 dark:border-blue-400 shadow-sm ${method.gradient}`
+                            : isAvailable
+                            ? "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                            : "border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30"
+                        } ${
+                          isSelected
+                            ? method.textColor
+                            : "bg-white dark:bg-gray-800"
+                        }`}
+                        onClick={() =>
+                          isAvailable && setSelectedPaymentMethod(method.id)
+                        }
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="relative shrink-0">
+                              {isAvailable ? (
+                                <div
+                                  className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                    isSelected
+                                      ? "border-white bg-blue-400"
+                                      : "border-gray-300 dark:border-gray-500"
+                                  }`}
+                                >
+                                  {isSelected && (
+                                    <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+                                  )}
+                                </div>
+                              ) : (
+                                <Lock className="w-3.5 h-3.5 text-gray-400" />
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-lg leading-none">
+                                  {method.icon}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1">
+                                    <span
+                                      className={`font-medium text-xs truncate ${
+                                        isSelected
+                                          ? "text-white"
+                                          : isAvailable
+                                          ? "text-gray-800 dark:text-gray-200"
+                                          : "text-gray-500 dark:text-gray-400"
+                                      }`}
+                                    >
+                                      {method.name}
+                                    </span>
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[9px] px-1 py-0 leading-none h-3.5 ${
+                                        isAvailable
+                                          ? "border-green-500 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20"
+                                          : "border-yellow-500 text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20"
+                                      }`}
+                                    >
+                                      {isAvailable ? "✓" : "⏳"}
+                                    </Badge>
+                                  </div>
+                                  <div
+                                    className={`text-[10px] truncate ${
+                                      isSelected
+                                        ? "text-gray-200"
+                                        : isAvailable
+                                        ? "text-gray-500 dark:text-gray-400"
+                                        : "text-gray-400 dark:text-gray-500"
+                                    }`}
+                                  >
+                                    {method.description}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {isSelected && isAvailable && (
+                            <Radio className="w-3.5 h-3.5 text-white shrink-0" />
+                          )}
+                        </div>
+
+                        {!isAvailable && (
+                          <div className="mt-1 pt-1 border-t border-gray-200 dark:border-gray-700">
+                            <div className="flex items-center gap-0.5 text-[10px]">
+                              <Zap className="w-2.5 h-2.5 text-yellow-500 shrink-0" />
+                              <span className="text-yellow-600 dark:text-yellow-400 truncate">
+                                Coming soon
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Dynamic Summary - Ultra Compact */}
+                {paymentMethods.filter((m) => m.available).length > 0 && (
+                  <div className="mt-2 p-1.5 bg-linear-to-r from-green-50 to-green-100 dark:from-green-900/10 dark:to-green-800/10 rounded border border-green-200 dark:border-green-800">
+                    <div className="flex items-center gap-1">
+                      <div
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          paymentMethods.filter((m) => m.available).length > 0
+                            ? "bg-green-500"
+                            : "bg-yellow-500"
+                        }`}
+                      ></div>
+                      <div className="text-[10px] text-green-800 dark:text-green-300">
+                        {selectedPaymentMethod &&
+                        paymentMethods.find(
+                          (m) => m.id === selectedPaymentMethod
+                        )?.available
+                          ? `${
+                              paymentMethods.find(
+                                (m) => m.id === selectedPaymentMethod
+                              )?.name
+                            } selected`
+                          : `${
+                              paymentMethods.filter((m) => m.available).length
+                            } methods available`}
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
 
-        {/* Dynamic Summary - Ultra Compact */}
-        {paymentMethods.filter(m => m.available).length > 0 && (
-          <div className="mt-2 p-1.5 bg-linear-to-r from-green-50 to-green-100 dark:from-green-900/10 dark:to-green-800/10 rounded border border-green-200 dark:border-green-800">
-            <div className="flex items-center gap-1">
-              <div className={`w-1.5 h-1.5 rounded-full ${
-                paymentMethods.filter(m => m.available).length > 0 
-                  ? "bg-green-500" 
-                  : "bg-yellow-500"
-              }`}></div>
-              <div className="text-[10px] text-green-800 dark:text-green-300">
-                {selectedPaymentMethod && paymentMethods.find(m => m.id === selectedPaymentMethod)?.available
-                  ? `${paymentMethods.find(m => m.id === selectedPaymentMethod)?.name} selected`
-                  : `${paymentMethods.filter(m => m.available).length} methods available`}
+              {/* Action Buttons - Ultra Compact */}
+              <div className="p-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+                <div className="flex flex-col gap-2">
+                  {selectedPaymentMethod &&
+                  paymentMethods.find((m) => m.id === selectedPaymentMethod)
+                    ?.available ? (
+                    <Button
+                      className={`py-2 text-xs ${
+                        selectedPaymentMethod === "stripe"
+                          ? "bg-linear-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
+                          : selectedPaymentMethod === "gpay"
+                          ? "bg-linear-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black"
+                          : selectedPaymentMethod === "paypal"
+                          ? "bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                          : "bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                      } text-white border-0`}
+                      onClick={handleProceed}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="w-3 h-3 mr-1" />
+                          Pay with{" "}
+                          {paymentMethods.find(
+                            (m) => m.id === selectedPaymentMethod
+                          )?.name || ""}
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="py-2 text-xs bg-linear-to-r from-gray-300 to-gray-400 text-gray-700 border-0 cursor-not-allowed"
+                      disabled
+                    >
+                      <CreditCard className="w-3 h-3 mr-1" />
+                      Select method
+                    </Button>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="py-1.5 text-xs border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    onClick={() => {
+                      setShowPaymentModal(false);
+                      setSelectedPaymentMethod("");
+                    }}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+
+                {/* Security Badges - Ultra Compact */}
+                <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center gap-0.5">
+                      <div className="w-1 h-1 bg-green-500 rounded-full"></div>
+                      <span className="text-[8px] text-gray-500 dark:text-gray-400">
+                        SSL
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
+                      <span className="text-[8px] text-gray-500 dark:text-gray-400">
+                        PCI
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      <div className="w-1 h-1 bg-yellow-500 rounded-full"></div>
+                      <span className="text-[8px] text-gray-500 dark:text-gray-400">
+                        256-bit
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
       </div>
-
-      {/* Action Buttons - Ultra Compact */}
-      <div className="p-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-        <div className="flex flex-col gap-2">
-          {selectedPaymentMethod && paymentMethods.find(m => m.id === selectedPaymentMethod)?.available ? (
-            <Button
-              className={`py-2 text-xs ${
-                selectedPaymentMethod === "stripe" 
-                  ? "bg-linear-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700" 
-                  : selectedPaymentMethod === "gpay"
-                  ? "bg-linear-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black"
-                  : selectedPaymentMethod === "paypal"
-                  ? "bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                  : "bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-              } text-white border-0`}
-              onClick={handleProceed}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <CreditCard className="w-3 h-3 mr-1" />
-                  Pay with {paymentMethods.find(m => m.id === selectedPaymentMethod)?.name || ""}
-                </>
-              )}
-            </Button>
-          ) : (
-            <Button
-              className="py-2 text-xs bg-linear-to-r from-gray-300 to-gray-400 text-gray-700 border-0 cursor-not-allowed"
-              disabled
-            >
-              <CreditCard className="w-3 h-3 mr-1" />
-              Select method
-            </Button>
-          )}
-          
-          <Button
-            variant="ghost"
-            size="sm"
-            className="py-1.5 text-xs border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-            onClick={() => {
-              setShowPaymentModal(false);
-              setSelectedPaymentMethod("");
-            }}
-            disabled={loading}
-          >
-            Cancel
-          </Button>
-        </div>
-        
-        {/* Security Badges - Ultra Compact */}
-        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-center gap-2">
-            <div className="flex items-center gap-0.5">
-              <div className="w-1 h-1 bg-green-500 rounded-full"></div>
-              <span className="text-[8px] text-gray-500 dark:text-gray-400">SSL</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
-              <span className="text-[8px] text-gray-500 dark:text-gray-400">PCI</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="w-1 h-1 bg-yellow-500 rounded-full"></div>
-              <span className="text-[8px] text-gray-500 dark:text-gray-400">256-bit</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* </PayPalScriptProvider> */}
     </div>
-  </div>
-)}
-      </div>
-    </PayPalScriptProvider>
   );
 }
 // "use client";

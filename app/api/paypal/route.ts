@@ -148,7 +148,9 @@ import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const base = "https://api-m.sandbox.paypal.com";
+const base = process.env.NEXT_PUBLIC_PAYPAL_ENVIRONMENT === 'production' 
+  ? "https://api-m.paypal.com" 
+  : "https://api-m.sandbox.paypal.com";
 
 // Cache for product and plan IDs to avoid recreating them every time
 const productCache = new Map<string, string>();
