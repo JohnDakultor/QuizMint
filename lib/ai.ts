@@ -26,6 +26,8 @@ export async function generateQuizAI(
   const systemPrompt = `
 You are a strict quiz generator. ONLY use the content provided.
 Do NOT add any information not in the content.
+Always generate 10 questions with 4 options each if the user did not specify.
+Be able to generate maximum of 50 questions with 4 options each if user specify.
 Return ONLY JSON in this format:
 {
   "title": "string",
