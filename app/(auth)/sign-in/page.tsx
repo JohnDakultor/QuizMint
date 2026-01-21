@@ -47,7 +47,8 @@ export default function SignIn() {
 
       // Accept policies automatically
       const session = await getSession();
-      if (!session?.user?.id) throw new Error("Unable to retrieve user session");
+      if (!session?.user?.id)
+        throw new Error("Unable to retrieve user session");
       const userId = session.user.id;
 
       await Promise.all([
@@ -73,30 +74,50 @@ export default function SignIn() {
   };
 
   // ✅ Google Sign In (button)
- // Google Button SignIn
-const handleGoogleSignIn = async () => {
-  setError("");
-  setLoading(true);
+  // Google Button SignIn
+  const handleGoogleSignIn = async () => {
+    setError("");
+    setLoading(true);
 
-  if (!accepted) {
-    setError("You must accept the Terms of Service and Privacy Policy.");
-    setLoading(false);
-    return;
-  }
+    if (!accepted) {
+      setError("You must accept the Terms of Service and Privacy Policy.");
+      setLoading(false);
+      return;
+    }
 
-  try {
-    // ✅ Use NextAuth's built-in Google redirect
-    await signIn("google", {
-      callbackUrl: "/home", // After login, redirect here
-    });
-  } catch (err: any) {
-    console.error("Google button error:", err);
-    setError(err.message || "Google login failed");
-  } finally {
-    setLoading(false);
-  }
-};
+          const session = await getSession();
+      if (!session?.user?.id)
+        throw new Error("Unable to retrieve user session");
+      const userId = session.user.id;
 
+    try {
+      // ✅ Use NextAuth's built-in Google redirect
+     const signInRes = await signIn("google", {
+        callbackUrl: "/home", // After login, redirect here
+      });
+
+      if(signInRes){
+        await Promise.all([
+        fetch("/api/policyAcceptance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, policyType: "terms" }),
+        }),
+        fetch("/api/policyAcceptance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, policyType: "privacy" }),
+        }),
+      ]);
+
+      }
+    } catch (err: any) {
+      console.error("Google button error:", err);
+      setError(err.message || "Google login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-900 px-6">
@@ -139,7 +160,9 @@ const handleGoogleSignIn = async () => {
                   required
                   className="pr-10 border-zinc-300 dark:border-zinc-700"
                   value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, password: e.target.value })
+                  }
                 />
                 <button
                   type="button"
@@ -178,7 +201,11 @@ const handleGoogleSignIn = async () => {
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               disabled={loading}
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <LogIn className="h-4 w-4 mr-2" />}
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <LogIn className="h-4 w-4 mr-2" />
+              )}
               Sign In
             </Button>
           </form>
@@ -194,10 +221,22 @@ const handleGoogleSignIn = async () => {
             disabled={loading}
           >
             <svg width="18" height="18" viewBox="0 0 48 48">
-              <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.6 5.8 2.7 14.2l7.8 6.1C12.3 13.7 17.7 9.5 24 9.5z"/>
-              <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-2.8-.4-4.1H24v7.8h12.6c-.5 3-2.3 5.6-5.1 7.3l7.8 6.1c4.6-4.3 7.2-10.6 7.2-17.1z"/>
-              <path fill="#FBBC05" d="M10.5 28.3c-.6-1.7-.9-3.5-.9-5.3s.3-3.6.9-5.3l-7.8-6.1C1 14.9 0 19.4 0 23s1 8.1 2.7 11.4l7.8-6.1z"/>
-              <path fill="#34A853" d="M24 48c6.2 0 11.6-2 15.4-5.5l-7.8-6.1c-2.2 1.5-5 2.4-7.6 2.4-6.3 0-11.7-4.2-13.6-9.9l-7.8 6.1C6.6 42.2 14.6 48 24 48z"/>
+              <path
+                fill="#EA4335"
+                d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.6 5.8 2.7 14.2l7.8 6.1C12.3 13.7 17.7 9.5 24 9.5z"
+              />
+              <path
+                fill="#4285F4"
+                d="M46.1 24.5c0-1.6-.1-2.8-.4-4.1H24v7.8h12.6c-.5 3-2.3 5.6-5.1 7.3l7.8 6.1c4.6-4.3 7.2-10.6 7.2-17.1z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M10.5 28.3c-.6-1.7-.9-3.5-.9-5.3s.3-3.6.9-5.3l-7.8-6.1C1 14.9 0 19.4 0 23s1 8.1 2.7 11.4l7.8-6.1z"
+              />
+              <path
+                fill="#34A853"
+                d="M24 48c6.2 0 11.6-2 15.4-5.5l-7.8-6.1c-2.2 1.5-5 2.4-7.6 2.4-6.3 0-11.7-4.2-13.6-9.9l-7.8 6.1C6.6 42.2 14.6 48 24 48z"
+              />
             </svg>
             Continue with Google
           </Button>
