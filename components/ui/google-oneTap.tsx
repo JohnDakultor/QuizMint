@@ -102,7 +102,7 @@ export default function GoogleOneTap() {
           // Use redirect mode to let NextAuth handle session creation
           signIn("google", {
             credential: response.credential,
-            callbackUrl: "/google-consent", // redirect first to handle policy acceptance
+            callbackUrl: "/home", // redirect first to handle policy acceptance
           });
         },
         auto_select: false,
