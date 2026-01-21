@@ -23,12 +23,12 @@ export default function GoogleOneTap() {
         client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
         callback: async (response: any) => {
           try {
-            const res = await fetch("/api/auth/google", {
+            const res = await fetch("/api/google_auth", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ credential: response.credential }),
             });
-            if (res.ok) window.location.href = "/dashboard";
+            if (res.ok) window.location.href = "/home";
           } catch (err) {
             console.error("Google One Tap error", err);
           }
