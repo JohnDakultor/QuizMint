@@ -55,6 +55,8 @@ export async function POST(req: Request) {
   try {
     const { credential } = await req.json();
 
+    if (!credential) throw new Error("No credential provided");
+
     const ticket = await client.verifyIdToken({
       idToken: credential,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -66,35 +68,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid Google token" }, { status: 401 });
     }
 
-    // Check if user exists
-    let user = await prisma.user.findUnique({
+    // Upsert user in DB
+    const user = await prisma.user.upsert({
       where: { email: payload.email },
+      update: { name: payload.name, image: payload.picture, authProvider: "google" },
+      create: {
+        email: payload.email,
+        name: payload.name,
+        image: payload.picture,
+        authProvider: "google",
+        password: null,
+        username: payload.email.split("@")[0],
+      },
     });
 
-    if (!user) {
-      // Create new user
-      user = await prisma.user.create({
-        data: {
-          email: payload.email,
-          name: payload.name,
-          image: payload.picture,
-          authProvider: "google",
-          password: null,
-          username: payload.email.split('@')[0], // Default username
-        },
-      });
-    }
+    return NextResponse.json({ success: true, userId: user.id });
+  } catch (err: any) {
+    console.error("Google One-Tap API error:", err);
 
-    // Set auth session (using NextAuth)
-    // You might need to create a session manually or use NextAuth's signIn
-    return NextResponse.json({ 
-      success: true, 
-      userId: user.id,
-      email: user.email,
-      name: user.name 
-    });
-  } catch (error) {
-    console.error("Google One-Tap error:", error);
-    return NextResponse.json({ error: "Authentication failed" }, { status: 500 });
+    // Always return JSON, never raw text
+    return NextResponse.json(
+      { success: false, error: err.message || "Authentication failed" },
+      { status: 400 }
+    );
   }
 }
