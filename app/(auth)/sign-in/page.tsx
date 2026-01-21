@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, LogIn } from "lucide-react";
 import { signIn, getSession } from "next-auth/react";
 import { Eye, EyeOff } from "lucide-react";
+import GoogleOneTap from "@/components/ui/google-oneTap";
 
 export default function SignIn() {
   const [loading, setLoading] = useState(false);
@@ -82,6 +83,7 @@ export default function SignIn() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-900 px-6">
+      <GoogleOneTap />
       <Card className="w-full max-w-md p-6 shadow-md border-zinc-200 dark:border-zinc-800">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">

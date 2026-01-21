@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, UserPlus } from "lucide-react";
 import { Eye, EyeOff } from "lucide-react";
+import GoogleOneTap from "@/components/ui/google-oneTap";
 
 function getPasswordStrength(password: string) {
   let score = 0;
@@ -35,7 +36,6 @@ export default function SignUp() {
   const router = useRouter();
 
   const strength = getPasswordStrength(form.password);
-  
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +69,7 @@ export default function SignUp() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-900 px-6">
+      <GoogleOneTap />
       <Card className="w-full max-w-md p-6 shadow-md border-zinc-200 dark:border-zinc-800">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
@@ -109,45 +110,47 @@ export default function SignUp() {
             </div>
 
             <div className="space-y-2">
-  <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Password</Label>
 
-  <div className="relative">
-    <Input
-      id="password"
-      type={showPassword ? "text" : "password"}
-      placeholder="••••••••"
-      required
-      className="pr-10 border-zinc-300 dark:border-zinc-700"
-      onChange={(e) => setForm({ ...form, password: e.target.value })}
-      value={form.password}
-    />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  required
+                  className="pr-10 border-zinc-300 dark:border-zinc-700"
+                  onChange={(e) =>
+                    setForm({ ...form, password: e.target.value })
+                  }
+                  value={form.password}
+                />
 
-    <button
-      type="button"
-      onClick={() => setShowPassword((prev) => !prev)}
-      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-      aria-label={showPassword ? "Hide password" : "Show password"}
-    >
-      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-    </button>
-  </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
 
-  {/* PASSWORD STRENGTH */}
-  {form.password && (
-    <div className="space-y-1">
-      <div className="h-2 w-full rounded bg-zinc-200 dark:bg-zinc-700">
-        <div
-          className={`h-2 rounded transition-all ${strength.color}`}
-          style={{ width: `${(strength.score / 5) * 100}%` }}
-        />
-      </div>
-      <p className="text-xs text-zinc-500">
-        Password strength:{" "}
-        <span className="font-medium">{strength.label}</span>
-      </p>
-    </div>
-  )}
-</div>
+              {/* PASSWORD STRENGTH */}
+              {form.password && (
+                <div className="space-y-1">
+                  <div className="h-2 w-full rounded bg-zinc-200 dark:bg-zinc-700">
+                    <div
+                      className={`h-2 rounded transition-all ${strength.color}`}
+                      style={{ width: `${(strength.score / 5) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-zinc-500">
+                    Password strength:{" "}
+                    <span className="font-medium">{strength.label}</span>
+                  </p>
+                </div>
+              )}
+            </div>
             {/* Display backend error here */}
             {error && <p className="text-red-600 text-sm">{error}</p>}
 
