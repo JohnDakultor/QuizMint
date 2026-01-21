@@ -1,4 +1,5 @@
 // pages/google-consent.tsx
+"use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
