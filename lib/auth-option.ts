@@ -126,35 +126,49 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string; // ✅ string-based
-        session.user.name = token.name as string;
+  if (session.user) {
+    session.user.id = token.id as string;
+    session.user.name = token.name as string;
 
-        try {
-          const userId = token.id as string;
+    try {
+      const userId = token.id as string;
 
-          // Automatically accept Terms & Privacy if not already accepted
-          const now = new Date();
+      // Make sure the user exists in DB
+      let user = await prisma.user.findUnique({ where: { id: userId } });
 
-          await Promise.all([
-            prisma.userPolicyAcceptance.upsert({
-              where: { userId_policyType: { userId, policyType: "terms" } },
-              update: { accepted: true, acceptedAt: now },
-              create: { userId, policyType: "terms", accepted: true, acceptedAt: now },
-            }),
-            prisma.userPolicyAcceptance.upsert({
-              where: { userId_policyType: { userId, policyType: "privacy" } },
-              update: { accepted: true, acceptedAt: now },
-              create: { userId, policyType: "privacy", accepted: true, acceptedAt: now },
-            }),
-          ]);
-        } catch (err) {
-          console.error("Policy acceptance during session callback failed:", err);
-        }
+      if (!user) {
+        // If using Google, create the user automatically
+        user = await prisma.user.create({
+          data: {
+            id: userId,
+            email: token.email ?? "", // token.email should be present for OAuth
+            username: token.name ?? "Unknown",
+            authProvider: "google",
+          },
+        });
       }
 
-      return session;
-    },
+      const now = new Date();
+
+      await Promise.all([
+        prisma.userPolicyAcceptance.upsert({
+          where: { userId_policyType: { userId, policyType: "terms" } },
+          update: { accepted: true, acceptedAt: now },
+          create: { userId, policyType: "terms", accepted: true, acceptedAt: now },
+        }),
+        prisma.userPolicyAcceptance.upsert({
+          where: { userId_policyType: { userId, policyType: "privacy" } },
+          update: { accepted: true, acceptedAt: now },
+          create: { userId, policyType: "privacy", accepted: true, acceptedAt: now },
+        }),
+      ]);
+    } catch (err) {
+      console.error("Policy acceptance during session callback failed:", err);
+    }
+  }
+
+  return session;
+}
 
   },
 };
