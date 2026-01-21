@@ -63,7 +63,6 @@
 
 // export default NextAuth(authOptions);
 
-
 import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
@@ -128,32 +127,45 @@ export const authOptions: NextAuthOptions = {
 
     async session({ session, token }) {
   if (session.user) {
-    session.user.id = token.id as string;
+    session.user.id = token.id as string; // keep as string for JS
     session.user.name = token.name as string;
 
-    // ✅ Automatically mark Terms & Privacy accepted
+    if (!token.id || (typeof token.id !== "string" && typeof token.id !== "number")) {
+  throw new Error("Invalid token.id");
+}
     try {
-      const userId = Number(token.id);
+      // Convert token.id safely to BigInt for Prisma Int field
+      const userId  = BigInt(token.id); // ✅ use BigInt
 
-      // Check if the user already accepted policies
+      // Check if policies accepted
       const terms = await prisma.userPolicyAcceptance.findUnique({
-        where: { userId_policyType: { userId, policyType: "terms" } },
+        where: { userId_policyType: { userId: Number(userId), policyType: "terms" } },
       });
       const privacy = await prisma.userPolicyAcceptance.findUnique({
-        where: { userId_policyType: { userId, policyType: "privacy" } },
+        where: { userId_policyType: { userId: Number(userId), policyType: "privacy" } },
       });
 
       const now = new Date();
 
       if (!terms) {
         await prisma.userPolicyAcceptance.create({
-          data: { userId, policyType: "terms", accepted: true, acceptedAt: now },
+          data: {
+            userId: Number(userId),
+            policyType: "terms",
+            accepted: true,
+            acceptedAt: now,
+          },
         });
       }
 
       if (!privacy) {
         await prisma.userPolicyAcceptance.create({
-          data: { userId, policyType: "privacy", accepted: true, acceptedAt: now },
+          data: {
+            userId: Number(userId),
+            policyType: "privacy",
+            accepted: true,
+            acceptedAt: now,
+          },
         });
       }
     } catch (err) {
@@ -162,9 +174,8 @@ export const authOptions: NextAuthOptions = {
   }
 
   return session;
-},
+}
 
-    
   },
 };
 
