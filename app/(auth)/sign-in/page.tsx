@@ -85,32 +85,11 @@ export default function SignIn() {
       return;
     }
 
-          const session = await getSession();
-      if (!session?.user?.id)
-        throw new Error("Unable to retrieve user session");
-      const userId = session.user.id;
-
     try {
       // ✅ Use NextAuth's built-in Google redirect
-     const signInRes = await signIn("google", {
+      await signIn("google", {
         callbackUrl: "/home", // After login, redirect here
       });
-
-      if(signInRes){
-        await Promise.all([
-        fetch("/api/policyAcceptance", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, policyType: "terms" }),
-        }),
-        fetch("/api/policyAcceptance", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, policyType: "privacy" }),
-        }),
-      ]);
-
-      }
     } catch (err: any) {
       console.error("Google button error:", err);
       setError(err.message || "Google login failed");

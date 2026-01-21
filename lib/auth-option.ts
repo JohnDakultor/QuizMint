@@ -127,12 +127,44 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string;
-        session.user.name = token.name as string;
+  if (session.user) {
+    session.user.id = token.id as string;
+    session.user.name = token.name as string;
+
+    // ✅ Automatically mark Terms & Privacy accepted
+    try {
+      const userId = Number(token.id);
+
+      // Check if the user already accepted policies
+      const terms = await prisma.userPolicyAcceptance.findUnique({
+        where: { userId_policyType: { userId, policyType: "terms" } },
+      });
+      const privacy = await prisma.userPolicyAcceptance.findUnique({
+        where: { userId_policyType: { userId, policyType: "privacy" } },
+      });
+
+      const now = new Date();
+
+      if (!terms) {
+        await prisma.userPolicyAcceptance.create({
+          data: { userId, policyType: "terms", accepted: true, acceptedAt: now },
+        });
       }
-      return session;
-    },
+
+      if (!privacy) {
+        await prisma.userPolicyAcceptance.create({
+          data: { userId, policyType: "privacy", accepted: true, acceptedAt: now },
+        });
+      }
+    } catch (err) {
+      console.error("Policy acceptance during session callback failed:", err);
+    }
+  }
+
+  return session;
+},
+
+    
   },
 };
 
