@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const userId = Number(body.userId); // ✅ FIX HERE
+    const userId = (body.userId); // ✅ FIX HERE
     const policyType = body.policyType;
 
     if (!userId || !policyType) {
