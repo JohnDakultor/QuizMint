@@ -20,7 +20,9 @@ export const authOptions: NextAuthOptions = {
 
         if (!user) throw new Error("Invalid email or password");
 
-        const passwordMatch = await compare(credentials.password, user.password);
+        const passwordMatch = user.password
+          ? await compare(credentials.password, user.password)
+          : false;
         if (!passwordMatch) throw new Error("Invalid email or password");
 
         // ✅ Return correct shape
