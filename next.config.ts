@@ -33,55 +33,110 @@
 
 import type { NextConfig } from "next";
 
+// const ContentSecurityPolicy = `
+//   default-src 'self';
+
+//   script-src
+//     'self'
+//     'unsafe-inline'
+//     'unsafe-eval'
+//     https://www.paypal.com
+//     https://pagead2.googlesyndication.com
+//     https://partner.googleadservices.com
+//     https://accounts.google.com
+//     https://apis.google.com
+//     https://ep2.adtrafficquality.google;
+
+//   style-src
+//     'self'
+//     'unsafe-inline'
+//     https://accounts.google.com/gsi;
+
+//   img-src
+//     'self'
+//     data:
+//     https://*.gstatic.com
+//     https://*.google.com
+//     https://lh3.googleusercontent.com;
+
+//   font-src
+//     'self'
+//     data:;
+
+//   connect-src
+//     'self'
+//     https://accounts.google.com
+//     https:;
+
+//   frame-src
+//     https://www.paypal.com
+//     https://pagead2.googlesyndication.com
+//     https://googleads.g.doubleclick.net
+//     https://accounts.google.com
+//     https://ep2.adtrafficquality.google;
+
+//   frame-ancestors 'self';
+//   object-src 'none';
+//   base-uri 'self';
+//   form-action 'self';
+//   media-src 'self';
+//   worker-src 'self';
+//   manifest-src 'self';
+// `;
+
 const ContentSecurityPolicy = `
   default-src 'self';
-
+  
   script-src
     'self'
     'unsafe-inline'
     'unsafe-eval'
-    https://www.paypal.com
-    https://pagead2.googlesyndication.com
-    https://partner.googleadservices.com
     https://accounts.google.com
     https://apis.google.com
-    https://ep2.adtrafficquality.google;
-
+    https://www.gstatic.com
+    https://pagead2.googlesyndication.com
+    https://partner.googleadservices.com
+    https://www.googletagmanager.com;
+  
   style-src
     'self'
     'unsafe-inline'
-    https://accounts.google.com/gsi;
-
+    https://accounts.google.com
+    https://fonts.googleapis.com;
+  
   img-src
     'self'
     data:
+    blob:
     https://*.gstatic.com
     https://*.google.com
-    https://lh3.googleusercontent.com;
-
+    https://lh3.googleusercontent.com
+    https://www.google.com
+    https://www.gstatic.com
+    https://ep1.adtrafficquality.google
+    https://ep2.adtrafficquality.google;
+  
   font-src
     'self'
-    data:;
-
+    data:
+    https://fonts.gstatic.com;
+  
   connect-src
     'self'
     https://accounts.google.com
-    https:;
-
-  frame-src
-    https://www.paypal.com
-    https://pagead2.googlesyndication.com
-    https://googleads.g.doubleclick.net
-    https://accounts.google.com
+    https://*.googleapis.com
     https://ep2.adtrafficquality.google;
-
-  frame-ancestors 'self';
-  object-src 'none';
-  base-uri 'self';
-  form-action 'self';
-  media-src 'self';
-  worker-src 'self';
-  manifest-src 'self';
+  
+  frame-src
+    'self'
+    https://accounts.google.com
+    https://content.googleapis.com
+    https://www.google.com
+    https://ep2.adtrafficquality.google;
+  
+  child-src
+    'self'
+    https://accounts.google.com;
 `;
 
 const nextConfig: NextConfig = {
