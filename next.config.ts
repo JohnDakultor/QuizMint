@@ -42,7 +42,10 @@ script-src
   'unsafe-eval'
   https://accounts.google.com
   https://apis.google.com
-  https://www.gstatic.com;
+  https://www.gstatic.com
+  https://pagead2.googlesyndication.com
+  https://partner.googleadservices.com
+  https://tpc.googlesyndication.com;
 
 style-src
   'self'
@@ -61,7 +64,9 @@ img-src
   data:
   https://lh3.googleusercontent.com
   https://*.gstatic.com
-  https://*.googleusercontent.com;
+  https://*.googleusercontent.com
+  https://googleads.g.doubleclick.net
+  https://pagead2.googlesyndication.com;
 
 connect-src
   'self'
@@ -71,14 +76,15 @@ connect-src
 
 frame-src
   https://accounts.google.com
-  https://www.google.com;
+  https://www.google.com
+  https://googleads.g.doubleclick.net
+  https://tpc.googlesyndication.com;
 
 frame-ancestors 'self';
 object-src 'none';
 base-uri 'self';
 form-action 'self';
 `;
-
 
 
 const nextConfig: NextConfig = {
