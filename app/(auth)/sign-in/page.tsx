@@ -18,7 +18,6 @@ export default function SignIn() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [accepted, setAccepted] = useState(false);
-
   const [showPassword, setShowPassword] = useState(false);
 
   const router = useRouter();
@@ -27,7 +26,6 @@ export default function SignIn() {
     e.preventDefault();
     setError("");
 
-    // 🔒 Block login if terms not accepted
     if (!accepted) {
       setError("You must accept the Terms of Service and Privacy Policy.");
       return;
@@ -36,7 +34,6 @@ export default function SignIn() {
     setLoading(true);
 
     try {
-      // 1️⃣ Sign in user
       const res = await signIn("credentials", {
         redirect: false,
         email: form.email,
@@ -48,16 +45,11 @@ export default function SignIn() {
         return;
       }
 
-      // 2️⃣ Get authenticated session
       const session = await getSession();
-
-      if (!session?.user?.id) {
-        throw new Error("Unable to retrieve user session");
-      }
+      if (!session?.user?.id) throw new Error("Unable to retrieve user session");
 
       const userId = session.user.id;
 
-      // 3️⃣ Save policy acceptance (Terms + Privacy)
       await Promise.all([
         fetch("/api/policyAcceptance", {
           method: "POST",
@@ -71,7 +63,43 @@ export default function SignIn() {
         }),
       ]);
 
-      // 4️⃣ Redirect to dashboard
+      router.push("/home");
+    } catch (err) {
+      console.error(err);
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!accepted) {
+      setError("You must accept the Terms of Service and Privacy Policy.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await signIn("google", { redirect: false });
+
+      if (res?.error) {
+        setError("Google login failed. Please try again.");
+        return;
+      }
+
+      // Fetch session to check policy acceptance
+      const session = await getSession();
+      if (!session?.user?.id) throw new Error("Unable to retrieve user session");
+
+      // Check if policies accepted
+      const policyRes = await fetch(`/api/userPolicyStatus?userId=${session.user.id}`);
+      const policyData = await policyRes.json();
+
+      if (!policyData.termsAccepted || !policyData.privacyAccepted) {
+        router.push("/google-consent");
+        return;
+      }
+
       router.push("/home");
     } catch (err) {
       console.error(err);
@@ -108,46 +136,32 @@ export default function SignIn() {
                 placeholder="you@example.com"
                 required
                 value={form.email}
-                onChange={(e) =>
-                  setForm({ ...form, email: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
             </div>
 
             {/* Password */}
-              <div className="space-y-2">
-  <Label htmlFor="password">Password</Label>
-
-  <div className="relative">
-    <Input
-      id="password"
-      type={showPassword ? "text" : "password"}
-      placeholder="••••••••"
-      required
-      className="pr-10 border-zinc-300 dark:border-zinc-700"
-      onChange={(e) => setForm({ ...form, password: e.target.value })}
-      value={form.password}
-    />
-
-    <button
-      type="button"
-      onClick={() => setShowPassword((prev) => !prev)}
-      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-      aria-label={showPassword ? "Hide password" : "Show password"}
-    >
-      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-    </button>
-  </div>
-</div>
-
-            {/* Forgot password */}
-            <div className="flex justify-end text-sm">
-              <Link
-                href="/forgot-password"
-                className="text-blue-600 hover:underline"
-              >
-                Forgot password?
-              </Link>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  required
+                  className="pr-10 border-zinc-300 dark:border-zinc-700"
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  value={form.password}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             {/* Terms & Privacy */}
@@ -176,23 +190,34 @@ export default function SignIn() {
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               disabled={loading}
             >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <LogIn className="h-4 w-4 mr-2" />
-              )}
+              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <LogIn className="h-4 w-4 mr-2" />}
               Sign In
             </Button>
           </form>
 
           <Separator className="my-6" />
 
+          {/* Google Button */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full flex items-center justify-center gap-2"
+            onClick={handleGoogleSignIn}
+          >
+            <svg width="18" height="18" viewBox="0 0 48 48">
+              <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.6 5.8 2.7 14.2l7.8 6.1C12.3 13.7 17.7 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-2.8-.4-4.1H24v7.8h12.6c-.5 3-2.3 5.6-5.1 7.3l7.8 6.1c4.6-4.3 7.2-10.6 7.2-17.1z"/>
+              <path fill="#FBBC05" d="M10.5 28.3c-.6-1.7-.9-3.5-.9-5.3s.3-3.6.9-5.3l-7.8-6.1C1 14.9 0 19.4 0 23s1 8.1 2.7 11.4l7.8-6.1z"/>
+              <path fill="#34A853" d="M24 48c6.2 0 11.6-2 15.4-5.5l-7.8-6.1c-2.2 1.5-5 2.4-7.6 2.4-6.3 0-11.7-4.2-13.6-9.9l-7.8 6.1C6.6 42.2 14.6 48 24 48z"/>
+            </svg>
+            Continue with Google
+          </Button>
+
+          <Separator className="my-6" />
+
           <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
             Don’t have an account?{" "}
-            <Link
-              href="/sign-up"
-              className="text-blue-600 hover:underline"
-            >
+            <Link href="/sign-up" className="text-blue-600 hover:underline">
               Create one
             </Link>
           </p>
