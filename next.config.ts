@@ -83,9 +83,8 @@ import type { NextConfig } from "next";
 //   worker-src 'self';
 //   manifest-src 'self';
 // `;
-
 const ContentSecurityPolicy = `
-  default-src 'self' https://*.google.com https://*.gstatic.com;
+  default-src 'self' https://*.google.com https://*.gstatic.com https://ep2.adtrafficquality.google;
   
   script-src
     'self'
@@ -93,13 +92,16 @@ const ContentSecurityPolicy = `
     'unsafe-eval'
     https://*.google.com
     https://*.gstatic.com
+    https://ep2.adtrafficquality.google
+    https://ep1.adtrafficquality.google
     https://accounts.google.com
     https://apis.google.com
     https://www.gstatic.com
     https://pagead2.googlesyndication.com
     https://partner.googleadservices.com
     https://www.googletagmanager.com
-    https://googleads.g.doubleclick.net;
+    https://googleads.g.doubleclick.net
+    blob:;
   
   style-src
     'self'
@@ -125,17 +127,21 @@ const ContentSecurityPolicy = `
   connect-src
     'self'
     https://*
-    wss://*;
+    wss://*
+    https://ep2.adtrafficquality.google
+    https://ep1.adtrafficquality.google;
   
   frame-src
     'self'
     https://*
-    http://*;
+    http://*
+    blob:;
   
   child-src
     'self'
     https://*
-    http://*;
+    http://*
+    blob:;
   
   object-src 'none';
   base-uri 'self';

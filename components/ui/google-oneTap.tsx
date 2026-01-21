@@ -50,20 +50,11 @@
 // components/GoogleOneTap.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
-// Type definitions for Google Identity Services
 interface CredentialResponse {
   credential: string;
   select_by?: string;
-}
-
-interface PromptNotification {
-  isNotDisplayed: () => boolean;
-  isSkippedMoment: () => boolean;
-  isDisplayed: () => boolean;
-  getNotDisplayedReason: () => string;
-  getSkippedReason: () => string;
 }
 
 interface GoogleAccounts {
@@ -76,189 +67,216 @@ interface GoogleAccounts {
       context?: string;
       ux_mode?: string;
       itp_support?: boolean;
-      use_fedcm_for_prompt?: boolean;
       allowed_parent_origin?: string;
     }) => void;
-    prompt: (callback?: (notification: PromptNotification) => void) => void;
-    renderButton: (element: HTMLElement, options: any) => void;
+    prompt: (callback?: (notification: any) => void) => void;
   };
 }
 
-// Extend Window interface
 declare global {
   interface Window {
     google?: GoogleAccounts;
+    googleOneTapInitialized?: boolean;
     handleCredentialResponse?: (response: CredentialResponse) => void;
   }
 }
 
 export default function GoogleOneTap() {
   const [showFallback, setShowFallback] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
+  const initializedRef = useRef(false);
+
+  const addDebug = (message: string) => {
+    console.log(`[OneTap] ${message}`);
+    setDebugInfo(prev => [...prev.slice(-9), message]); // Keep last 10 messages
+  };
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-
-    // Check if FedCM is available
-    const isFedCMAvailable = 'identity' in navigator;
+    if (initializedRef.current) return; // Prevent double initialization
+    if (window.googleOneTapInitialized) return; // Prevent multiple instances
     
-    const initializeGoogleOneTap = () => {
-      // Remove any existing script
-      const existingScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
-      if (existingScript) existingScript.remove();
+    initializedRef.current = true;
+    window.googleOneTapInitialized = true;
+    
+    addDebug('Initializing Google One-Tap...');
+    addDebug(`Client ID: ${process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.substring(0, 20)}...`);
+    addDebug(`Origin: ${window.location.origin}`);
 
-      // Load Google Identity Services
-      const script = document.createElement('script');
-      script.src = 'https://accounts.google.com/gsi/client';
-      script.async = true;
-      script.defer = true;
-      script.id = 'google-identity-script';
-      document.body.appendChild(script);
-
-      script.onload = () => {
-        if (!window.google) {
-          console.error('Google Identity Services failed to load');
-          setShowFallback(true);
-          return;
-        }
-
-        // Initialize with FedCM opt-in
-        window.google.id.initialize({
-          client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
-          callback: handleCredentialResponse,
-          auto_select: false, // Changed to false for better UX
-          cancel_on_tap_outside: true,
-          context: 'use',
-          ux_mode: 'popup',
-          itp_support: true,
-          use_fedcm_for_prompt: true, // Opt-in to FedCM
-          allowed_parent_origin: window.location.origin,
-        });
-
-        // Try to prompt One Tap with delay
-        setTimeout(() => {
-          try {
-            window.google?.id.prompt((notification: PromptNotification) => {
-              console.log('Google One-Tap notification:', notification);
-              
-              if (notification.isNotDisplayed()) {
-                const reason = notification.getNotDisplayedReason();
-                console.log('One Tap not displayed:', reason);
-                
-                // Common reasons for not showing
-                if (reason === 'opt_out_or_no_session' || 
-                    reason === 'suppressed_by_user' ||
-                    reason === 'unregistered_origin') {
-                  setShowFallback(true);
-                }
-              }
-              
-              if (notification.isSkippedMoment()) {
-                const skippedReason = notification.getSkippedReason();
-                console.log('One Tap skipped:', skippedReason);
-                
-                if (skippedReason === 'auto_cancel' || 
-                    skippedReason === 'user_cancel' ||
-                    skippedReason === 'tap_outside') {
-                  setShowFallback(true);
-                }
-              }
-              
-              if (notification.isDisplayed()) {
-                console.log('One Tap displayed successfully');
-              }
-            });
-          } catch (error: unknown) {
-            console.error('Error prompting One Tap:', error);
-            setShowFallback(true);
-          }
-        }, 1500);
-      };
-
-      script.onerror = () => {
-        console.error('Failed to load Google Identity Services script');
-        setShowFallback(true);
-      };
-    };
-
+    // Prevent other scripts from interfering
+    const originalWindowGoogle = window.google;
+    
     const handleCredentialResponse = async (response: CredentialResponse) => {
-      console.log('Google One-Tap response received');
+      addDebug('Credential received');
+      console.log('Google response:', response);
       
       try {
         const res = await fetch('/api/auth/google-one-tap', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ credential: response.credential }),
         });
 
         if (res.ok) {
           const data = await res.json();
-          console.log('Auth successful:', data);
-          
-          // Redirect to dashboard or reload
+          addDebug(`Auth success: ${data.email}`);
           if (data.success) {
             window.location.href = data.redirectTo || '/dashboard';
           }
         } else {
           const error = await res.json();
-          console.error('Auth failed:', error);
-          alert('Authentication failed. Please try again.');
+          addDebug(`Auth failed: ${error.error}`);
         }
-      } catch (error: unknown) {
-        console.error('Google One-Tap error:', error);
-        alert('Network error. Please try again.');
+      } catch (error) {
+        addDebug(`Network error: ${error}`);
       }
     };
 
-    // Set global callback for fallback button
+    // Set global callback
     window.handleCredentialResponse = handleCredentialResponse;
 
-    // Initialize Google One Tap
-    initializeGoogleOneTap();
+    // Check if script already loaded
+    if (document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+      addDebug('Script already exists, reusing...');
+      setTimeout(() => initializeOneTap(), 100);
+    } else {
+      loadGoogleScript();
+    }
 
-    // Check if FedCM is blocked
-    const checkFedCM = async () => {
-      if (isFedCMAvailable) {
-        try {
-          // Type assertion for experimental identity API
-          const credential = await (navigator.credentials as any).get({
-            identity: {
-              providers: [{
-                configURL: 'https://accounts.google.com/.well-known/openid-configuration',
-                clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
-              }]
-            }
-          } as CredentialRequestOptions);
-          
-          if (credential) {
-            console.log('FedCM credential obtained:', credential);
-          }
-        } catch (error: unknown) {
-          if (error instanceof Error && error.name === 'NotAllowedError') {
-            console.warn('FedCM blocked by user or browser settings');
-            setShowFallback(true);
-          }
-        }
-      }
-    };
-
-    checkFedCM();
-
-    return () => {
-      const script = document.getElementById('google-identity-script');
-      if (script) script.remove();
+    function loadGoogleScript() {
+      addDebug('Loading Google Identity script...');
       
-      // Clean up global callback
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.id = 'google-one-tap-script';
+      script.crossOrigin = 'anonymous';
+      
+      script.onload = () => {
+        addDebug('Google script loaded');
+        setTimeout(() => initializeOneTap(), 100);
+      };
+      
+      script.onerror = (error) => {
+        addDebug(`Failed to load script: ${error}`);
+        setShowFallback(true);
+      };
+      
+      // Add to head instead of body to ensure proper loading
+      document.head.appendChild(script);
+    }
+
+    function initializeOneTap() {
+      addDebug('Attempting to initialize...');
+      
+      // Check if window.google is available
+      if (!window.google) {
+        addDebug('ERROR: window.google not available');
+        setShowFallback(true);
+        return;
+      }
+
+      try {
+        // IMPORTANT: Use simpler configuration first
+        window.google.id.initialize({
+          client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
+          callback: handleCredentialResponse,
+          auto_select: true, // Enable auto-select
+          cancel_on_tap_outside: false, // Don't cancel on tap outside
+          context: 'signup', // Use 'signup' for landing page
+          ux_mode: 'popup',
+          itp_support: true,
+          // REMOVED: use_fedcm_for_prompt: true, // Remove this for now
+          allowed_parent_origin: window.location.origin,
+        });
+        
+        addDebug('Google One-Tap initialized successfully');
+        
+        // Show One-Tap after a delay
+        setTimeout(() => {
+          try {
+            addDebug('Prompting One-Tap...');
+            window.google?.id.prompt((notification: any) => {
+              if (!notification) {
+                addDebug('No notification received');
+                return;
+              }
+              
+              if (notification.isDisplayed?.()) {
+                addDebug('One-Tap is displayed!');
+              }
+              
+              if (notification.isNotDisplayed?.()) {
+                const reason = notification.getNotDisplayedReason?.();
+                addDebug(`Not displayed: ${reason}`);
+                if (reason === 'unregistered_origin') {
+                  addDebug('ERROR: Domain not authorized in Google Cloud Console');
+                }
+              }
+            });
+          } catch (error) {
+            addDebug(`Error prompting: ${error}`);
+          }
+        }, 2000); // Wait 2 seconds before showing
+        
+      } catch (error) {
+        addDebug(`Initialization error: ${error}`);
+        setShowFallback(true);
+      }
+    }
+
+    // Cleanup
+    return () => {
+      const script = document.getElementById('google-one-tap-script');
+      if (script) script.remove();
       delete window.handleCredentialResponse;
+      delete window.googleOneTapInitialized;
+      
+      // Restore original if we modified it
+      if (originalWindowGoogle) {
+        window.google = originalWindowGoogle;
+      }
     };
   }, []);
 
   return (
     <>
-      {/* One Tap will auto-display */}
-      
-      {/* Fallback UI if One Tap doesn't show */}
+      {/* Debug info - remove in production */}
+      {process.env.NODE_ENV === 'development' && debugInfo.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: '10px',
+          right: '10px',
+          background: 'rgba(0,0,0,0.8)',
+          color: 'white',
+          padding: '10px',
+          fontSize: '11px',
+          maxHeight: '200px',
+          overflow: 'auto',
+          zIndex: 9999,
+          maxWidth: '300px',
+          borderRadius: '4px',
+          fontFamily: 'monospace'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+            <strong>One-Tap Debug</strong>
+            <button 
+              onClick={() => setDebugInfo([])}
+              style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}
+            >
+              Clear
+            </button>
+          </div>
+          {debugInfo.map((info, i) => (
+            <div key={i} style={{ marginBottom: '2px', borderBottom: '1px solid #333', paddingBottom: '2px' }}>
+              {info}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Fallback button */}
       {showFallback && (
         <div style={{
           position: 'fixed',
@@ -269,10 +287,10 @@ export default function GoogleOneTap() {
           borderRadius: '8px',
           padding: '16px',
           boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-          zIndex: 9999,
+          zIndex: 9998,
           maxWidth: '300px'
         }}>
-          <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
+          <p style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: '500' }}>
             Sign in with Google
           </p>
           <div
@@ -287,7 +305,7 @@ export default function GoogleOneTap() {
             className="g_id_signin"
             data-type="standard"
             data-shape="rectangular"
-            data-theme="outline"
+            data-theme="filled_blue"
             data-text="signin_with"
             data-size="large"
             data-logo_alignment="left"
@@ -305,11 +323,13 @@ export default function GoogleOneTap() {
               cursor: 'pointer',
               color: '#666'
             }}
+            aria-label="Close"
           >
             ×
           </button>
         </div>
       )}
+
     </>
   );
 }
