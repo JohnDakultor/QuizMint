@@ -23,7 +23,7 @@
 
 import { prisma } from "@/lib/prisma";
 
-export async function getUserSubscription(userId: number) {
+export async function getUserSubscription(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {

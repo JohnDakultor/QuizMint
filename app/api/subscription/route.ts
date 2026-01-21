@@ -32,7 +32,7 @@ export async function GET() {
     });
   }
 
-  const sub = await getUserSubscription(Number(session.user.id));
+  const sub = await getUserSubscription((session.user.id));
 
   return NextResponse.json(sub);
 }
