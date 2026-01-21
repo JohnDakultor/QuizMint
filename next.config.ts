@@ -34,50 +34,51 @@
 import type { NextConfig } from "next";
 
 const ContentSecurityPolicy = `
-  default-src 'self';
+default-src 'self';
 
-  script-src
-    'self'
-    'unsafe-inline'
-    'unsafe-eval'
-    https://www.paypal.com
-    https://pagead2.googlesyndication.com
-    https://partner.googleadservices.com
-    https://accounts.google.com
-    https://apis.google.com
-    https://ep2.adtrafficquality.google;
+script-src
+  'self'
+  'unsafe-inline'
+  'unsafe-eval'
+  https://accounts.google.com
+  https://apis.google.com
+  https://www.gstatic.com;
 
-  style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi;
-  style-src-elem 'self' 'unsafe-inline' https://accounts.google.com/gsi;
+style-src
+  'self'
+  'unsafe-inline'
+  https://accounts.google.com
+  https://www.gstatic.com;
 
-  img-src
-    'self'
-    data:
-    https://*.gstatic.com
-    https://*.google.com
-    https://lh3.googleusercontent.com
-    https://*.adtrafficquality.google;
+style-src-elem
+  'self'
+  'unsafe-inline'
+  https://accounts.google.com
+  https://www.gstatic.com;
 
-  font-src 'self' data:;
+img-src
+  'self'
+  data:
+  https://lh3.googleusercontent.com
+  https://*.gstatic.com
+  https://*.googleusercontent.com;
 
-  connect-src 'self' https://accounts.google.com https:;
+connect-src
+  'self'
+  https://accounts.google.com
+  https://oauth2.googleapis.com
+  https://www.googleapis.com;
 
-  frame-src
-    https://www.paypal.com
-    https://pagead2.googlesyndication.com
-    https://googleads.g.doubleclick.net
-    https://accounts.google.com
-    https://ep2.adtrafficquality.google
-    https://www.google.com;
+frame-src
+  https://accounts.google.com
+  https://www.google.com;
 
-  frame-ancestors 'self';
-  object-src 'none';
-  base-uri 'self';
-  form-action 'self';
-  media-src 'self';
-  worker-src 'self';
-  manifest-src 'self';
+frame-ancestors 'self';
+object-src 'none';
+base-uri 'self';
+form-action 'self';
 `;
+
 
 
 const nextConfig: NextConfig = {
