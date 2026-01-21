@@ -98,12 +98,25 @@ export default function GoogleOneTap() {
 
       window.google.accounts.id.initialize({
         client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
-        callback: (response: any) => {
-          // Use redirect mode to let NextAuth handle session creation
-          signIn("google", {
-            credential: response.credential,
-            callbackUrl: "/google-consent", // redirect first to handle policy acceptance
-          });
+        callback: async (response: any) => {
+          try {
+            // 1️⃣ Send credential to your API to create the user in DB
+            const res = await fetch("/api/auth/google-one-tap", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ credential: response.credential }),
+            });
+
+            const data = await res.json();
+
+            if (!data.success) throw new Error(data.error || "Failed to create user");
+
+            // 2️⃣ Then sign in with NextAuth using redirect
+            await signIn("google", { credential: response.credential, callbackUrl: "/sign-in" });
+
+          } catch (err) {
+            console.error("Google One Tap error:", err);
+          }
         },
         auto_select: false,
         cancel_on_tap_outside: true,

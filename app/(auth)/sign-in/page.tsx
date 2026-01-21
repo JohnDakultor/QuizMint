@@ -11,7 +11,6 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, LogIn } from "lucide-react";
 import { signIn, getSession } from "next-auth/react";
 import { Eye, EyeOff } from "lucide-react";
-import GoogleOneTap from "@/components/ui/google-oneTap";
 
 export default function SignIn() {
   const [loading, setLoading] = useState(false);
@@ -22,6 +21,7 @@ export default function SignIn() {
 
   const router = useRouter();
 
+  // ✅ Credentials Sign In
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -45,9 +45,9 @@ export default function SignIn() {
         return;
       }
 
+      // Accept policies automatically
       const session = await getSession();
       if (!session?.user?.id) throw new Error("Unable to retrieve user session");
-
       const userId = session.user.id;
 
       await Promise.all([
@@ -72,38 +72,53 @@ export default function SignIn() {
     }
   };
 
+  // ✅ Google Sign In (button)
   const handleGoogleSignIn = async () => {
-    if (!accepted) {
-      setError("You must accept the Terms of Service and Privacy Policy.");
-      return;
-    }
-
+    setError("");
     setLoading(true);
+
     try {
-      const res = await signIn("google", { callbackUrl: "/home" });
+      // 1️⃣ Open One Tap / Google login
+      const googleResponse = await new Promise<any>((resolve, reject) => {
+        window.google.accounts.id.initialize({
+          client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
+          callback: resolve,
+        });
+        window.google.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            reject(new Error("Google login cancelled"));
+          }
+        });
+      });
 
-      if (res?.error) {
-        setError("Google login failed. Please try again.");
-        return;
-      }
+      // 2️⃣ Call your API to create/update user in DB
+      const apiRes = await fetch("/api/auth/google-one-tap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: googleResponse.credential }),
+      });
 
-      // Fetch session to check policy acceptance
+      const apiData = await apiRes.json();
+      if (!apiData.success) throw new Error(apiData.error || "Failed to create user");
+
+      // 3️⃣ Sign in via NextAuth
+      await signIn("google", { credential: googleResponse.credential, redirect: false });
+
+      // 4️⃣ Check policy acceptance
       const session = await getSession();
       if (!session?.user?.id) throw new Error("Unable to retrieve user session");
 
-      // Check if policies accepted
       const policyRes = await fetch(`/api/userPolicyStatus?userId=${session.user.id}`);
       const policyData = await policyRes.json();
 
       if (!policyData.termsAccepted || !policyData.privacyAccepted) {
         router.push("/google-consent");
-        return;
+      } else {
+        router.push("/home");
       }
-
-      router.push("/home");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Something went wrong. Please try again.");
+      setError(err?.message || "Google login failed");
     } finally {
       setLoading(false);
     }
@@ -149,8 +164,8 @@ export default function SignIn() {
                   placeholder="••••••••"
                   required
                   className="pr-10 border-zinc-300 dark:border-zinc-700"
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
                   value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
                 <button
                   type="button"
@@ -202,6 +217,7 @@ export default function SignIn() {
             variant="outline"
             className="w-full flex items-center justify-center gap-2"
             onClick={handleGoogleSignIn}
+            disabled={loading}
           >
             <svg width="18" height="18" viewBox="0 0 48 48">
               <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.6 5.8 2.7 14.2l7.8 6.1C12.3 13.7 17.7 9.5 24 9.5z"/>
