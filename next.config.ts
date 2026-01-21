@@ -85,22 +85,27 @@ import type { NextConfig } from "next";
 // `;
 
 const ContentSecurityPolicy = `
-  default-src 'self';
+  default-src 'self' https://*.google.com https://*.gstatic.com;
   
   script-src
     'self'
     'unsafe-inline'
     'unsafe-eval'
+    https://*.google.com
+    https://*.gstatic.com
     https://accounts.google.com
     https://apis.google.com
     https://www.gstatic.com
     https://pagead2.googlesyndication.com
     https://partner.googleadservices.com
-    https://www.googletagmanager.com;
+    https://www.googletagmanager.com
+    https://googleads.g.doubleclick.net;
   
   style-src
     'self'
     'unsafe-inline'
+    https://*.google.com
+    https://*.gstatic.com
     https://accounts.google.com
     https://fonts.googleapis.com;
   
@@ -108,35 +113,36 @@ const ContentSecurityPolicy = `
     'self'
     data:
     blob:
-    https://*.gstatic.com
-    https://*.google.com
-    https://lh3.googleusercontent.com
-    https://www.google.com
-    https://www.gstatic.com
-    https://ep1.adtrafficquality.google
-    https://ep2.adtrafficquality.google;
+    https://*
+    http://*;
   
   font-src
     'self'
     data:
+    https://*.gstatic.com
     https://fonts.gstatic.com;
   
   connect-src
     'self'
-    https://accounts.google.com
-    https://*.googleapis.com
-    https://ep2.adtrafficquality.google;
+    https://*
+    wss://*;
   
   frame-src
     'self'
-    https://accounts.google.com
-    https://content.googleapis.com
-    https://www.google.com
-    https://ep2.adtrafficquality.google;
+    https://*
+    http://*;
   
   child-src
     'self'
-    https://accounts.google.com;
+    https://*
+    http://*;
+  
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+  media-src 'self' https://*;
+  worker-src 'self' blob:;
+  manifest-src 'self';
 `;
 
 const nextConfig: NextConfig = {
