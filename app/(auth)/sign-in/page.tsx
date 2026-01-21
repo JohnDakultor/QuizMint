@@ -80,7 +80,7 @@ export default function SignIn() {
 
     setLoading(true);
     try {
-      const res = await signIn("google", { redirect: false });
+      const res = await signIn("google", { callbackUrl: "/home" });
 
       if (res?.error) {
         setError("Google login failed. Please try again.");
@@ -111,7 +111,6 @@ export default function SignIn() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-900 px-6">
-      <GoogleOneTap />
       <Card className="w-full max-w-md p-6 shadow-md border-zinc-200 dark:border-zinc-800">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
