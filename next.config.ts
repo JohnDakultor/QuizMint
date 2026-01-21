@@ -35,31 +35,41 @@ import type { NextConfig } from "next";
 
 const ContentSecurityPolicy = `
   default-src 'self';
+
   script-src
     'self'
     'unsafe-inline'
     'unsafe-eval'
     https://www.paypal.com
     https://pagead2.googlesyndication.com
-    https://partner.googleadservices.com;
-  style-src
-    'self'
-    'unsafe-inline';
+    https://partner.googleadservices.com
+    https://accounts.google.com
+    https://apis.google.com
+    https://ep2.adtrafficquality.google;
+
+  style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi;
+  style-src-elem 'self' 'unsafe-inline' https://accounts.google.com/gsi;
+
   img-src
     'self'
     data:
     https://*.gstatic.com
-    https://*.google.com;
-  font-src
-    'self'
-    data:;
-  connect-src
-    'self'
-    https:;
+    https://*.google.com
+    https://lh3.googleusercontent.com
+    https://*.adtrafficquality.google;
+
+  font-src 'self' data:;
+
+  connect-src 'self' https://accounts.google.com https:;
+
   frame-src
     https://www.paypal.com
     https://pagead2.googlesyndication.com
-    https://googleads.g.doubleclick.net;
+    https://googleads.g.doubleclick.net
+    https://accounts.google.com
+    https://ep2.adtrafficquality.google
+    https://www.google.com;
+
   frame-ancestors 'self';
   object-src 'none';
   base-uri 'self';

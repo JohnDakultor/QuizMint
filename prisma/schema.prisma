@@ -11,8 +11,13 @@ datasource db {
 model User {
   id                 Int       @id @default(autoincrement())
   email              String    @unique
-  password           String
-  username           String    @unique
+  password           String?   // optional for OAuth users
+  username           String?   @unique
+  authProvider       String    @default("credentials") // google | credentials
+
+  name               String?
+  image              String?
+
   quizUsage          Int       @default(0)
   lastQuizAt         DateTime?
   subscriptionEnd    DateTime?
@@ -23,12 +28,10 @@ model User {
   paypalCustomerId   String?
   adaptiveLearning   Boolean?  @default(false)
   aiDifficulty       String?
+
   quizzes            Quiz[]
-
   resetTokens        PasswordResetToken[]
-
   policyAcceptances  UserPolicyAcceptance[]
-
   paypalSubscriptions PayPalSubscription[]
 }
 

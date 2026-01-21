@@ -603,6 +603,7 @@
 
 import LandingClient from "../landing-page";
 import Script from "next/script";
+import GoogleOneTap from "@/components/ui/google-oneTap";
 
 export const metadata = {
   title: "AI Quiz Generator | QuizMintAI",
@@ -682,6 +683,7 @@ export default function HomePage() {
       />
 
       <LandingClient />
+      <GoogleOneTap />
     </>
   );
 }
