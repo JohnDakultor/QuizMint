@@ -126,55 +126,35 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
-  if (session.user) {
-    session.user.id = token.id as string; // keep as string for JS
-    session.user.name = token.name as string;
+      if (session.user) {
+        session.user.id = token.id as string; // ✅ string-based
+        session.user.name = token.name as string;
 
-    if (!token.id || (typeof token.id !== "string" && typeof token.id !== "number")) {
-  throw new Error("Invalid token.id");
-}
-    try {
-      // Convert token.id safely to BigInt for Prisma Int field
-      const userId  = BigInt(token.id); // ✅ use BigInt
+        try {
+          const userId = token.id as string;
 
-      // Check if policies accepted
-      const terms = await prisma.userPolicyAcceptance.findUnique({
-        where: { userId_policyType: { userId: Number(userId), policyType: "terms" } },
-      });
-      const privacy = await prisma.userPolicyAcceptance.findUnique({
-        where: { userId_policyType: { userId: Number(userId), policyType: "privacy" } },
-      });
+          // Automatically accept Terms & Privacy if not already accepted
+          const now = new Date();
 
-      const now = new Date();
-
-      if (!terms) {
-        await prisma.userPolicyAcceptance.create({
-          data: {
-            userId: Number(userId),
-            policyType: "terms",
-            accepted: true,
-            acceptedAt: now,
-          },
-        });
+          await Promise.all([
+            prisma.userPolicyAcceptance.upsert({
+              where: { userId_policyType: { userId, policyType: "terms" } },
+              update: { accepted: true, acceptedAt: now },
+              create: { userId, policyType: "terms", accepted: true, acceptedAt: now },
+            }),
+            prisma.userPolicyAcceptance.upsert({
+              where: { userId_policyType: { userId, policyType: "privacy" } },
+              update: { accepted: true, acceptedAt: now },
+              create: { userId, policyType: "privacy", accepted: true, acceptedAt: now },
+            }),
+          ]);
+        } catch (err) {
+          console.error("Policy acceptance during session callback failed:", err);
+        }
       }
 
-      if (!privacy) {
-        await prisma.userPolicyAcceptance.create({
-          data: {
-            userId: Number(userId),
-            policyType: "privacy",
-            accepted: true,
-            acceptedAt: now,
-          },
-        });
-      }
-    } catch (err) {
-      console.error("Policy acceptance during session callback failed:", err);
-    }
-  }
-
-  return session;
-}
+      return session;
+    },
 
   },
 };
