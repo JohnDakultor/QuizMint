@@ -74,55 +74,67 @@ export default function SignIn() {
 
   // ✅ Google Sign In (button)
   const handleGoogleSignIn = async () => {
-    setError("");
-    setLoading(true);
+  setError("");
+  setLoading(true);
 
-    try {
-      // 1️⃣ Open One Tap / Google login
-      const googleResponse = await new Promise<any>((resolve, reject) => {
-        window.google.accounts.id.initialize({
-          client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
-          callback: resolve,
-        });
-        window.google.accounts.id.prompt((notification: any) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            reject(new Error("Google login cancelled"));
-          }
-        });
+  try {
+    if (!window.google) throw new Error("Google One Tap not loaded");
+
+    // Use the Google One Tap prompt to get credential
+    const credential = await new Promise<string>((resolve, reject) => {
+      window.google.accounts.id.initialize({
+        client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
+        callback: (res: any) => {
+          if (res.credential) resolve(res.credential);
+          else reject(new Error("No credential returned"));
+        },
       });
 
-      // 2️⃣ Call your API to create/update user in DB
-      const apiRes = await fetch("/api/auth/google-one-tap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credential: googleResponse.credential }),
+      window.google.accounts.id.prompt((notification: any) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          reject(new Error("Google login cancelled"));
+        }
       });
+    });
 
-      const apiData = await apiRes.json();
-      if (!apiData.success) throw new Error(apiData.error || "Failed to create user");
+    // Call your API to create/update user in DB
+    const apiRes = await fetch("/api/auth/google-one-tap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential }),
+    });
 
-      // 3️⃣ Sign in via NextAuth
-      await signIn("google", { credential: googleResponse.credential, redirect: false });
-
-      // 4️⃣ Check policy acceptance
-      const session = await getSession();
-      if (!session?.user?.id) throw new Error("Unable to retrieve user session");
-
-      const policyRes = await fetch(`/api/userPolicyStatus?userId=${session.user.id}`);
-      const policyData = await policyRes.json();
-
-      if (!policyData.termsAccepted || !policyData.privacyAccepted) {
-        router.push("/google-consent");
-      } else {
-        router.push("/home");
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Google login failed");
-    } finally {
-      setLoading(false);
+    if (!apiRes.ok) {
+      const text = await apiRes.text(); // handle non-JSON error
+      throw new Error(text || "Failed to create user");
     }
-  };
+
+    const apiData = await apiRes.json();
+    if (!apiData.success) throw new Error(apiData.error || "Failed to create user");
+
+    // ✅ After DB write, sign in via NextAuth (optional)
+    await signIn("google", { credential, redirect: false });
+
+    // Check policy acceptance
+    const session = await getSession();
+    if (!session?.user?.id) throw new Error("Unable to retrieve user session");
+
+    const policyRes = await fetch(`/api/userPolicyStatus?userId=${session.user.id}`);
+    const policyData = await policyRes.json();
+
+    if (!policyData.termsAccepted || !policyData.privacyAccepted) {
+      router.push("/google-consent");
+    } else {
+      router.push("/home");
+    }
+  } catch (err: any) {
+    console.error("Google One Tap error:", err);
+    setError(err.message || "Google login failed");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-900 px-6">
