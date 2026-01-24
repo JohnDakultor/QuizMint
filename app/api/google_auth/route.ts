@@ -71,6 +71,8 @@ export async function POST(req: Request) {
         name: payload.name,
         image: payload.picture,
         authProvider: "google",
+        aiDifficulty: "easy",
+        adaptiveLearning: false,
         password: null,
         username: payload.email.split("@")[0],
       },
