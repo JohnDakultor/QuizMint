@@ -683,7 +683,7 @@ export default function HomePage() {
       />
 
       <LandingClient />
-      {/* <GoogleOneTap /> */}
+      <GoogleOneTap />
     </>
   );
 }

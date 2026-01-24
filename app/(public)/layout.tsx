@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Twitter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import Image from "next/image";
 import icon from "@/public/icon.png"
+import Footer from "@/components/ui/footer";
 
 export default function PublicLayout({
   children,
@@ -62,48 +63,7 @@ export default function PublicLayout({
       </main>
 
       {/* Footer */}
-      <Separator className="my-16 max-w-6xl mx-auto" />
-      <footer className="text-center mb-6 text-sm text-zinc-500 space-y-2">
-        <div>© {new Date().getFullYear()} QuizMintAI</div>
-
-        <div className="mt-2 space-x-3">
-          {/* Main Pages */}
-          <Link href="/ai-quiz-generator" className="hover:underline">
-            AI Quiz Generator
-          </Link>
-          <span>·</span>
-          <Link href="/quiz-generator-for-students" className="hover:underline">
-            For Students
-          </Link>
-           <span>·</span>
-          <Link href="/quiz-generator-for-teachers" className="hover:underline">
-            For Teachers
-          </Link>
-          <span>·</span>
-          <Link href="/quiz-generator-for-corporate" className="hover:underline">
-            For Corporate
-          </Link>
-        </div>
-
-        <div className="mt-2 space-x-3">
-          {/* Legal & Info */}
-          <Link href="/about" className="hover:underline">
-            About
-          </Link>
-          <span>·</span>
-          <Link href="/contact" className="hover:underline">
-            Contact
-          </Link>
-          <span>·</span>
-          <Link href="/terms" className="hover:underline">
-            Terms of Service
-          </Link>
-          <span>·</span>
-          <Link href="/privacy" className="hover:underline">
-            Privacy Policy
-          </Link>
-        </div>
-      </footer>
+      <Footer />
     </>
   );
 }
