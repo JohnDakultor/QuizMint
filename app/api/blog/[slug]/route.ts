@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   req: Request,
-  context: { params: { slug: string } }
+  context: { params: Promise<{ slug: string }> } // note the Promise
 ) {
-  const { slug } = await context.params; // THIS IS CORRECT
+  // Unwrap the promise
+  const { slug } = await context.params;
 
   if (!slug) {
     return NextResponse.json({ error: "Slug is required" }, { status: 400 });
