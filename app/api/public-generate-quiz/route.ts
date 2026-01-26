@@ -249,7 +249,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { recaptchaToken } = await req.json();
+    const body = await req.json();
+
+    const { recaptchaToken, text } = body;
 
   if (!recaptchaToken) {
     return NextResponse.json(
@@ -340,7 +342,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get input text
-    const { text } = await req.json();
+    
     if (!text || text.trim() === "") {
       return NextResponse.json({ error: "No text provided" }, { status: 400 });
     }
