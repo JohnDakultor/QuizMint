@@ -261,6 +261,7 @@ export async function POST(req: NextRequest) {
   }
 
   const captcha = await verifyRecaptcha(recaptchaToken);
+  
 
   if (!captcha.success || captcha.score < 0.5) {
     return NextResponse.json(
@@ -268,6 +269,9 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  console.log("captcha result:", captcha);
+
    
     const ip = await getClientIp(req);
 

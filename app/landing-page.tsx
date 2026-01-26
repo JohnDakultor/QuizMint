@@ -396,7 +396,7 @@ export default function Home() {
     const res = await fetch("/api/public-generate-quiz", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, recaptchaToken }),
     });
 
     const data = await res.json();
