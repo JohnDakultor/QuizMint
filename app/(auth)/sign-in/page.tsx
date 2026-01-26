@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, LogIn } from "lucide-react";
 import { signIn, getSession } from "next-auth/react";
 import { Eye, EyeOff } from "lucide-react";
+import { useRecaptcha } from "@/components/ui/use-recaptcha";
 
 export default function SignIn() {
   const [loading, setLoading] = useState(false);
@@ -21,10 +22,14 @@ export default function SignIn() {
 
   const router = useRouter();
 
+  const { getToken } = useRecaptcha();
+
   // ✅ Credentials Sign In
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    const recaptchaToken = await getToken("signin");
 
     if (!accepted) {
       setError("You must accept the Terms of Service and Privacy Policy.");
@@ -38,6 +43,7 @@ export default function SignIn() {
         redirect: false,
         email: form.email,
         password: form.password,
+        recaptchaToken,
       });
 
       if (!res?.ok) {

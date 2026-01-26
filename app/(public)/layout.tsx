@@ -5,6 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import Image from "next/image";
 import icon from "@/public/icon.png"
 import Footer from "@/components/ui/footer";
+import { Providers } from "../recaptcha-provider";
 
 export default function PublicLayout({
   children,
@@ -13,6 +14,7 @@ export default function PublicLayout({
 }) {
   return (
     <>
+    <Providers>
       {/* Navbar */}
       <nav className="flex justify-between items-center w-full max-w-6xl mx-auto px-6 py-6">
         {/* Left: Logo + Public Links */}
@@ -64,6 +66,7 @@ export default function PublicLayout({
 
       {/* Footer */}
       <Footer />
+      </Providers>
     </>
   );
 }

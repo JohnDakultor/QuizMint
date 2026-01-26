@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
+import { verifyRecaptcha } from "@/lib/verifyRecaptcha";
 
 
 function validatePassword(password: string) {
@@ -22,6 +23,24 @@ function validatePassword(password: string) {
 export async function POST(req: NextRequest) {
   try {
     const { username, email, password } = await req.json();
+
+    const { recaptchaToken } = await req.json();
+    
+      if (!recaptchaToken) {
+        return NextResponse.json(
+          { error: "Missing recaptcha token" },
+          { status: 400 }
+        );
+      }
+    
+      const captcha = await verifyRecaptcha(recaptchaToken);
+    
+      if (!captcha.success || captcha.score < 0.5) {
+        return NextResponse.json(
+          { error: "Bot activity detected" },
+          { status: 403 }
+        );
+      }
 
     if (!username || !email || !password) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });

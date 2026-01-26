@@ -180,6 +180,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { v4 as uuidv4 } from "uuid";
 import { publicQuizRateLimit } from "@/lib/ratelimit";
+import { verifyRecaptcha } from "@/lib/verifyRecaptcha";
 
 const FREE_LIMIT = 3;
 const COOLDOWN_HOURS = 3;
@@ -248,6 +249,23 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { recaptchaToken } = await req.json();
+
+  if (!recaptchaToken) {
+    return NextResponse.json(
+      { error: "Missing recaptcha token" },
+      { status: 400 }
+    );
+  }
+
+  const captcha = await verifyRecaptcha(recaptchaToken);
+
+  if (!captcha.success || captcha.score < 0.5) {
+    return NextResponse.json(
+      { error: "Bot activity detected" },
+      { status: 403 }
+    );
+  }
    
     const ip = await getClientIp(req);
 

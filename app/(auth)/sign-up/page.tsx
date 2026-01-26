@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, UserPlus } from "lucide-react";
 import { Eye, EyeOff } from "lucide-react";
 import GoogleOneTap from "@/components/ui/google-oneTap";
+import { useRecaptcha } from "@/components/ui/use-recaptcha";
 
 function getPasswordStrength(password: string) {
   let score = 0;
@@ -37,16 +38,20 @@ export default function SignUp() {
 
   const strength = getPasswordStrength(form.password);
 
+  const { getToken } = useRecaptcha();
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
+    const recaptchaToken = await getToken("signup");
+
     try {
       const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({...form, recaptchaToken}),
       });
 
       const data = await res.json();

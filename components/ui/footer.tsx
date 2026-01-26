@@ -1,5 +1,12 @@
 import React from "react";
-import { Github, Twitter, Linkedin, Instagram, Facebook } from "lucide-react";
+import {
+  Github,
+  Twitter,
+  Linkedin,
+  Instagram,
+  Facebook,
+  XIcon,
+} from "lucide-react";
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import icon from "@/public/icon.png";
@@ -23,7 +30,7 @@ export default function Footer() {
             </p>
             <div className="flex gap-3">
               <a
-                href="https://facebook.com"
+                href="https://facebook.com/Quizmintai"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="h-9 w-9 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
@@ -32,16 +39,17 @@ export default function Footer() {
                 <Facebook className="h-4 w-4" />
               </a>
               <a
-                href="https://github.com"
+                href="https://x.com/Quizmintai"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="h-9 w-9 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-                aria-label="GitHub"
+                aria-label="X"
               >
-                <Github className="h-4 w-4" />
+                <XIcon className="h-4 w-4" />
               </a>
               <a
-                href="https://linkedin.com"
+                href="https://www.linkedin.com/in/quizmint-ai-7875a43a8?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app
+"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="h-9 w-9 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
@@ -160,7 +168,6 @@ export default function Footer() {
             <h3 className="font-semibold mb-4">Company</h3>
             <ul className="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
               <li>
-                
                 <Link
                   href="/about"
                   className="hover:text-blue-600 transition-colors"

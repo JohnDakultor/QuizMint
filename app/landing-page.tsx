@@ -301,6 +301,7 @@ import {
 import jsPDF from "jspdf";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
+import { useRecaptcha } from "@/components/ui/use-recaptcha";
 
 /* =======================
    CORE LOGIC — UNCHANGED
@@ -325,6 +326,8 @@ export default function Home() {
     options: string[];
     answer: string;
   }>(null);
+
+  const { getToken } = useRecaptcha();
 
   useEffect(() => {
     if (!usage.nextFreeAt) {
@@ -378,6 +381,10 @@ export default function Home() {
 
   const generateQuiz = async () => {
     if (!text.trim()) return;
+
+     const recaptchaToken = await getToken("public_generate_quiz");
+
+     
     if (usage.count >= 3) {
       setShowModal(true); // show modal when limit reached
       return;
@@ -675,6 +682,7 @@ export default function Home() {
 
       {/* Features Section */}
       <section
+      id="features"
         className="max-w-7xl mx-auto px-6 py-32"
         aria-labelledby="features-heading"
       >
@@ -753,7 +761,7 @@ export default function Home() {
 
       {/* ===== TESTIMONIAL CAROUSEL ===== */}
       <section
-        id="testemonials"
+        id="testimonials"
         className="max-w-5xl mx-auto px-6 py-32"
         aria-labelledby="testimonials-heading"
       >

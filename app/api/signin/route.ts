@@ -1,9 +1,29 @@
 import {prisma} from "@/lib/prisma";
+import { verifyRecaptcha } from "@/lib/verifyRecaptcha";
 import { compare } from "bcryptjs";
 import { NextResponse } from "next/server";
 
 
 export async function POST(request: Request) {
+
+    const { recaptchaToken } = await request.json();
+    
+      if (!recaptchaToken) {
+        return NextResponse.json(
+          { error: "Missing recaptcha token" },
+          { status: 400 }
+        );
+      }
+    
+      const captcha = await verifyRecaptcha(recaptchaToken);
+    
+      if (!captcha.success || captcha.score < 0.5) {
+        return NextResponse.json(
+          { error: "Bot activity detected" },
+          { status: 403 }
+        );
+      }
+      
     const body = await request.json();
 
     const { email, password } = body;
