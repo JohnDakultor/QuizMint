@@ -148,6 +148,7 @@ export const authOptions: NextAuthOptions = {
             aiDifficulty: "easy",
             adaptiveLearning: false,
             password: null,
+            subscriptionPlan: "free",
           },
         });
       }

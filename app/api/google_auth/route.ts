@@ -73,6 +73,7 @@ export async function POST(req: Request) {
         authProvider: "google",
         aiDifficulty: "easy",
         adaptiveLearning: false,
+        subscriptionPlan: "free",
         password: null,
         username: payload.email.split("@")[0],
       },
