@@ -144,6 +144,10 @@ export const authOptions: NextAuthOptions = {
             email: token.email ?? "", // token.email should be present for OAuth
             username: token.name ?? "Unknown",
             authProvider: "google",
+            image: token.picture ?? "",
+            aiDifficulty: "easy",
+            adaptiveLearning: false,
+            password: null,
           },
         });
       }
