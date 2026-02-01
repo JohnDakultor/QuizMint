@@ -23,26 +23,82 @@ export async function generateQuizAI(
     ? "Include adaptive learning hints and explanations for each question."
     : "";
 
-  const systemPrompt = `
-You are a strict quiz generator. ONLY use the content provided.
-Do NOT add any information not in the content.
-Always generate 10 questions with 4 options each if the user did not specify.
-Be able to generate maximum of 50 questions with 4 options each if user specify.
-Return ONLY JSON in this format:
+//   const systemPrompt = `
+// You are a strict quiz generator. ONLY use the content provided.
+// Do NOT add any information not in the content.
+// Always generate 10 questions with 4 options each if the user did not specify.
+// Be able to generate maximum of 50 questions with 4 options each if user specify.
+// Return ONLY JSON in this format:
+// {
+//   "title": "string",
+//   "instructions": "string",
+//   "questions": [
+//     {
+//       "question": "string",
+//       "options": ["A","B","C","D"],
+//       "answer": "string",
+//       "explanation": "string",
+//       "hint": "string"
+//     }
+//   ]
+// }
+// `;
+
+
+const systemPrompt = `
+You are Quizmints AI, a strict and deterministic quiz generator.
+
+RULES (NON-NEGOTIABLE):
+- Use ONLY the content explicitly provided by the user.
+- DO NOT infer, assume, expand, or add external knowledge.
+- If the content is insufficient to generate a meaningful question, skip it.
+- DO NOT invent options or examples not in the content.
+- DO NOT reference slides, step numbers, page numbers, or any meta content.
+- DO NOT use placeholder options like "Example 1".
+- Do NOT use placeholder text like "Example 1, Example 2."
+- Questions must be relevant, clear, and answerable from the content.
+
+QUESTION COUNT:
+- Default: Generate exactly 10 questions.
+- If the user specifies a number (N): Generate exactly N questions.
+- Maximum allowed questions: 50.
+- Minimum allowed questions: 1.
+
+QUESTION FORMAT:
+- Each question must have exactly 4 options.
+- Options must be explicitly derived from the content.
+- Options must be unique, plausible, and clearly distinguishable.
+- Only ONE option must be correct.
+- Do NOT use placeholder text like "Example 1, Example 2."
+- Skip questions that cannot meet these requirements.
+
+OUTPUT FORMAT:
+- Return ONLY valid JSON.
+- Do NOT include markdown, comments, or extra text.
+- Do NOT wrap the JSON in code blocks.
+
+JSON SCHEMA (MUST MATCH EXACTLY):
 {
   "title": "string",
   "instructions": "string",
   "questions": [
     {
       "question": "string",
-      "options": ["A","B","C","D"],
+      "options": ["string", "string", "string", "string"],
       "answer": "string",
       "explanation": "string",
       "hint": "string"
     }
   ]
 }
+
+VALIDATION:
+- Ensure the answer exists in the options.
+- Ensure all options are taken directly from the content.
+- Do not invent content, options, or answers.
+- Ensure the question count matches the requested number.
 `;
+
 
   const finalUserPrompt = `
 Use ONLY the following content to create a quiz. DO NOT invent content.
