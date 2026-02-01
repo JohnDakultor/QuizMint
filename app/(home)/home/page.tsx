@@ -585,55 +585,66 @@ export default function Dashboard() {
   };
 
   const generateQuizFromPrompt = async () => {
-    if (!prompt.trim() && !uploadedFile) return;
-    setLoading(true);
-    setQuiz(null);
-    setError("");
+  if (!prompt.trim() && !uploadedFile) return;
+  setLoading(true);
+  setQuiz(null);
+  setError("");
 
-    try {
-      const difficulty = user?.aiDifficulty || "easy";
-      const adaptiveLearning = user?.adaptiveLearning ?? false;
+  try {
+    const difficulty = user?.aiDifficulty || "easy";
+    const adaptiveLearning = user?.adaptiveLearning ?? false;
 
-      if (uploadedFile) {
-        const formData = new FormData();
-        formData.append("file", uploadedFile);
-        formData.append("prompt", prompt);
-        formData.append("difficulty", difficulty);
-        formData.append("adaptiveLearning", adaptiveLearning ? "true" : "false");
+    if (uploadedFile) {
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+      formData.append("prompt", prompt);
+      formData.append("difficulty", difficulty);
+      formData.append("adaptiveLearning", adaptiveLearning ? "true" : "false");
 
-        const res = await fetch("/api/upload-file", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await res.json();
-        if (!res.ok) setError(data.error || "Failed to generate quiz from file");
-        else {
-          setQuiz(data.quiz);
-          setUploadedFile(null);
-        }
+      const res = await fetch("/api/upload-file", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+     if (!res.ok) {
+  // Backend sent 400 or other error
+  setError(data.message || data.error || "Failed to generate quiz from file");
+} else {
+  setQuiz(data.quiz);
+  setUploadedFile(null);
+}
+
+    } else {
+      const res = await fetch("/api/generate-quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: prompt, difficulty, adaptiveLearning }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Failed to generate quiz from prompt");
       } else {
-        const res = await fetch("/api/generate-quiz", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: prompt, difficulty, adaptiveLearning }),
-        });
-        const data = await res.json();
-        if (!res.ok) setError(data.error || "Failed to generate quiz from prompt");
-        else setQuiz(data.quiz);
+        setQuiz(data.quiz);
       }
-    } catch (err) {
-      setError("Failed to generate quiz");
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (err) {
+    setError("Failed to generate quiz");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="flex flex-col items-center justify-center w-full px-6 min-h-screen">
       <section className="flex flex-col lg:flex-row gap-8 justify-center w-full max-w-7xl">
 
         {/* ================= INPUT CARD ================= */}
-        <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-[480px] h-[550px]">
+        <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-120 h-137.5">
           <CardHeader>
             <CardTitle className="text-xl font-semibold"> Create Quiz Input</CardTitle>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
@@ -696,7 +707,7 @@ export default function Dashboard() {
         </Card>
 
         {/* ================= OUTPUT CARD (ALWAYS VISIBLE) ================= */}
-        <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-[520px] h-[550px] flex flex-col">
+        <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-130 h-137.5 flex flex-col">
           <CardHeader className="relative">
             <CardTitle className="text-xl font-semibold"> Generated Quiz</CardTitle>
 
@@ -725,7 +736,7 @@ export default function Dashboard() {
             </div>
           </CardHeader>
 
-          <CardContent className="flex-1 max-h-[450px] overflow-y-auto space-y-4 pr-2">
+          <CardContent className="flex-1 max-h-112.5 overflow-y-auto space-y-4 pr-2">
             {quiz ? (
               quiz.questions.map((q: any, i: number) => (
                 <div key={i} className="p-4 rounded-lg border bg-white dark:bg-zinc-900">
