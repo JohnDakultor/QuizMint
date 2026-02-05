@@ -1,8 +1,159 @@
 
+// interface OpenRouterResponse {
+//   choices: { message: { content: string } }[];
+// }
+
+
+
+// export async function generateQuizAI(
+//   text: string,
+//   difficulty: string,
+//   adaptiveLearning: boolean,
+//   isProOrPremium: boolean,
+//   userPrompt: string = "" 
+// ) {
+//   const difficultyPrompt =
+//     difficulty === "easy"
+//       ? "Make the questions easy and straightforward."
+//       : difficulty === "medium"
+//       ? "Make the questions moderately challenging."
+//       : "Make the questions difficult and thought-provoking.";
+
+//   const adaptivePrompt = adaptiveLearning
+//     ? "Include adaptive learning hints and explanations for each question."
+//     : "";
+
+
+// const systemPrompt = `
+// You are Quizmints AI, a strict and deterministic quiz generator.
+
+// RULES (NON-NEGOTIABLE):
+// - Use ONLY the content explicitly provided by the user.
+// - DO NOT infer, assume, expand, or add external knowledge.
+// - If the content is insufficient to generate a meaningful question, skip it.
+// - DO NOT invent options or examples not in the content.
+// - DO NOT reference slides, step numbers, page numbers, or any meta content.
+// - DO NOT use placeholder options like "Example 1".
+// - Do NOT use placeholder text like "Example 1, Example 2."
+// - Questions must be relevant, clear, and answerable from the content.
+
+// QUESTION COUNT:
+// - Default: Generate exactly 10 questions.
+// - If the user specifies a number (N): Generate exactly N questions.
+// - Maximum allowed questions: 50.
+// - Minimum allowed questions: 1.
+
+// QUESTION FORMAT:
+// - Each question must have exactly 4 options.
+// - Options must be explicitly derived from the content.
+// - Options must be unique, plausible, and clearly distinguishable.
+// - Only ONE option must be correct.
+// - Do NOT use placeholder text like "Example 1, Example 2."
+// - Skip questions that cannot meet these requirements.
+
+// OUTPUT FORMAT:
+// - Return ONLY valid JSON.
+// - Do NOT include markdown, comments, or extra text.
+// - Do NOT wrap the JSON in code blocks.
+
+// JSON SCHEMA (MUST MATCH EXACTLY):
+// {
+//   "title": "string",
+//   "instructions": "string",
+//   "questions": [
+//     {
+//       "question": "string",
+//       "options": ["string", "string", "string", "string"],
+//       "answer": "string",
+//       "explanation": "string",
+//       "hint": "string"
+//     }
+//   ]
+// }
+
+// VALIDATION:
+// - Ensure the answer exists in the options.
+// - Ensure all options are taken directly from the content.
+// - Do not invent content, options, or answers.
+// - Ensure the question count matches the requested number.
+// `;
+
+
+//   const finalUserPrompt = `
+// Use ONLY the following content to create a quiz. DO NOT invent content.
+// Difficulty: ${difficultyPrompt}
+// Adaptive: ${adaptivePrompt}
+// User Instructions: ${userPrompt}
+
+// Content:
+// ${text}
+// `;
+
+//   const modelToUse = isProOrPremium
+//     ? "tngtech/deepseek-r1t2-chimera:free"
+//     : "tngtech/deepseek-r1t-chimera:free";
+
+//   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+//     method: "POST",
+//     headers: {
+//       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify({
+//       model: modelToUse,
+//       response_format: { type: "json_object" },
+//       messages: [
+//         { role: "system", content: systemPrompt },
+//         { role: "user", content: finalUserPrompt },
+//       ],
+//     }),
+//   });
+
+//   if (!response.ok) {
+//     const errorData = await response.text();
+//     throw new Error("AI response failed: " + errorData);
+//   }
+
+//   const data = (await response.json()) as OpenRouterResponse;
+//   const raw = data?.choices?.[0]?.message?.content || "";
+
+//   const parsed = safeExtractJSON(raw);
+//   if (!parsed) throw new Error("AI did not return valid JSON");
+
+//   return parsed;
+// }
+
+// // Safely extract JSON even if AI adds garbage
+// function safeExtractJSON(raw: string) {
+//   const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+//   const first = cleaned.indexOf("{");
+//   const last = cleaned.lastIndexOf("}");
+//   if (first === -1 || last === -1) return null;
+//   const jsonString = cleaned.substring(first, last + 1);
+//   try {
+//     return JSON.parse(jsonString);
+//   } catch {
+//     return attemptJSONRepair(jsonString);
+//   }
+// }
+
+// // Automatic JSON repair
+// function attemptJSONRepair(jsonString: string) {
+//   let repaired = jsonString;
+//   repaired = repaired.replace(/,\s*([\]}])/g, "$1"); // remove trailing commas
+//   repaired = repaired.replace(/[“”]/g, '"'); // fix smart quotes
+//   repaired = repaired.replace(/\/\/.*$/gm, ""); // remove comments
+//   try {
+//     return JSON.parse(repaired);
+//   } catch {
+//     throw new Error("AI returned irreparable JSON");
+//   }
+// }
+
+
 interface OpenRouterResponse {
   choices: { message: { content: string } }[];
 }
-
 
 
 export async function generateQuizAI(
@@ -23,40 +174,37 @@ export async function generateQuizAI(
     ? "Include adaptive learning hints and explanations for each question."
     : "";
 
-//   const systemPrompt = `
-// You are a strict quiz generator. ONLY use the content provided.
-// Do NOT add any information not in the content.
-// Always generate 10 questions with 4 options each if the user did not specify.
-// Be able to generate maximum of 50 questions with 4 options each if user specify.
-// Return ONLY JSON in this format:
-// {
-//   "title": "string",
-//   "instructions": "string",
-//   "questions": [
-//     {
-//       "question": "string",
-//       "options": ["A","B","C","D"],
-//       "answer": "string",
-//       "explanation": "string",
-//       "hint": "string"
-//     }
-//   ]
-// }
-// `;
+  // Check if the text looks like a prompt/instruction vs actual content
+  const isPromptLike = text.length < 500 && 
+    (text.includes("create") || 
+     text.includes("generate") || 
+     text.includes("make") || 
+     text.includes("quiz about") ||
+     text.split(' ').length < 100); // Short text is likely a prompt
 
+  const systemPrompt = `
+You are Quizmints AI, a quiz generator.
 
-const systemPrompt = `
-You are Quizmints AI, a strict and deterministic quiz generator.
+${isPromptLike ? 
+  // When user gives a prompt (e.g., "create me a quiz about plants")
+  `The user has provided a topic or prompt. Generate a quiz about: "${text}"
+  - Use general knowledge about this topic
+  - Create relevant and educational questions
+  - Ensure questions are factual and accurate` : 
+  // When user provides actual content
+  `Use ONLY the following content to create a quiz. DO NOT invent content.
+  - Questions must be directly based on the provided content
+  - Do not add external knowledge not in the content`}
 
-RULES (NON-NEGOTIABLE):
-- Use ONLY the content explicitly provided by the user.
-- DO NOT infer, assume, expand, or add external knowledge.
-- If the content is insufficient to generate a meaningful question, skip it.
-- DO NOT invent options or examples not in the content.
-- DO NOT reference slides, step numbers, page numbers, or any meta content.
-- DO NOT use placeholder options like "Example 1".
-- Do NOT use placeholder text like "Example 1, Example 2."
-- Questions must be relevant, clear, and answerable from the content.
+RULES:
+- Generate exactly 10 questions unless otherwise specified
+- Each question must have exactly 4 options
+- Only ONE option must be correct
+- Options must be clear and distinct
+- Ensure the answer exists in the options
+
+Difficulty: ${difficultyPrompt}
+${adaptivePrompt}
 
 QUESTION COUNT:
 - Default: Generate exactly 10 questions.
@@ -64,18 +212,9 @@ QUESTION COUNT:
 - Maximum allowed questions: 50.
 - Minimum allowed questions: 1.
 
-QUESTION FORMAT:
-- Each question must have exactly 4 options.
-- Options must be explicitly derived from the content.
-- Options must be unique, plausible, and clearly distinguishable.
-- Only ONE option must be correct.
-- Do NOT use placeholder text like "Example 1, Example 2."
-- Skip questions that cannot meet these requirements.
-
 OUTPUT FORMAT:
 - Return ONLY valid JSON.
 - Do NOT include markdown, comments, or extra text.
-- Do NOT wrap the JSON in code blocks.
 
 JSON SCHEMA (MUST MATCH EXACTLY):
 {
@@ -91,24 +230,19 @@ JSON SCHEMA (MUST MATCH EXACTLY):
     }
   ]
 }
-
-VALIDATION:
-- Ensure the answer exists in the options.
-- Ensure all options are taken directly from the content.
-- Do not invent content, options, or answers.
-- Ensure the question count matches the requested number.
 `;
 
-
-  const finalUserPrompt = `
-Use ONLY the following content to create a quiz. DO NOT invent content.
-Difficulty: ${difficultyPrompt}
-Adaptive: ${adaptivePrompt}
-User Instructions: ${userPrompt}
-
-Content:
-${text}
-`;
+  const finalUserPrompt = isPromptLike 
+    ? `Generate a quiz about: ${text}
+       Difficulty: ${difficultyPrompt}
+       ${adaptivePrompt}
+       ${userPrompt ? `Additional instructions: ${userPrompt}` : ''}`
+    : `Content to base quiz on:
+       ${text}
+       
+       Difficulty: ${difficultyPrompt}
+       Adaptive: ${adaptivePrompt}
+       ${userPrompt ? `User Instructions: ${userPrompt}` : ''}`;
 
   const modelToUse = isProOrPremium
     ? "tngtech/deepseek-r1t2-chimera:free"
@@ -138,35 +272,33 @@ ${text}
   const data = (await response.json()) as OpenRouterResponse;
   const raw = data?.choices?.[0]?.message?.content || "";
 
+  console.log("🤖 AI Raw Response:", raw.substring(0, 500)); // Add logging
+
   const parsed = safeExtractJSON(raw);
   if (!parsed) throw new Error("AI did not return valid JSON");
+
+  console.log("🤖 AI Parsed Response:", {
+    title: parsed.title,
+    questionCount: parsed.questions?.length || 0,
+    hasQuestions: !!parsed.questions && parsed.questions.length > 0
+  });
 
   return parsed;
 }
 
-// Safely extract JSON even if AI adds garbage
 function safeExtractJSON(raw: string) {
-  const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
-  const first = cleaned.indexOf("{");
-  const last = cleaned.lastIndexOf("}");
-  if (first === -1 || last === -1) return null;
-  const jsonString = cleaned.substring(first, last + 1);
+  
   try {
-    return JSON.parse(jsonString);
+    return JSON.parse(raw);
   } catch {
-    return attemptJSONRepair(jsonString);
-  }
-}
-
-// Automatic JSON repair
-function attemptJSONRepair(jsonString: string) {
-  let repaired = jsonString;
-  repaired = repaired.replace(/,\s*([\]}])/g, "$1"); // remove trailing commas
-  repaired = repaired.replace(/[“”]/g, '"'); // fix smart quotes
-  repaired = repaired.replace(/\/\/.*$/gm, ""); // remove comments
-  try {
-    return JSON.parse(repaired);
-  } catch {
-    throw new Error("AI returned irreparable JSON");
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } catch (innerErr) {
+      console.error("Failed to extract JSON from AI response");
+    }
+    throw new Error("No valid JSON found in response");
   }
 }

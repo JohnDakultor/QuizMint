@@ -425,8 +425,6 @@
 //   );
 // }
 
-
-
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -490,9 +488,16 @@ export default function Dashboard() {
     const lineHeight = 18;
     let y = margin;
 
-    const addLine = (text: string, indent = 0, fontStyle: "normal" | "bold" | "italic" = "normal") => {
+    const addLine = (
+      text: string,
+      indent = 0,
+      fontStyle: "normal" | "bold" | "italic" = "normal",
+    ) => {
       pdf.setFont("helvetica", fontStyle);
-      const lines = pdf.splitTextToSize(text ?? "", pageWidth - margin * 2 - indent);
+      const lines = pdf.splitTextToSize(
+        text ?? "",
+        pageWidth - margin * 2 - indent,
+      );
       lines.forEach((line: string) => {
         if (y + lineHeight > pageHeight - margin) {
           pdf.addPage();
@@ -511,7 +516,7 @@ export default function Dashboard() {
     quiz.questions.forEach((q: any, i: number) => {
       addLine(`${i + 1}. ${q.question ?? ""}`, 0, "bold");
       q.options.forEach((opt: string, j: number) =>
-        addLine(`   ${String.fromCharCode(97 + j)}) ${opt ?? ""}`, 0)
+        addLine(`   ${String.fromCharCode(97 + j)}) ${opt ?? ""}`, 0),
       );
       addLine(`   Answer: ${q.answer ?? ""}`, 0, "italic");
       y += 10;
@@ -522,7 +527,8 @@ export default function Dashboard() {
 
   const handleDownloadWord = async () => {
     if (!quiz) return;
-    if (!user || user.subscriptionPlan !== "premium") return setShowSubscribeModal(true);
+    if (!user || user.subscriptionPlan !== "premium")
+      return setShowSubscribeModal(true);
 
     try {
       const res = await fetch("/api/download-file", {
@@ -554,7 +560,8 @@ export default function Dashboard() {
 
   const handleDownloadPPT = async () => {
     if (!quiz) return;
-    if (!user || user.subscriptionPlan !== "premium") return setShowSubscribeModal(true);
+    if (!user || user.subscriptionPlan !== "premium")
+      return setShowSubscribeModal(true);
 
     try {
       const res = await fetch("/api/download-file", {
@@ -585,68 +592,105 @@ export default function Dashboard() {
   };
 
   const generateQuizFromPrompt = async () => {
-  if (!prompt.trim() && !uploadedFile) return;
-  setLoading(true);
-  setQuiz(null);
-  setError("");
+    if (!prompt.trim() && !uploadedFile) return;
+    setLoading(true);
+    setQuiz(null);
+    setError("");
 
-  try {
-    const difficulty = user?.aiDifficulty || "easy";
-    const adaptiveLearning = user?.adaptiveLearning ?? false;
+    try {
+      const difficulty = user?.aiDifficulty || "easy";
+      const adaptiveLearning = user?.adaptiveLearning ?? false;
 
-    if (uploadedFile) {
-      const formData = new FormData();
-      formData.append("file", uploadedFile);
-      formData.append("prompt", prompt);
-      formData.append("difficulty", difficulty);
-      formData.append("adaptiveLearning", adaptiveLearning ? "true" : "false");
+      if (uploadedFile) {
+        const formData = new FormData();
+        formData.append("file", uploadedFile);
+        formData.append("prompt", prompt);
+        formData.append("difficulty", difficulty);
+        formData.append("adaptiveLearning", adaptiveLearning.toString());
 
-      const res = await fetch("/api/upload-file", {
-        method: "POST",
-        body: formData,
-      });
+        const res = await fetch("/api/upload-file", {
+          method: "POST",
+          body: formData,
+        });
 
-      const data = await res.json();
+        const data = await res.json();
 
-     if (!res.ok) {
-  // Backend sent 400 or other error
-  setError(data.message || data.error || "Failed to generate quiz from file");
-} else {
-  setQuiz(data.quiz);
-  setUploadedFile(null);
-}
+        if (!res.ok) {
+          // Backend sent 400 or other error
+          setError(
+            data.message || data.error || "Failed to generate quiz from file",
+          );
+        } else {
+          setQuiz(data.quiz);
+          setUploadedFile(null);
+        }
+      } else {
+        const requestBody = {
+          text: prompt,
+          difficulty: difficulty, // This will always be a valid string
+          adaptiveLearning: adaptiveLearning, // This will always be a boolean
+        };
 
-    } else {
+    
+
       const res = await fetch("/api/generate-quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: prompt, difficulty, adaptiveLearning }),
+        body: JSON.stringify(requestBody),
       });
 
-      const data = await res.json();
+    
+      // Get the response as text first
+      const responseText = await res.text();
+      
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+     
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
+      }
 
       if (!res.ok) {
-        setError(data.error || "Failed to generate quiz from prompt");
+   
+        setError(data.error || data.message || `Failed to generate quiz (${res.status})`);
       } else {
-        setQuiz(data.quiz);
+        
+        
+        // Debug the quiz object
+        
+        
+        // Check if quiz has questions
+        if (!data.quiz) {
+         
+          setError("No quiz data received from server");
+        } else if (!data.quiz.questions || data.quiz.questions.length === 0) {
+        
+          setError("Quiz generated but has no questions");
+        } else {
+          
+          setQuiz(data.quiz);
+        }
       }
     }
-  } catch (err) {
-    setError("Failed to generate quiz");
+  } catch (err: any) {
+   
+    setError(err.message || "Failed to generate quiz");
   } finally {
     setLoading(false);
   }
 };
-
-
   return (
     <div className="flex flex-col items-center justify-center w-full px-6 min-h-screen">
       <section className="flex flex-col lg:flex-row gap-8 justify-center w-full max-w-7xl">
-
         {/* ================= INPUT CARD ================= */}
         <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-120 h-137.5">
           <CardHeader>
-            <CardTitle className="text-xl font-semibold"> Create Quiz Input</CardTitle>
+            <CardTitle className="text-xl font-semibold">
+              {" "}
+              Create Quiz Input
+            </CardTitle>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
               Paste text, write instructions, or upload a document.
             </p>
@@ -664,7 +708,11 @@ export default function Dashboard() {
                 <Button size="sm" variant="outline" onClick={handlePaste}>
                   Paste
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setPrompt("")}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPrompt("")}
+                >
                   Clear
                 </Button>
               </div>
@@ -698,7 +746,11 @@ export default function Dashboard() {
             {uploadedFile && (
               <div className="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
                 <span> {uploadedFile.name}</span>
-                <Button size="sm" variant="outline" onClick={() => setUploadedFile(null)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setUploadedFile(null)}
+                >
                   Remove
                 </Button>
               </div>
@@ -709,7 +761,10 @@ export default function Dashboard() {
         {/* ================= OUTPUT CARD (ALWAYS VISIBLE) ================= */}
         <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-130 h-137.5 flex flex-col">
           <CardHeader className="relative">
-            <CardTitle className="text-xl font-semibold"> Generated Quiz</CardTitle>
+            <CardTitle className="text-xl font-semibold">
+              {" "}
+              Generated Quiz
+            </CardTitle>
 
             {quiz && (
               <button
@@ -739,17 +794,33 @@ export default function Dashboard() {
           <CardContent className="flex-1 max-h-112.5 overflow-y-auto space-y-4 pr-2">
             {quiz ? (
               quiz.questions.map((q: any, i: number) => (
-                <div key={i} className="p-4 rounded-lg border bg-white dark:bg-zinc-900">
-                  <p className="font-semibold mb-2">{i + 1}. {q.question}</p>
+                <div
+                  key={i}
+                  className="p-4 rounded-lg border bg-white dark:bg-zinc-900"
+                >
+                  <p className="font-semibold mb-2">
+                    {i + 1}. {q.question}
+                  </p>
                   <ul className="ml-4 list-disc space-y-1">
-                    {q.options.map((opt: string, j: number) => <li key={j}>{opt}</li>)}
+                    {q.options.map((opt: string, j: number) => (
+                      <li key={j}>{opt}</li>
+                    ))}
                   </ul>
-                  <p className="mt-2 text-sm text-green-600"> Answer: <strong>{q.answer}</strong></p>
-                  {q.explanation && <p className="mt-1 text-sm text-zinc-500">📝 {q.explanation}</p>}
+                  <p className="mt-2 text-sm text-green-600">
+                    {" "}
+                    Answer: <strong>{q.answer}</strong>
+                  </p>
+                  {q.explanation && (
+                    <p className="mt-1 text-sm text-zinc-500">
+                      📝 {q.explanation}
+                    </p>
+                  )}
                 </div>
               ))
             ) : (
-              <p className="text-zinc-400 text-center mt-20">Your generated quiz will appear here</p>
+              <p className="text-zinc-400 text-center mt-20">
+                Your generated quiz will appear here
+              </p>
             )}
           </CardContent>
         </Card>
