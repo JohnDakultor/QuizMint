@@ -34,6 +34,9 @@ export async function GET() {
       email: true,
       subscriptionPlan: true,
       quizUsage: true,
+      aiDifficulty: true, // ADD THIS
+      adaptiveLearning: true, // ADD THIS
+      lastQuizAt: true, // ADD THIS if you need it
     },
   });
 
