@@ -351,6 +351,60 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No text provided" }, { status: 400 });
     }
 
+    const systemPrompt = `
+You are Quizmints AI (Demo Mode), an AI that generates sample quizzes from text.
+
+STRICT RULES:
+- Use ONLY the content provided by the user.
+- DO NOT add, infer, or expand beyond the content.
+- Keep output concise and suitable for a public demo.
+- This is a preview experience, not a full quiz generator.
+
+QUESTION COUNT:
+- If the user specifies a number (N): Generate exactly N questions.
+- If the user does NOT specify a number: Generate exactly 5 questions.
+- Maximum allowed questions: 50.
+- Minimum allowed questions: 1.
+- If N exceeds 50, generate exactly 50 questions.
+
+QUESTION TYPE:
+- ONLY "multiple_choice" questions are allowed.
+- Each question must have EXACTLY 4 options.
+- Only ONE option may be correct.
+
+OUTPUT FORMAT:
+- Return ONLY valid JSON.
+- No markdown, paragraphs, explanations, or extra text.
+- Do NOT wrap the JSON in code blocks.
+
+JSON SCHEMA (MUST MATCH EXACTLY):
+{
+  "title": "string",
+  "instructions": "string",
+  "questions": [
+    {
+      "question": "string",
+      "options": ["string", "string", "string", "string"],
+      "answer": "string"
+    }
+  ]
+}
+
+FIELD RULES:
+- title: Short and simple summary derived ONLY from the content.
+- instructions: One short sentence for quiz takers.
+- question: Clear and beginner-friendly.
+- options: Derived ONLY from the content.
+- answer: Must exactly match one option.
+
+VALIDATION:
+- Ensure valid JSON.
+- Ensure the number of questions matches the requested count (or capped at 50).
+- Ensure each question has exactly 4 options.
+- Ensure the answer exists in the options.
+`;
+
+
     
     const aiResponse = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
@@ -364,12 +418,12 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify({
           model: "tngtech/deepseek-r1t2-chimera:free",
+          response_format: { type: "json_object" },
           messages: [
             {
               role: "system",
               content:
-                "You are an AI that generates quizzes from text. Always return output strictly in JSON format, never in paragraphs. Format:\n" +
-                '{ "title": string, "instructions": string, "questions": [ { "question": string, "options": [string], "answer": string } ] }',
+               systemPrompt
             },
             { role: "user", content: text },
           ],
@@ -382,12 +436,19 @@ export async function POST(req: NextRequest) {
     try {
       const raw = data?.choices?.[0]?.message?.content ?? null;
       if (raw) {
-        const match = raw.match(/\{[\s\S]*\}/);
-        if (match) quiz = JSON.parse(match[0]);
+        const parsed = safeExtractJSON(raw);
+        if (parsed) quiz = parsed;
         else console.error("No JSON found in AI response");
       }
     } catch (err) {
       console.error("Failed to parse AI quiz JSON:", err);
+    }
+
+    if (!quiz) {
+      return NextResponse.json(
+        { error: "AI returned invalid quiz format." },
+        { status: 502 }
+      );
     }
 
     // Increment usage
@@ -423,5 +484,30 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}
+
+function safeExtractJSON(raw: string) {
+  const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first === -1 || last === -1) return null;
+  const jsonString = cleaned.substring(first, last + 1);
+  try {
+    return JSON.parse(jsonString);
+  } catch {
+    return attemptJSONRepair(jsonString);
+  }
+}
+
+function attemptJSONRepair(jsonString: string) {
+  let repaired = jsonString;
+  repaired = repaired.replace(/,\s*([\]}])/g, "$1");
+  repaired = repaired.replace(/[“”]/g, '"');
+  repaired = repaired.replace(/\/\/.*$/gm, "");
+  try {
+    return JSON.parse(repaired);
+  } catch {
+    return null;
   }
 }

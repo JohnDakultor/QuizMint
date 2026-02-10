@@ -311,6 +311,7 @@ export default function Home() {
   const [text, setText] = useState("");
   const [quiz, setQuiz] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [usage, setUsage] = useState({
     count: 0,
     remaining: 3,
@@ -381,6 +382,7 @@ export default function Home() {
 
   const generateQuiz = async () => {
     if (!text.trim()) return;
+    setError("");
 
      const recaptchaToken = await getToken("public_generate_quiz");
 
@@ -400,10 +402,13 @@ export default function Home() {
     });
 
     const data = await res.json();
-    if (res.ok) {
+    if (res.ok && data.quiz) {
       setQuiz(data.quiz);
       if (data.usage) setUsage(data.usage);
       if (data.usage?.count >= 3) setShowModal(true); // also show modal if hitting limit
+    } else {
+      setQuiz(null);
+      setError(data.error || "Failed to generate quiz.");
     }
     setLoading(false);
   };
@@ -556,6 +561,9 @@ export default function Home() {
                 )}
               </Button>
             </motion.form>
+            {error && (
+              <div className="mt-3 text-sm text-red-500">{error}</div>
+            )}
 
             <motion.div
               initial={{ opacity: 0 }}
