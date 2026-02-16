@@ -25,15 +25,31 @@ async function generateSlideImage(prompt: string): Promise<string | null> {
   };
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "image/png",
-      },
-      body: JSON.stringify(payload),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "image/png",
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timeout);
+      console.warn(`${logPrefix} request failed (attempt ${attempt + 1}):`, err);
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1200));
+        continue;
+      }
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const contentType = res.headers.get("content-type") || "";
     console.log(
@@ -64,11 +80,20 @@ async function generateSlideImage(prompt: string): Promise<string | null> {
       return null;
     }
 
-    const arrayBuffer = await res.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-    const dataUrl = `data:image/png;base64,${base64}`;
-    imageCache.set(prompt, dataUrl);
-    return dataUrl;
+    try {
+      const arrayBuffer = await res.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
+      const dataUrl = `data:image/png;base64,${base64}`;
+      imageCache.set(prompt, dataUrl);
+      return dataUrl;
+    } catch (err) {
+      console.warn(`${logPrefix} failed to read image body:`, err);
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1200));
+        continue;
+      }
+      return null;
+    }
   }
 
   return null;

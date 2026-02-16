@@ -40,6 +40,7 @@ model User {
   policyAcceptances   UserPolicyAcceptance[]
   paypalSubscriptions PayPalSubscription[]
   lessonPlans        LessonPlan[]
+  lessonPlanExports  LessonPlanExport[]
 }
 
 model UserPolicyAcceptance {
@@ -136,8 +137,34 @@ model LessonPlan {
   data          Json
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  exports       LessonPlanExport[]
 
   @@index([userId, createdAt])
+}
+
+model LessonPlanExport {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonPlanId String?
+  lessonPlan   LessonPlan? @relation(fields: [lessonPlanId], references: [id], onDelete: SetNull)
+  format      String
+  status      String    @default("queued") // queued | processing | completed | failed
+  inputHash   String
+  input       Json
+  resultData  Bytes?
+  mimeType    String?
+  fileName    String?
+  error       String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([lessonPlanId])
+  @@unique([userId, format, inputHash])
 }
 
 

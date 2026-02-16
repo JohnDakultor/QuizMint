@@ -1751,78 +1751,112 @@ export default function LessonPlanPage() {
 
   async function downloadLessonPlan(format: "docx" | "pdf" | "pptx" = "docx") {
     if (!lessonPlan || !formDataObject) return;
-    
-    if (format === "pdf") {
-      await downloadLessonPlanPdfFromUi();
-      return;
-    }
 
     if (format === "pptx") {
       setDownloadingPptx(true);
+    } else if (format === "pdf") {
+      setDownloadingPdf(true);
     } else {
       setDownloading(true);
     }
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     try {
       if (!isPremium) {
         throw new Error("Premium is required to download lesson plan files.");
       }
 
-      // For PDF download, we'll use the same API but with format=pdf
-      // The backend needs to support this format
-      const downloadData = {
-        ...formDataObject,
-        format: format,
-        useCache: true,
-        lessonPlan: isHistoryView ? lessonPlan : undefined,
-      };
-
-      const res = await fetch("/api/generate-lesson-plan", {
+      const queueRes = await fetch("/api/lesson-plan-export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(downloadData),
+        body: JSON.stringify({
+          format,
+          lessonPlan,
+          topic: formDataObject.topic || lessonPlan?.title || "Lesson Plan",
+          subject: formDataObject.subject || lessonPlan?.subject || "General",
+          grade: formDataObject.grade || lessonPlan?.grade || "General",
+          days: Number(formDataObject.days || lessonPlan?.days || 1),
+          minutesPerDay: Number(formDataObject.minutesPerDay || lessonPlan?.minutesPerDay || 40),
+        }),
       });
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Download failed: ${res.status} ${errorText}`);
+      const queueData = await queueRes.json().catch(() => ({}));
+      if (!queueRes.ok || !queueData?.jobId) {
+        throw new Error(queueData?.error || "Failed to queue export job");
       }
 
-      // Check content type to determine response type
-      const contentType = res.headers.get("content-type");
-      
-      if (contentType?.includes("application/json")) {
-        // Backend returned JSON (likely an error or PDF not implemented yet)
-        const data = await res.json();
-        if (data.message) {
-          // If PDF is not implemented yet, show message
-          alert(data.message || "PDF download is not yet available. Please use DOCX format for now.");
+      const jobId = queueData.jobId as string;
+
+      // Trigger processing immediately; this is compatible with future worker/cron setups.
+      await fetch("/api/lesson-plan-export/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      }).catch(() => null);
+
+      const timeoutMs = 3 * 60 * 1000;
+      const startedAt = Date.now();
+      let lastStatus = "queued";
+
+      while (Date.now() - startedAt < timeoutMs) {
+        const statusRes = await fetch(`/api/lesson-plan-export/${jobId}`, {
+          cache: "no-store",
+        });
+        const statusData = await statusRes.json().catch(() => ({}));
+
+        if (!statusRes.ok) {
+          throw new Error(statusData?.error || "Failed to fetch export status");
+        }
+
+        lastStatus = String(statusData?.status || "queued");
+        if (lastStatus === "completed") {
+          const fileRes = await fetch(`/api/lesson-plan-export/${jobId}?download=1`, {
+            cache: "no-store",
+          });
+          if (!fileRes.ok) {
+            const text = await fileRes.text();
+            throw new Error(text || "Failed to download ready file");
+          }
+
+          const blob = await fileRes.blob();
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${formDataObject.topic || "lesson_plan"}.${format}`;
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+          }, 100);
           return;
         }
+
+        if (lastStatus === "failed") {
+          throw new Error(statusData?.error || "Export job failed");
+        }
+
+        if (lastStatus === "queued") {
+          await fetch("/api/lesson-plan-export/process", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId }),
+          }).catch(() => null);
+        }
+
+        await sleep(1500);
       }
 
-      // Assume it's a blob for download
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${formDataObject.topic || 'lesson_plan'}.${format}`;
-      
-      document.body.appendChild(link);
-      link.click();
-      
-      setTimeout(() => {
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      }, 100);
-      
+      throw new Error(`Export timeout (last status: ${lastStatus})`);
     } catch (err: any) {
       console.error("Download error:", err);
       alert(`Failed to download: ${err.message}`);
     } finally {
       if (format === "pptx") {
         setDownloadingPptx(false);
+      } else if (format === "pdf") {
+        setDownloadingPdf(false);
       } else {
         setDownloading(false);
       }
