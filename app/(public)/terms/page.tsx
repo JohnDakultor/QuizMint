@@ -27,6 +27,9 @@ export default function TermsPage() {
         <p className="text-gray-700">
           QuizMint uses AI to generate quizzes and related content. Generated content is provided "as-is" and may contain inaccuracies. You are responsible for reviewing and validating generated content before use.
         </p>
+        <p className="text-gray-700">
+          By submitting content, you grant us permission to process it using third-party AI providers to generate outputs. Depending on provider settings, submitted content may be used for model improvement. Do not submit sensitive or confidential data.
+        </p>
       </section>
 
       <section className="space-y-2">
