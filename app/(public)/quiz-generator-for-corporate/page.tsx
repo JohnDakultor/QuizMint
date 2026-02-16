@@ -2,12 +2,15 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "AI Quiz Generator for Corporate Training | QuizMint AI",
-  description: "QuizMint AI helps professionals and corporate trainers generate quizzes for workshops, training, and skill assessments using AI.",
+  title: "AI Quiz and Lesson Plan Generator for Corporate Training | QuizMint AI",
+  description: "QuizMint AI helps professionals and corporate trainers generate quizzes and lesson plans for workshops, training, and skill assessments using AI.",
   openGraph: {
-    title: "AI Quiz Generator for Corporate Training | QuizMint AI",
-    description: "Create training quizzes, assessments, and workshops with AI. Free and paid tiers available for professional use.",
+    title: "AI Quiz and Lesson Plan Generator for Corporate Training | QuizMint AI",
+    description: "Create training quizzes, lesson plans, assessments, and workshop materials with AI. Free and paid tiers available for professional use.",
     url: "https://quizmintai.com/quiz-generator-for-corporate",
+  },
+  alternates: {
+    canonical: "https://quizmintai.com/quiz-generator-for-corporate",
   },
 };
 
@@ -20,7 +23,7 @@ export default function QuizGeneratorForCorporatePage() {
           AI Quiz Generator for Corporate Training
         </h1>
         <p className="text-lg text-gray-700">
-          Create professional training quizzes instantly using AI. Upload materials, generate assessments, and download them for workshops.
+          Create professional training quizzes and lesson plans instantly using AI. Upload materials, generate assessments, and export files for workshops.
         </p>
       </section>
 

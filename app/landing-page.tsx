@@ -500,7 +500,7 @@ export default function Home() {
             >
               <Badge className="mb-6 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800">
                 <Sparkles className="h-4 w-4 mr-1" />
-                AI-Powered Quiz Generator
+                AI Quiz + Lesson Plan Generator
               </Badge>
             </motion.div>
 
@@ -524,7 +524,7 @@ export default function Home() {
               className="text-lg text-zinc-600 dark:text-zinc-400 max-w-xl mb-8"
             >
               Paste lessons, articles, or notes. QuizMintAI instantly generates
-              structured, ready-to-use quizzes with AI precision.
+              structured, ready-to-use quizzes and lesson plans with AI precision.
             </motion.p>
 
             <motion.form
@@ -705,10 +705,10 @@ export default function Home() {
             id="features-heading"
             className="text-4xl md:text-5xl font-bold mb-4"
           >
-            Why Choose QuizMintAI Quiz Generator?
+            Why Choose QuizMintAI For Quizzes And Lesson Plans?
           </h2>
           <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto">
-            Everything you need to create perfect quizzes in seconds
+            Everything you need to create quizzes and lesson plans quickly
           </p>
         </motion.div>
 
@@ -728,8 +728,8 @@ export default function Home() {
             },
             {
               icon: Zap,
-              title: "Export & Share",
-              desc: "Copy to clipboard or download as PDF. Share quizzes instantly with anyone.",
+              title: "Lesson Plans + Export",
+              desc: "Generate classroom-ready lesson plans and export as PDF, DOCX, or PPTX.",
               gradient: "from-orange-500 to-red-500",
             },
           ].map((f, i) => (

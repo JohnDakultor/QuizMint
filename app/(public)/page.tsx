@@ -606,11 +606,13 @@ import Script from "next/script";
 import GoogleOneTap from "@/components/ui/google-oneTap";
 
 export const metadata = {
-  title: "AI Quiz Generator | QuizMintAI",
+  title: "AI Quiz & Lesson Plan Generator | QuizMintAI",
   description:
-    "Turn any text, article, or lesson into a quiz instantly with QuizMintAI. Free and premium plans available. Generate, copy, or download quizzes in seconds.",
+    "Generate quizzes and lesson plans from text, files, and prompts with QuizMintAI. Create, edit, and export classroom-ready content in minutes.",
   keywords: [
     "AI quiz generator",
+    "AI lesson plan generator",
+    "lesson plan maker",
     "create quizzes",
     "online quiz maker",
     "generate quizzes AI",
@@ -619,18 +621,21 @@ export const metadata = {
     "export quizzes",
   ],
   openGraph: {
-    title: "AI Quiz Generator | QuizMintAI",
+    title: "AI Quiz & Lesson Plan Generator | QuizMintAI",
     description:
-      "Turn any text into a quiz instantly with QuizMintAI. Free tier and premium plans available.",
-    url: "https://www.quizmintai.com",
+      "Generate quizzes and lesson plans instantly with QuizMintAI. Built for teachers, students, and trainers.",
+    url: "https://quizmintai.com",
     siteName: "QuizMintAI",
     type: "website",
   },
+  alternates: {
+    canonical: "https://quizmintai.com",
+  },
   twitter: {
     card: "summary_large_image",
-    title: "AI Quiz Generator | QuizMintAI",
+    title: "AI Quiz & Lesson Plan Generator | QuizMintAI",
     description:
-      "Generate quizzes from any text instantly. Free and premium tiers available.",
+      "Create quizzes and lesson plans from your content with AI. Free and premium tiers available.",
   },
   robots: {
     index: true,
@@ -643,9 +648,9 @@ const structuredData = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   name: "QuizMintAI",
-  url: "https://www.quizmintai.com",
+  url: "https://quizmintai.com",
   description:
-    "AI-powered quiz generator to instantly create quizzes from any text.",
+    "AI-powered platform to generate quizzes and lesson plans from text, files, and prompts.",
   applicationCategory: "Education",
   operatingSystem: "Web",
   offers: [
@@ -654,21 +659,21 @@ const structuredData = {
       name: "Free Plan",
       price: "0.00",
       priceCurrency: "USD",
-      url: "https://www.quizmintai.com/sign-up",
+      url: "https://quizmintai.com/sign-up",
     },
     {
       "@type": "Offer",
       name: "Pro Plan",
       price: "5.00",
       priceCurrency: "USD",
-      url: "https://www.quizmintai.com/sign-up",
+      url: "https://quizmintai.com/sign-up",
     },
     {
       "@type": "Offer",
       name: "Premium Plan",
       price: "15.00",
       priceCurrency: "USD",
-      url: "https://www.quizmintai.com/sign-up",
+      url: "https://quizmintai.com/sign-up",
     },
   ],
 };

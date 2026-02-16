@@ -2,12 +2,15 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "AI Quiz Generator for Students | QuizMint AI",
-  description: "QuizMint AI helps students create practice quizzes using AI. Upload study material, generate quizzes, and download them easily.",
+  title: "AI Quiz and Lesson Plan Generator for Students | QuizMint AI",
+  description: "QuizMint AI helps students create practice quizzes and lesson plans using AI. Upload study material, generate outputs, and export them easily.",
   openGraph: {
-    title: "AI Quiz Generator for Students | QuizMint AI",
-    description: "Generate study quizzes instantly with AI. Upload notes, customize quizzes, and use free or premium tiers for better learning.",
+    title: "AI Quiz and Lesson Plan Generator for Students | QuizMint AI",
+    description: "Generate study quizzes and lesson plans instantly with AI. Upload notes, customize outputs, and use free or premium tiers.",
     url: "https://quizmintai.com/quiz-generator-for-students",
+  },
+  alternates: {
+    canonical: "https://quizmintai.com/quiz-generator-for-students",
   },
 };
 
@@ -20,7 +23,7 @@ export default function QuizGeneratorForStudentsPage() {
           AI Quiz Generator for Students
         </h1>
         <p className="text-lg text-gray-700">
-          Practice smarter with AI-generated quizzes. Upload your notes, generate customized quizzes, and download them instantly.
+          Practice smarter with AI-generated quizzes and lesson plans. Upload your notes, generate customized outputs, and export them instantly.
         </p>
       </section>
 
