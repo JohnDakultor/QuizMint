@@ -57,6 +57,37 @@ const ALLOWED_DOMAINS = [
   "wolframalpha.com",
 ];
 
+function normalizeSearchQuery(query: string) {
+  const q = (query || "").toLowerCase();
+  const cleaned = q
+    .replace(/\b(create|generate|make|build|give me|i want|please)\b/g, " ")
+    .replace(/\b(a|an|the)\b/g, " ")
+    .replace(/\bquiz\b/g, " ")
+    .replace(/\b(items?|questions?)\b/g, " ")
+    .replace(/\b(true\/false|true or false|multiple choice|fill in the blanks?)\b/g, " ")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || query;
+}
+
+function tokenize(input: string) {
+  return (input || "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3);
+}
+
+function lexicalOverlapScore(query: string, title?: string, content?: string) {
+  const q = new Set(tokenize(query));
+  if (!q.size) return 0;
+  const text = `${title || ""} ${content || ""}`;
+  const tokens = new Set(tokenize(text));
+  let hit = 0;
+  for (const token of q) if (tokens.has(token)) hit += 1;
+  return hit / q.size;
+}
+
 function chunkText(text: string, chunkSize = 1200, overlap = 200) {
   const cleaned = normalizeForEmbedding(text);
   if (!cleaned) return [];
@@ -126,7 +157,8 @@ export async function ingestWebSourcesForQuery(options: {
   maxChunks?: number;
   minSimilarity?: number;
 }) {
-  const { query, namespace } = options;
+  const { namespace } = options;
+  const query = normalizeSearchQuery(options.query);
   const maxSources = Math.min(Math.max(options.maxSources ?? 5, 3), 5);
   const maxChunks = Math.min(Math.max(options.maxChunks ?? 12, 4), 24);
   const envMin = process.env.RAG_MIN_SIMILARITY
@@ -137,7 +169,15 @@ export async function ingestWebSourcesForQuery(options: {
     0.95
   );
 
-  const results = await searchWeb(query, maxSources);
+  const rawResults = await searchWeb(query, maxSources + 2);
+  const results = rawResults
+    .map((r) => ({
+      ...r,
+      overlap: lexicalOverlapScore(query, r.title, r.content),
+    }))
+    .filter((r) => r.overlap >= 0.25)
+    .sort((a, b) => b.overlap - a.overlap)
+    .slice(0, maxSources);
   const sources: { url: string; title?: string }[] = [];
   const domainOf = (u: string) => {
     try {
@@ -173,7 +213,6 @@ export async function ingestWebSourcesForQuery(options: {
   ];
   const queryEmbedding = await embed(query);
   let chunkIndex = 0;
-  let keptSources = 0;
   for (const item of ordered) {
     if (sources.length >= maxSources) break;
     const url = item.url || "";
@@ -202,44 +241,16 @@ export async function ingestWebSourcesForQuery(options: {
     }
     if (keptAnyChunk) {
       sources.push({ url, title: item.title || undefined });
-      keptSources += 1;
-    }
-  }
-
-  // Fallback: if too few sources passed the filter, keep top sources anyway
-  if (sources.length < 3 && ordered.length > 0) {
-    for (const item of ordered) {
-      if (sources.length >= Math.min(3, maxSources)) break;
-      const url = item.url || "";
-      if (!url || sources.some((s) => s.url === url)) continue;
-      const text = item.content || "";
-      if (!text) continue;
-      const chunks = chunkText(text);
-      for (const chunk of chunks) {
-        if (chunkIndex >= maxChunks) break;
-        const embedding = await embed(chunk);
-        await prisma.$executeRaw`
-          INSERT INTO "Document" (
-            id, namespace, "sourceUrl", title, "sourceType",
-            "chunkIndex", content, embedding, "createdAt", "updatedAt"
-          )
-          VALUES (
-            gen_random_uuid(), ${namespace}, ${url}, ${item.title || null}, ${"web"},
-            ${chunkIndex}, ${chunk}, ${embedding}::vector, now(), now()
-          )
-        `;
-        chunkIndex += 1;
-      }
-      sources.push({ url, title: item.title || undefined });
     }
   }
 
   return {
     sources,
     debug: {
-      query,
+      query: options.query,
       minSimilarity,
-      resultsFound: results.length,
+      normalizedQuery: query,
+      resultsFound: rawResults.length,
       sourcesKept: sources.length,
     },
   };

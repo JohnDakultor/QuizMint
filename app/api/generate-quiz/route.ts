@@ -736,7 +736,7 @@ export async function POST(req: NextRequest) {
       await enhancePromptWithRAG({
         finalPrompt: content,
         namespace,
-        topK: isPromptOnly ? 12 : 5,
+        topK: isPromptOnly ? 5 : 5,
       });
 
     // Generate quiz with safe parameters

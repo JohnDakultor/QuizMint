@@ -5,8 +5,9 @@ export function buildContext(chunks: RagChunk[]): string {
   if (!chunks.length) return "";
 
   return `
-Use the following context to answer the prompt.
-If the context is insufficient or unrelated, say you don't have enough information.
+Retrieved context is OPTIONAL supporting material.
+Use it only when directly relevant to the user's request.
+If any context is unrelated, ignore it.
 
 Context:
 ${chunks.map((c, i) => `(${i + 1}) ${c.content}`).join("\n\n")}

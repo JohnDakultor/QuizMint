@@ -174,6 +174,12 @@ export async function generateQuizAI(
     ? "Include adaptive learning hints and explanations for each question."
     : "";
 
+  const requestTopic = (userPrompt || text || "").trim();
+  const hasRetrievedContext =
+    /Context:/i.test(text) ||
+    /User request:/i.test(text) ||
+    /Use the following context/i.test(text);
+
   // Check if the text looks like a prompt/instruction vs actual content
   const isPromptLike = text.length < 500 && 
     (text.includes("create") || 
@@ -185,14 +191,20 @@ export async function generateQuizAI(
   const systemPrompt = `
 You are Quizmints AI, a quiz generator.
 
+PRIMARY INTENT (MUST FOLLOW):
+- The user's topic/request is: "${requestTopic}"
+- Keep questions centered on this request.
+- If retrieved context is unrelated to this topic, IGNORE that context.
+
 ${isPromptLike ? 
   // When user gives a prompt (e.g., "create me a quiz about plants")
-  `The user has provided a topic or prompt. Generate a quiz about: "${text}"
+  `The user has provided a topic or prompt. Generate a quiz about: "${requestTopic}"
   - Use general knowledge about this topic
   - Create relevant and educational questions
   - Ensure questions are factual and accurate` : 
   // When user provides actual content
-  `Use ONLY the following content to create a quiz. DO NOT invent content.
+  `Use provided content to create a quiz, but prioritize the user's requested topic.
+  ${hasRetrievedContext ? "- Retrieved context is OPTIONAL and only valid if it directly matches the user's topic." : ""}
   - Questions must be directly based on the provided content
   - Do not add external knowledge not in the content`}
 
@@ -236,7 +248,7 @@ JSON SCHEMA (MUST MATCH EXACTLY):
 `;
 
   const finalUserPrompt = isPromptLike 
-    ? `Generate a quiz about: ${text}
+    ? `Generate a quiz about: ${requestTopic}
        Difficulty: ${difficultyPrompt}
        ${adaptivePrompt}
        ${userPrompt ? `User Instructions (must follow): ${userPrompt}` : ''}`
@@ -245,7 +257,8 @@ JSON SCHEMA (MUST MATCH EXACTLY):
        
        Difficulty: ${difficultyPrompt}
        Adaptive: ${adaptivePrompt}
-       ${userPrompt ? `User Instructions (must follow): ${userPrompt}` : ''}`;
+       ${userPrompt ? `User Instructions (must follow): ${userPrompt}` : ''}
+       Primary Topic (must dominate output): ${requestTopic}`;
 
   const modelToUse = isProOrPremium
     ? process.env.OPENROUTER_MODEL_PRO ||
