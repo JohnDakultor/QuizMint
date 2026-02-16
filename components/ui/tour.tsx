@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import { driver, DriverStep } from "driver.js";
+import { driver, DriveStep } from "driver.js";
 import "driver.js/dist/driver.css";
 
 export interface TourProps {
-  steps: DriverStep[];
+  steps: DriveStep[];
   tourId: string;
   autoStart?: boolean;
   autoStartDelayMs?: number;
