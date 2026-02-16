@@ -202,6 +202,9 @@ RULES:
 - Only ONE option must be correct
 - Options must be clear and distinct
 - Ensure the answer exists in the options
+- Strictly follow the user's directions about topic and question types.
+- If the user specifies question types (e.g., multiple choice, true/false, fill in the blanks), include all requested types.
+- If the user specifies a number of items, match it exactly.
 
 Difficulty: ${difficultyPrompt}
 ${adaptivePrompt}
@@ -236,45 +239,84 @@ JSON SCHEMA (MUST MATCH EXACTLY):
     ? `Generate a quiz about: ${text}
        Difficulty: ${difficultyPrompt}
        ${adaptivePrompt}
-       ${userPrompt ? `Additional instructions: ${userPrompt}` : ''}`
+       ${userPrompt ? `User Instructions (must follow): ${userPrompt}` : ''}`
     : `Content to base quiz on:
        ${text}
        
        Difficulty: ${difficultyPrompt}
        Adaptive: ${adaptivePrompt}
-       ${userPrompt ? `User Instructions: ${userPrompt}` : ''}`;
+       ${userPrompt ? `User Instructions (must follow): ${userPrompt}` : ''}`;
 
   const modelToUse = isProOrPremium
-    ? "tngtech/deepseek-r1t2-chimera:free"
-    : "tngtech/deepseek-r1t-chimera:free";
+    ? process.env.OPENROUTER_MODEL_PRO ||
+      process.env.OPENROUTER_MODEL ||
+      "tngtech/deepseek-r1t2-chimera"
+    : process.env.OPENROUTER_MODEL_FREE ||
+      process.env.OPENROUTER_MODEL ||
+      "tngtech/deepseek-r1t2-chimera";
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: modelToUse,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: finalUserPrompt },
-      ],
-    }),
-  });
+  const fallbackModel =
+    process.env.OPENROUTER_FALLBACK_MODEL || "openai/gpt-4o-mini";
 
-  if (!response.ok) {
-    const errorData = await response.text();
-    throw new Error("AI response failed: " + errorData);
-  }
+  const callOpenRouter = async (model: string) => {
+    const response = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost",
+          "X-Title": "QuizMint Quiz Generator",
+        },
+        body: JSON.stringify({
+          model,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: finalUserPrompt },
+          ],
+          temperature: 0.2,
+          max_tokens: 4000,
+        }),
+      }
+    );
 
-  const data = (await response.json()) as OpenRouterResponse;
-  const raw = data?.choices?.[0]?.message?.content || "";
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error("AI response failed: " + responseText);
+    }
+
+    let data: OpenRouterResponse | null = null;
+    try {
+      data = JSON.parse(responseText) as OpenRouterResponse;
+    } catch (err) {
+      throw new Error("AI response not JSON: " + responseText.slice(0, 300));
+    }
+
+    const raw = data?.choices?.[0]?.message?.content?.trim() || "";
+    if (!raw) {
+      throw new Error(
+        "AI returned empty content: " + responseText.slice(0, 300)
+      );
+    }
+    return raw;
+  };
+
+  let raw = await callOpenRouter(modelToUse);
 
   console.log("🤖 AI Raw Response:", raw.substring(0, 500)); // Add logging
 
-  const parsed = safeExtractJSON(raw);
+  let parsed: any | null = null;
+  try {
+    parsed = safeExtractJSON(raw);
+  } catch {
+    // Retry once with a more reliable model for JSON outputs
+    raw = await callOpenRouter(fallbackModel);
+    console.log("🤖 AI Raw Response (fallback):", raw.substring(0, 500));
+    parsed = safeExtractJSON(raw);
+  }
+
   if (!parsed) throw new Error("AI did not return valid JSON");
 
   console.log("🤖 AI Parsed Response:", {
@@ -287,18 +329,59 @@ JSON SCHEMA (MUST MATCH EXACTLY):
 }
 
 function safeExtractJSON(raw: string) {
-  
   try {
     return JSON.parse(raw);
   } catch {
     try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      const cleaned = raw
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .replace(/\u0000/g, "")
+        .trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch {
+          return attemptJSONRepair(jsonMatch[0]);
+        }
       }
     } catch (innerErr) {
       console.error("Failed to extract JSON from AI response");
     }
+    throw new Error("No valid JSON found in response");
+  }
+}
+
+function attemptJSONRepair(jsonString: string) {
+  let repaired = jsonString;
+  repaired = repaired.replace(/,\s*([\]}])/g, "$1");
+  repaired = repaired.replace(/[“”]/g, '"');
+  repaired = repaired.replace(/[‘’]/g, "'");
+  repaired = repaired.replace(/\\n/g, "\n");
+  repaired = repaired.replace(/\r\n/g, "\n");
+  // If quotes are unbalanced, truncate trailing partial string
+  const quoteCount = (repaired.match(/"/g) || []).length;
+  if (quoteCount % 2 === 1) {
+    const lastQuote = repaired.lastIndexOf('"');
+    if (lastQuote > -1) {
+      repaired = repaired.slice(0, lastQuote + 1);
+    }
+  }
+  // Balance braces/brackets if the model was cut off
+  const openBraces = (repaired.match(/\{/g) || []).length;
+  const closeBraces = (repaired.match(/\}/g) || []).length;
+  const openBrackets = (repaired.match(/\[/g) || []).length;
+  const closeBrackets = (repaired.match(/\]/g) || []).length;
+  if (closeBraces < openBraces) {
+    repaired += "}".repeat(openBraces - closeBraces);
+  }
+  if (closeBrackets < openBrackets) {
+    repaired += "]".repeat(openBrackets - closeBrackets);
+  }
+  try {
+    return JSON.parse(repaired);
+  } catch {
     throw new Error("No valid JSON found in response");
   }
 }
