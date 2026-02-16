@@ -1063,6 +1063,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import Tour from "@/components/ui/tour";
 
 const FREE_PLAN_LIMIT = 3;
 
@@ -2026,12 +2027,83 @@ export default function LessonPlanPage() {
   }, [error]);
 
   const isPausedMessage = error?.trim().toLowerCase() === "generation paused.";
+  const lessonPlanTourSteps = [
+    {
+      element: "#lessonplan-topic",
+      popover: {
+        title: "Set the topic",
+        description:
+          "Enter the lesson topic first, then fill subject and grade level.",
+      },
+    },
+    {
+      element: "#lessonplan-subject",
+      popover: {
+        title: "Set the subject",
+        description: "Add the subject area for this lesson plan.",
+      },
+    },
+    {
+      element: "#lessonplan-grade",
+      popover: {
+        title: "Set the grade",
+        description: "Enter the target grade or year level.",
+      },
+    },
+    {
+      element: "#lessonplan-days",
+      popover: {
+        title: "Choose duration",
+        description:
+          "Set number of days (max 7) and minutes per day to control scope.",
+      },
+    },
+    {
+      element: "#lessonplan-minutes",
+      popover: {
+        title: "Set minutes per day",
+        description: "Choose how many minutes each day will cover.",
+      },
+    },
+    {
+      element: "#lessonplan-objectives",
+      popover: {
+        title: "Learning objectives",
+        description: "Optional: add target outcomes to guide generation.",
+      },
+    },
+    {
+      element: "#lessonplan-constraints",
+      popover: {
+        title: "Special constraints",
+        description: "Optional: add rules, requirements, or limitations.",
+      },
+    },
+    {
+      element: "#lessonplan-generate",
+      popover: {
+        title: "Generate plan",
+        description:
+          "Click to generate. Use Pause anytime to stop an in-flight request.",
+      },
+    },
+    {
+      element: "#lessonplan-history",
+      popover: {
+        title: "Recent plans",
+        description:
+          "Open recent generated plans and reload one instantly.",
+      },
+    },
+  ];
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+      <Tour steps={lessonPlanTourSteps} tourId="lessonplan-generator" />
       {/* Header */}
       <div className="relative text-center pt-12 sm:pt-0">
         <button
+          id="lessonplan-history"
           type="button"
           onClick={() => setHistoryOpen(true)}
           className="absolute right-1 top-1 sm:right-0 sm:top-0 inline-flex h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 items-center justify-center rounded-full border border-blue-200 bg-linear-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-sm transition hover:from-blue-100 hover:to-indigo-100 hover:text-blue-800"
@@ -2090,6 +2162,7 @@ export default function LessonPlanPage() {
                   Lesson Topic *
                 </label>
                 <Input 
+                  id="lessonplan-topic"
                   name="topic" 
                   placeholder="e.g., Photosynthesis, World War II, Quadratic Equations" 
                   required 
@@ -2102,6 +2175,7 @@ export default function LessonPlanPage() {
                   Subject *
                 </label>
                 <Input 
+                  id="lessonplan-subject"
                   name="subject" 
                   placeholder="e.g., Science, History, Mathematics" 
                   required 
@@ -2117,6 +2191,7 @@ export default function LessonPlanPage() {
                   Grade Level *
                 </label>
                 <Input 
+                  id="lessonplan-grade"
                   name="grade" 
                   placeholder="e.g., Grade 7, Senior High School" 
                   required 
@@ -2129,6 +2204,7 @@ export default function LessonPlanPage() {
                   Number of Days *
                 </label>
                 <Input 
+                  id="lessonplan-days"
                   name="days" 
                   type="number" 
                   min="1" 
@@ -2144,6 +2220,7 @@ export default function LessonPlanPage() {
                   Minutes per Day *
                 </label>
                 <Input
+                  id="lessonplan-minutes"
                   name="minutesPerDay"
                   type="number"
                   min="10"
@@ -2161,6 +2238,7 @@ export default function LessonPlanPage() {
                 Learning Objectives (optional)
               </label>
               <Textarea 
+                id="lessonplan-objectives"
                 name="objectives" 
                 placeholder="Enter specific learning objectives, one per line..."
                 className="min-h-30 border-2 focus:border-indigo-500"
@@ -2173,6 +2251,7 @@ export default function LessonPlanPage() {
                 Special Constraints (optional)
               </label>
               <Textarea 
+                id="lessonplan-constraints"
                 name="constraints" 
                 placeholder="Any specific requirements or constraints..."
                 className="min-h-25 border-2 focus:border-gray-500"
@@ -2181,6 +2260,7 @@ export default function LessonPlanPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-stretch">
               <Button
+                id="lessonplan-generate"
                 type="submit"
                 className="w-full sm:w-auto h-14 text-lg font-bold bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg"
                 disabled={loading}
@@ -2246,7 +2326,7 @@ export default function LessonPlanPage() {
                   onClick={() => downloadLessonPlan("pdf")}
                   disabled={downloadingPdf || !isPremium}
                   variant={!isPremium ? "outline" : "default"}
-                  className="bg-linear-to-rrom-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white shadow-lg"
+                  className="bg-linear-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white shadow-lg"
                   data-print-hidden
                 >
                   {downloadingPdf ? (

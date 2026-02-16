@@ -228,35 +228,72 @@ Return ONLY valid JSON, no other text.`;
 
 function safeExtractJSON(raw: string) {
   try {
-    console.log("Attempting to parse JSON...");
-    
-    // Try to parse directly first
-    try {
-      const parsed = JSON.parse(raw);
-      console.log("Direct JSON parse successful");
-      return parsed;
-    } catch (directError) {
-      console.log("Direct parse failed, trying to extract JSON from text...");
-    }
-    
-    // Try to extract JSON from markdown or other text
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const jsonString = jsonMatch[0];
-      console.log("Found JSON in text, length:", jsonString.length);
-      const parsed = JSON.parse(jsonString);
-      console.log("Extracted JSON parse successful");
-      return parsed;
-    }
-    
-    console.error("No JSON found in response");
-    throw new Error("No valid JSON found in response");
-    
+    return JSON.parse(raw);
   } catch (error: any) {
-    console.error("JSON parsing failed:", error.message);
-    console.error("Raw response sample:", raw.substring(0, 500));
-    throw error;
+    console.warn("Direct JSON parsing failed:", error?.message);
+    try {
+      const cleaned = raw
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .replace(/\u0000/g, "")
+        .trim();
+
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("No JSON object found in AI response");
+      }
+
+      const jsonString = jsonMatch[0];
+      try {
+        return JSON.parse(jsonString);
+      } catch {
+        return attemptJSONRepair(jsonString);
+      }
+    } catch (repairError: any) {
+      console.error("JSON parsing failed:", repairError?.message || repairError);
+      console.error("Raw response sample:", raw.substring(0, 500));
+      throw new Error("No valid JSON found in response");
+    }
   }
+}
+
+function attemptJSONRepair(jsonString: string) {
+  let repaired = jsonString;
+
+  // Remove trailing commas before } or ]
+  repaired = repaired.replace(/,\s*([\]}])/g, "$1");
+
+  // Normalize common mojibake quotes
+  repaired = repaired.replace(/[â€œâ€]/g, '"');
+  repaired = repaired.replace(/[â€˜â€™]/g, "'");
+
+  // Normalize escaped newlines
+  repaired = repaired.replace(/\\n/g, "\n");
+  repaired = repaired.replace(/\r\n/g, "\n");
+
+  // If quotes are unbalanced, trim to the last complete quote
+  const quoteCount = (repaired.match(/"/g) || []).length;
+  if (quoteCount % 2 === 1) {
+    const lastQuote = repaired.lastIndexOf('"');
+    if (lastQuote > -1) {
+      repaired = repaired.slice(0, lastQuote + 1);
+    }
+  }
+
+  // Balance braces/brackets if output is truncated
+  const openBraces = (repaired.match(/\{/g) || []).length;
+  const closeBraces = (repaired.match(/\}/g) || []).length;
+  const openBrackets = (repaired.match(/\[/g) || []).length;
+  const closeBrackets = (repaired.match(/\]/g) || []).length;
+
+  if (closeBraces < openBraces) {
+    repaired += "}".repeat(openBraces - closeBraces);
+  }
+  if (closeBrackets < openBrackets) {
+    repaired += "]".repeat(openBrackets - closeBrackets);
+  }
+
+  return JSON.parse(repaired);
 }
 
 function createMinimalValidLessonPlan(input: LessonPlanInput) {
