@@ -328,6 +328,10 @@ import ytdl from "ytdl-core";
 import axios from "axios";
 import { XMLParser } from "fast-xml-parser";
 import { generateQuizAI } from "@/lib/ai";
+import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
+import { semanticCacheStore } from "@/lib/rag/semanticCache";
+import { ingestWebSourcesForQuery } from "@/lib/rag/web";
+import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
 
 import { fetchTranscript } from "@/lib/youtube-transcript";
 
@@ -342,6 +346,29 @@ interface YouTubeAPIResponse {
 
 const COOLDOWN_HOURS = 3;
 const FREE_QUIZ_LIMIT = 3;
+
+function hashString(input: string) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function chunkText(text: string, chunkSize = 1200, overlap = 200) {
+  const cleaned = normalizeForEmbedding(text);
+  if (!cleaned) return [];
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < cleaned.length) {
+    const end = Math.min(start + chunkSize, cleaned.length);
+    chunks.push(cleaned.slice(start, end));
+    if (end === cleaned.length) break;
+    start = Math.max(end - overlap, 0);
+  }
+  return chunks;
+}
 
 // Helper to check if input is URL
 function isURL(str: string) {
@@ -461,11 +488,28 @@ export async function POST(req: NextRequest) {
             new Date(user.lastQuizAt).getTime() +
               COOLDOWN_HOURS * 60 * 60 * 1000
           );
+          const adCooldownMs = COOLDOWN_HOURS * 60 * 60 * 1000;
+          const windowStart = user.quizAdResetWindowAt
+            ? new Date(user.quizAdResetWindowAt)
+            : null;
+          const resetCount = user.quizAdResetCount ?? 0;
+          const windowExpired =
+            !windowStart || now.getTime() - windowStart.getTime() >= adCooldownMs;
+          const remainingResets = windowExpired ? 5 : Math.max(5 - resetCount, 0);
+          const adResetAvailable = remainingResets > 0;
+          const nextAdResetAt = adResetAvailable
+            ? null
+            : new Date(
+                (windowStart ? windowStart.getTime() : now.getTime()) + adCooldownMs
+              ).toISOString();
           return NextResponse.json(
             {
               error: "Free limit reached. Come back later.",
               nextFreeAt,
               quizUsage: user.quizUsage,
+              adResetAvailable,
+              nextAdResetAt,
+              adResetsRemaining: remainingResets,
             },
             { status: 403 }
           );
@@ -500,6 +544,7 @@ export async function POST(req: NextRequest) {
 
     // Determine content source
     let content = text;
+    let sourceTitle = "";
 
     if (isURL(content)) {
       if (content.includes("youtube.com") || content.includes("youtu.be")) {
@@ -541,10 +586,18 @@ export async function POST(req: NextRequest) {
         if (!extractedText?.trim()) {
           try {
             const { title, description } = await fetchYouTubeMetadata(videoId);
+            sourceTitle = title;
             extractedText = `${title}\n\n${description}`;
           } catch (err) {
             console.warn("Fallback metadata fetch failed:", err);
             extractedText = `⚠️ Limited content: only video ID ${videoId} available.`;
+          }
+        } else {
+          try {
+            const { title } = await fetchYouTubeMetadata(videoId);
+            sourceTitle = title;
+          } catch {
+            sourceTitle = "";
           }
         }
 
@@ -616,14 +669,88 @@ export async function POST(req: NextRequest) {
       adaptiveLearning: body.adaptiveLearning
     });
 
+    const isPromptOnly = !isURL(text);
+    const isUrlInput = isURL(text);
+    const baseNamespace = `quiz:${user.id}`;
+    const webNamespace = `web:${user.id}:${hashString(text)}`;
+    const urlNamespace = `url:${user.id}:${hashString(text)}`;
+    const namespace = isPromptOnly ? webNamespace : isUrlInput ? urlNamespace : baseNamespace;
+
+    let webDebug: any = null;
+    if (isPromptOnly) {
+      const docCountRows = await prisma.$queryRaw<{ count: number }[]>`
+        SELECT COUNT(*)::int AS count FROM "Document" WHERE namespace = ${namespace}
+      `;
+      const hasDocs = (docCountRows[0]?.count ?? 0) > 0;
+
+      if (!hasDocs) {
+        try {
+          const webResult = await ingestWebSourcesForQuery({
+            query: text,
+            namespace,
+          });
+          webDebug = webResult.debug;
+        } catch (webErr) {
+          console.warn("Web RAG ingestion failed:", webErr);
+        }
+      }
+    } else if (isUrlInput) {
+      const docCountRows = await prisma.$queryRaw<{ count: number }[]>`
+        SELECT COUNT(*)::int AS count FROM "Document" WHERE namespace = ${namespace}
+      `;
+      const hasDocs = (docCountRows[0]?.count ?? 0) > 0;
+
+      if (!hasDocs) {
+        const chunks = chunkText(content);
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          const embedding = await embed(chunk);
+          await prisma.$executeRaw`
+            INSERT INTO "Document" (
+              id, namespace, "sourceUrl", title, "sourceType",
+              "chunkIndex", content, embedding, "createdAt", "updatedAt"
+            )
+            VALUES (
+              gen_random_uuid(), ${namespace}, ${text}, ${sourceTitle || null}, ${"url"},
+              ${i}, ${chunk}, ${embedding}::vector, now(), now()
+            )
+          `;
+        }
+      }
+    }
+
+    const { enhancedPrompt, cachedResponse, sources, ragMeta, hasContext } =
+      await enhancePromptWithRAG({
+        finalPrompt: content,
+        namespace,
+        topK: isPromptOnly ? 12 : 5,
+      });
+
     // Generate quiz with safe parameters
-    const quiz = await generateQuizAI(
-      content,
-      safeDifficulty,
-      safeAdaptive,
-      isProOrPremium,
-      ""
-    );
+    const quiz = cachedResponse
+      ? JSON.parse(cachedResponse)
+      : await generateQuizAI(
+          isPromptOnly && !hasContext ? text : enhancedPrompt,
+          safeDifficulty,
+          safeAdaptive,
+          isProOrPremium,
+          text
+        );
+
+    let cacheStored = false;
+    if (ragMeta && !cachedResponse) {
+      try {
+        await semanticCacheStore(
+          ragMeta.promptForCache,
+          ragMeta.embedding,
+          JSON.stringify(quiz),
+          ragMeta.namespace
+        );
+        cacheStored = true;
+      } catch (cacheErr) {
+        console.warn("Semantic cache store failed:", cacheErr);
+      }
+    }
 
     // Sanitize questions
     const safeQuestions = quiz.questions.map((q: any) => ({
@@ -654,8 +781,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       message: "Quiz generated successfully",
       quiz: savedQuiz,
+      sources: sources ?? [],
+      webDebug,
       quizUsage: isFree ? user.quizUsage + 1 : null,
       remaining: isFree ? FREE_QUIZ_LIMIT - (user.quizUsage + 1) : null,
+      cache: {
+        hit: Boolean(cachedResponse),
+        stored: cacheStored,
+        hasRagMeta: Boolean(ragMeta),
+      },
     });
   } catch (err: any) {
     console.error("Server error:", err);
@@ -665,3 +799,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+  

@@ -20,6 +20,9 @@ model User {
 
   quizUsage           Int      @default(0)
   lastQuizAt          DateTime?
+  lastQuizAdResetAt   DateTime?
+  quizAdResetCount    Int      @default(0)
+  quizAdResetWindowAt DateTime?
   subscriptionEnd     DateTime?
   subscriptionPlan    String?
   subscriptionStart   DateTime?
@@ -28,6 +31,9 @@ model User {
   paypalCustomerId    String?
   adaptiveLearning    Boolean? @default(false)
   aiDifficulty        String?
+
+  lessonPlanUsage     Int  @default(0)  
+  lastLessonPlanAt    DateTime?
 
   quizzes             Quiz[]
   resetTokens         PasswordResetToken[]
@@ -115,3 +121,32 @@ model BlogPost {
   updatedAt       DateTime @updatedAt
 }
 
+
+
+model Document {
+  id         String   @id @default(cuid())
+  namespace  String
+  sourceUrl  String?
+  title      String?
+  sourceType String?  // "web" | "pdf" | "pptx" | "docx" | "text"
+  chunkIndex Int
+  content    String
+  embedding  Unsupported("vector")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([namespace])
+  @@index([sourceUrl])
+}
+
+model SemanticCache {
+  id        String   @id @default(cuid())
+  namespace String
+  prompt    String
+  response  String
+  embedding Unsupported("vector")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([namespace])
+}

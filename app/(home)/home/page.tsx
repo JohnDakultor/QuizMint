@@ -435,12 +435,23 @@ import { ArrowRight, Copy, FileDown, X } from "lucide-react";
 import FileUpload from "@/components/ui/file-upload";
 import { motion } from "framer-motion";
 import jsPDF from "jspdf";
+import { SourceIcons, SourceIcon } from "@/components/source-icons";
+import Tour from "@/components/ui/tour";
+import AdUnlockButton from "@/components/ad-unlock-button";
 
 export default function Dashboard() {
   const [prompt, setPrompt] = useState("");
   const [quiz, setQuiz] = useState<any | null>(null);
+  const [sources, setSources] = useState<SourceIcon[]>([]);
+  const [lastLoaded, setLastLoaded] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [adUnlockInfo, setAdUnlockInfo] = useState<{
+    available: boolean;
+    nextAdResetAt?: string | null;
+    nextFreeAt?: string | null;
+    remaining?: number;
+  } | null>(null);
   const [user, setUser] = useState<any>(null);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -458,6 +469,56 @@ export default function Dashboard() {
       }
     };
     fetchUser();
+  }, []);
+
+  const tourSteps = [
+    {
+      element: "#quiz-input",
+      popover: {
+        title: "Paste or type",
+        description:
+          "Example: Create a 10-item quiz about the water cycle. Use 5 multiple choice and 5 true/false. Or paste a youtube link here.",
+      },
+    },
+    {
+      element: "#quiz-upload",
+      popover: {
+        title: "Upload a file",
+        description: "Upload a document to generate questions from your content.",
+      },
+    },
+    {
+      element: "#quiz-generate",
+      popover: {
+        title: "Generate quiz",
+        description: "Click to generate your quiz using AI and your sources.",
+      },
+    },
+    {
+      element: "#quiz-output",
+      popover: {
+        title: "Your quiz",
+        description:
+          "Your generated quiz appears here. You can copy or download it.",
+      },
+    },
+  ];
+
+  useEffect(() => {
+    const fetchLatestQuiz = async () => {
+      try {
+        const res = await fetch("/api/quizzes/latest");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.quiz) {
+          setQuiz(data.quiz);
+          setLastLoaded(true);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchLatestQuiz();
   }, []);
 
   const handlePaste = async () => {
@@ -596,6 +657,8 @@ export default function Dashboard() {
     setLoading(true);
     setQuiz(null);
     setError("");
+    setSources([]);
+    setAdUnlockInfo(null);
 
     try {
       const difficulty = user?.aiDifficulty || "easy";
@@ -622,6 +685,8 @@ export default function Dashboard() {
           );
         } else {
           setQuiz(data.quiz);
+          setSources(Array.isArray(data.sources) ? data.sources : []);
+          setLastLoaded(false);
           setUploadedFile(null);
         }
       } else {
@@ -653,8 +718,20 @@ export default function Dashboard() {
       }
 
       if (!res.ok) {
-   
-        setError(data.error || data.message || `Failed to generate quiz (${res.status})`);
+        if (res.status === 403 && data?.error?.toString().includes("Free limit")) {
+          setAdUnlockInfo({
+            available: Boolean(data?.adResetAvailable),
+            nextAdResetAt: data?.nextAdResetAt || null,
+            nextFreeAt: data?.nextFreeAt || null,
+            remaining:
+              typeof data?.adResetsRemaining === "number"
+                ? data.adResetsRemaining
+                : undefined,
+          });
+        }
+        setError(
+          data.error || data.message || `Failed to generate quiz (${res.status})`
+        );
       } else {
         
         
@@ -671,6 +748,9 @@ export default function Dashboard() {
         } else {
           
           setQuiz(data.quiz);
+          setSources(Array.isArray(data.sources) ? data.sources : []);
+          setLastLoaded(false);
+          setAdUnlockInfo(null);
         }
       }
     }
@@ -683,6 +763,7 @@ export default function Dashboard() {
 };
   return (
     <div className="flex flex-col items-center justify-center w-full px-6 min-h-screen">
+      <Tour steps={tourSteps} tourId="home-quiz" />
       <section className="flex flex-col lg:flex-row gap-8 justify-center w-full max-w-7xl">
         {/* ================= INPUT CARD ================= */}
         <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-120 h-137.5">
@@ -692,14 +773,15 @@ export default function Dashboard() {
               Create Quiz Input
             </CardTitle>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Paste text, write instructions, or upload a document.
+              Paste text or youtube link, write instructions, or upload a document.
             </p>
           </CardHeader>
 
           <CardContent className="space-y-4 flex flex-col h-full">
             <div className="relative flex-1">
               <textarea
-                placeholder="Paste lesson content, syllabus, or instructions here..."
+                id="quiz-input"
+                placeholder="Paste text, youtube link, or instructions here..."
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 className="h-full w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
@@ -718,7 +800,8 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <FileUpload
+            <div id="quiz-upload">
+              <FileUpload
               onFileSelect={(file) => {
                 if (!user || user.subscriptionPlan !== "premium") {
                   setShowSubscribeModal(true);
@@ -726,9 +809,11 @@ export default function Dashboard() {
                 }
                 setUploadedFile(file);
               }}
-            />
+              />
+            </div>
 
             <Button
+              id="quiz-generate"
               className="w-full bg-blue-600 hover:bg-blue-700 mt-2"
               onClick={generateQuizFromPrompt}
               disabled={loading}
@@ -739,8 +824,34 @@ export default function Dashboard() {
 
             {error && (
               <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <div>{error}</div>
+                    {adUnlockInfo && (
+                      <div className="text-sm text-muted-foreground">
+                        {adUnlockInfo.nextFreeAt && (
+                          <div>
+                            Free limit resets at{" "}
+                            {new Date(adUnlockInfo.nextFreeAt).toLocaleTimeString()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </AlertDescription>
               </Alert>
+            )}
+
+            {adUnlockInfo && (
+              <AdUnlockButton
+                disabled={!adUnlockInfo.available}
+                cooldownUntil={adUnlockInfo.nextAdResetAt || undefined}
+                remaining={adUnlockInfo.remaining}
+                onUnlocked={() => {
+                  setError("Usage reset. You can generate again.");
+                  setAdUnlockInfo(null);
+                }}
+              />
             )}
 
             {uploadedFile && (
@@ -759,16 +870,28 @@ export default function Dashboard() {
         </Card>
 
         {/* ================= OUTPUT CARD (ALWAYS VISIBLE) ================= */}
-        <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-130 h-137.5 flex flex-col">
+        <Card
+          id="quiz-output"
+          className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-130 h-137.5 flex flex-col"
+        >
           <CardHeader className="relative">
             <CardTitle className="text-xl font-semibold">
               {" "}
               Generated Quiz
             </CardTitle>
 
+            {lastLoaded && (
+              <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                Showing last generated quiz
+              </div>
+            )}
+
             {quiz && (
               <button
-                onClick={() => setQuiz(null)}
+                onClick={() => {
+                  setQuiz(null);
+                  setLastLoaded(false);
+                }}
                 className="absolute right-4 top-4 text-zinc-400 hover:text-red-500"
               >
                 <X className="h-5 w-5" />
@@ -789,6 +912,12 @@ export default function Dashboard() {
                 PPT
               </Button>
             </div>
+
+            {sources.length > 0 ? (
+              <div className="mt-3">
+                <SourceIcons sources={sources} variant="pills" />
+              </div>
+            ) : null}
           </CardHeader>
 
           <CardContent className="flex-1 max-h-112.5 overflow-y-auto space-y-4 pr-2">

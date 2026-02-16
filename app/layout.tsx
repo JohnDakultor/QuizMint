@@ -31,7 +31,6 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-linear-to-b from-white to-zinc-50 dark:from-black dark:to-zinc-900 text-zinc-900 dark:text-zinc-50`}
       >
-        {/* Google AdSense */}
         <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8981480808378326"
@@ -40,12 +39,10 @@ export default function RootLayout({
         />
 
         <Script
-        src="https://accounts.google.com/gsi/client"
-        strategy="afterInteractive"
-      />
-      <Providers>
-        {children}
-        </Providers>
+          src="https://accounts.google.com/gsi/client"
+          strategy="afterInteractive"
+        />
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
