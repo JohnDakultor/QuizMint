@@ -406,6 +406,12 @@ VALIDATION:
 
 
     
+    const model =
+      process.env.OPENROUTER_MODEL_PUBLIC ||
+      process.env.OPENROUTER_MODEL_FREE ||
+      process.env.OPENROUTER_MODEL ||
+      "tngtech/deepseek-r1t2-chimera";
+
     const aiResponse = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
       {
@@ -417,7 +423,7 @@ VALIDATION:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "tngtech/deepseek-r1t2-chimera:free",
+          model,
           response_format: { type: "json_object" },
           messages: [
             {
