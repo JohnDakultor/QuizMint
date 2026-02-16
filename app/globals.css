@@ -129,3 +129,18 @@ html {
   visibility: hidden !important;
   display: none !important;
 }
+
+/* Driver.js tour styling to match QuizMint UI */
+.quizmint-tour .driver-popover-title {
+  font-weight: 700;
+  color: #111827;
+}
+.quizmint-tour .driver-popover-description {
+  color: #374151;
+}
+.quizmint-tour .driver-popover-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.quizmint-tour .driver-popover-footer button {
+  border-radius: 9999px;
+}

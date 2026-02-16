@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import Tour from "@/components/ui/tour";
 import {
   Loader2,
   CheckCircle,
@@ -127,8 +128,54 @@ export default function Account() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+      <Tour
+        tourId="account"
+        steps={[
+          {
+            element: "#account-header",
+            popover: {
+              title: "Account overview",
+              description:
+                "See your subscription status and manage your billing here.",
+            },
+          },
+          {
+            element: "#account-plan",
+            popover: {
+              title: "Plan details",
+              description:
+                "Review your current plan, expiration, and upgrade options.",
+            },
+          },
+          {
+            element: "#account-billing",
+            popover: {
+              title: "Manage billing",
+              description: "Open billing to update or manage your subscription.",
+            },
+          },
+          {
+            element: "#account-preferences",
+            popover: {
+              title: "AI preferences",
+              description:
+                "Customize difficulty and adaptive learning settings.",
+            },
+          },
+          {
+            element: "#account-save",
+            popover: {
+              title: "Save preferences",
+              description: "Apply your AI preference changes.",
+            },
+          },
+        ]}
+      />
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10">
+      <div
+        id="account-header"
+        className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10"
+      >
         <div className="min-w-0">
           <h1 className="text-3xl md:text-4xl font-extrabold text-zinc-900 dark:text-zinc-50 wrap-break-word">
             Account
@@ -170,6 +217,7 @@ export default function Account() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Plan Card */}
         <motion.div
+          id="account-plan"
           initial={{ y: 8, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.28 }}
@@ -223,6 +271,7 @@ export default function Account() {
               <div className="text-sm text-zinc-400 mr-0 sm:mr-2">Billing</div>
               <div className="flex gap-2 flex-wrap">
                 <Button
+                  id="account-billing"
                   onClick={manageBilling}
                   variant="outline"
                   className="flex items-center gap-2"
@@ -280,6 +329,7 @@ export default function Account() {
 
         {/* Settings Panel */}
         <motion.form
+          id="account-preferences"
           onSubmit={saveSettings}
           initial={{ y: 8, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -377,6 +427,7 @@ export default function Account() {
 
           <div className="mt-6 flex flex-col sm:flex-row gap-3 flex-wrap">
             <Button
+              id="account-save"
               type="submit"
               className="bg-violet-600 hover:bg-violet-700 text-white"
               disabled={saving}

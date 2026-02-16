@@ -30,9 +30,16 @@ export default async function HomeLayout({ children }: { children: React.ReactNo
       >
         <ClientLayout>
           <Navigation />
-          <main className="grow max-w-7xl mx-auto w-full px-4 pb-20 sm:pb-0 mt-6">
-            {children}
-          </main>
+          <main
+          className="
+            transition-all duration-300
+            px-4 pt-6
+            pb-28 sm:pb-6
+            ml-0 sm:ml-(--sidebar-width,16rem)
+          "
+        >
+          {children}
+        </main>
         </ClientLayout>
       </div>
     </>

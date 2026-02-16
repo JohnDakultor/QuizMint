@@ -39,6 +39,7 @@ model User {
   resetTokens         PasswordResetToken[]
   policyAcceptances   UserPolicyAcceptance[]
   paypalSubscriptions PayPalSubscription[]
+  lessonPlans        LessonPlan[]
 }
 
 model UserPolicyAcceptance {
@@ -121,6 +122,23 @@ model BlogPost {
   updatedAt       DateTime @updatedAt
 }
 
+model LessonPlan {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  topic         String
+  subject       String
+  grade         String
+  duration      String
+  days          Int
+  minutesPerDay Int
+  data          Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}
 
 
 model Document {

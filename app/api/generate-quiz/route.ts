@@ -450,6 +450,14 @@ async function fetchYouTubeMetadata(videoId: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const ensureNotAborted = () => {
+      if (req.signal.aborted) {
+        const abortedError = new Error("REQUEST_ABORTED");
+        (abortedError as Error & { name: string }).name = "AbortError";
+        throw abortedError;
+      }
+    };
+
     const session = await getServerSession(authOptions);
     if (!session?.user?.email)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -685,10 +693,12 @@ export async function POST(req: NextRequest) {
 
       if (!hasDocs) {
         try {
+          ensureNotAborted();
           const webResult = await ingestWebSourcesForQuery({
             query: text,
             namespace,
           });
+          ensureNotAborted();
           webDebug = webResult.debug;
         } catch (webErr) {
           console.warn("Web RAG ingestion failed:", webErr);
@@ -703,6 +713,7 @@ export async function POST(req: NextRequest) {
       if (!hasDocs) {
         const chunks = chunkText(content);
         for (let i = 0; i < chunks.length; i++) {
+          ensureNotAborted();
           const chunk = chunks[i];
           const embedding = await embed(chunk);
           await prisma.$executeRaw`
@@ -719,6 +730,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    ensureNotAborted();
+
     const { enhancedPrompt, cachedResponse, sources, ragMeta, hasContext } =
       await enhancePromptWithRAG({
         finalPrompt: content,
@@ -727,6 +740,8 @@ export async function POST(req: NextRequest) {
       });
 
     // Generate quiz with safe parameters
+    ensureNotAborted();
+
     const quiz = cachedResponse
       ? JSON.parse(cachedResponse)
       : await generateQuizAI(
@@ -740,6 +755,7 @@ export async function POST(req: NextRequest) {
     let cacheStored = false;
     if (ragMeta && !cachedResponse) {
       try {
+        ensureNotAborted();
         await semanticCacheStore(
           ragMeta.promptForCache,
           ragMeta.embedding,
@@ -747,7 +763,13 @@ export async function POST(req: NextRequest) {
           ragMeta.namespace
         );
         cacheStored = true;
-      } catch (cacheErr) {
+      } catch (cacheErr: any) {
+        if (
+          cacheErr?.name === "AbortError" ||
+          cacheErr?.message === "REQUEST_ABORTED"
+        ) {
+          throw cacheErr;
+        }
         console.warn("Semantic cache store failed:", cacheErr);
       }
     }
@@ -761,6 +783,8 @@ export async function POST(req: NextRequest) {
       hint: safeAdaptive ? q.hint ?? null : null,
     }));
 
+    ensureNotAborted();
+
     const savedQuiz = await prisma.quiz.create({
       data: {
         title: quiz.title,
@@ -772,6 +796,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (isFree) {
+      ensureNotAborted();
       await prisma.user.update({
         where: { id: user.id },
         data: { quizUsage: user.quizUsage + 1, lastQuizAt: now },
@@ -792,6 +817,12 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err: any) {
+    if (err?.name === "AbortError" || err?.message === "REQUEST_ABORTED") {
+      return NextResponse.json(
+        { error: "Generation paused by user" },
+        { status: 499 }
+      );
+    }
     console.error("Server error:", err);
     return NextResponse.json(
       { error: err.message || "Internal server error" },

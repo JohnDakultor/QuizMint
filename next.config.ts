@@ -152,6 +152,7 @@ const ContentSecurityPolicy = `
 `;
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["pdfkit", "fontkit"],
   async headers() {
     return [
       {

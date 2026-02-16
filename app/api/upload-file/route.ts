@@ -88,8 +88,25 @@ import { generateQuizAI } from "@/lib/ai";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth-option";
 import { getServerSession } from "next-auth";
+import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
+import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
+import { semanticCacheStore } from "@/lib/rag/semanticCache";
 
 export const runtime = "nodejs";
+
+function chunkText(text: string, chunkSize = 1200, overlap = 200) {
+  const cleaned = normalizeForEmbedding(text);
+  if (!cleaned) return [];
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < cleaned.length) {
+    const end = Math.min(start + chunkSize, cleaned.length);
+    chunks.push(cleaned.slice(start, end));
+    if (end === cleaned.length) break;
+    start = Math.max(end - overlap, 0);
+  }
+  return chunks;
+}
 
 export async function POST(req: Request) {
   try {
@@ -184,26 +201,67 @@ content = meaningfulText;  // override to pass to AI
       }
     }
 
-    // --- COMBINE FILE CONTENT + PROMPT ---
-    const finalInput = [prompt, content].filter(Boolean).join("\n\n");
+    // --- INGEST FILE INTO RAG ---
+    const namespace = `quiz:${user.id}`;
+    const title = file?.name || "Uploaded file";
+    const sourceType = file?.name.split(".").pop()?.toLowerCase() || "file";
 
-    // --- TRUNCATE LONG TEXT ---
-    const truncatedInput =
-      finalInput.length > 3000 ? finalInput.slice(0, 3000) : finalInput;
+    const chunks = chunkText(content);
+    if (chunks.length > 0) {
+      // Replace previous chunks for this namespace (keeps RAG focused)
+      await prisma.$executeRaw`
+        DELETE FROM "Document" WHERE namespace = ${namespace}
+      `;
 
-    // --- DEBUG LOGGING ---
-    console.log("Prompt:", prompt);
-    console.log("File content length:", content.length);
-    console.log("Truncated input length:", truncatedInput.length);
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const embedding = await embed(chunk);
+        await prisma.$executeRaw`
+          INSERT INTO "Document" (
+            id, namespace, "sourceUrl", title, "sourceType",
+            "chunkIndex", content, embedding, "createdAt", "updatedAt"
+          )
+          VALUES (
+            gen_random_uuid(), ${namespace}, ${null}, ${title}, ${sourceType},
+            ${i}, ${chunk}, ${embedding}::vector, now(), now()
+          )
+        `;
+      }
+    }
+
+    // --- RAG-ENHANCED GENERATION ---
+    const basePrompt =
+      prompt?.trim() || "Create a quiz based on the uploaded document.";
+
+    const { enhancedPrompt, cachedResponse, sources, ragMeta } =
+      await enhancePromptWithRAG({
+        finalPrompt: basePrompt,
+        namespace,
+      });
 
     // --- GENERATE QUIZ ---
-    let quiz = await generateQuizAI(
-      truncatedInput,
-      difficulty,
-      adaptiveLearning,
-      true,
-      prompt,
-    );
+    const quiz = cachedResponse
+      ? JSON.parse(cachedResponse)
+      : await generateQuizAI(
+          enhancedPrompt,
+          difficulty,
+          adaptiveLearning,
+          true,
+          prompt,
+        );
+
+    if (ragMeta && !cachedResponse) {
+      try {
+        await semanticCacheStore(
+          ragMeta.promptForCache,
+          ragMeta.embedding,
+          JSON.stringify(quiz),
+          ragMeta.namespace
+        );
+      } catch (cacheErr) {
+        console.warn("Semantic cache store failed:", cacheErr);
+      }
+    }
 
     // --- DEFENSIVE CHECK ---
     if (!quiz || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
@@ -248,7 +306,11 @@ content = meaningfulText;  // override to pass to AI
   },
 });
 
-    return NextResponse.json({ message: "Quiz generated", quiz: savedQuiz });
+    return NextResponse.json({
+      message: "Quiz generated",
+      quiz: savedQuiz,
+      sources: sources ?? [],
+    });
   } catch (err: any) {
     console.error("Upload file error:", err);
     return NextResponse.json(

@@ -431,7 +431,7 @@ import { useState, useRef, useEffect } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, Copy, FileDown, X } from "lucide-react";
+import { ArrowRight, Copy, FileDown, PauseCircle, X } from "lucide-react";
 import FileUpload from "@/components/ui/file-upload";
 import { motion } from "framer-motion";
 import jsPDF from "jspdf";
@@ -456,6 +456,7 @@ export default function Dashboard() {
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const quizRef = useRef<HTMLDivElement>(null);
+  const generationAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -520,6 +521,21 @@ export default function Dashboard() {
     };
     fetchLatestQuiz();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      generationAbortRef.current?.abort();
+      generationAbortRef.current = null;
+    };
+  }, []);
+
+  const pauseQuizGeneration = () => {
+    if (!generationAbortRef.current) return;
+    generationAbortRef.current.abort();
+    generationAbortRef.current = null;
+    setLoading(false);
+    setError("Generation paused.");
+  };
 
   const handlePaste = async () => {
     const text = await navigator.clipboard.readText();
@@ -661,6 +677,10 @@ export default function Dashboard() {
     setAdUnlockInfo(null);
 
     try {
+      generationAbortRef.current?.abort();
+      const controller = new AbortController();
+      generationAbortRef.current = controller;
+
       const difficulty = user?.aiDifficulty || "easy";
       const adaptiveLearning = user?.adaptiveLearning ?? false;
 
@@ -674,6 +694,7 @@ export default function Dashboard() {
         const res = await fetch("/api/upload-file", {
           method: "POST",
           body: formData,
+          signal: controller.signal,
         });
 
         const data = await res.json();
@@ -702,6 +723,7 @@ export default function Dashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
 
     
@@ -755,9 +777,14 @@ export default function Dashboard() {
       }
     }
   } catch (err: any) {
+    if (err?.name === "AbortError") {
+      setError("Generation paused.");
+      return;
+    }
    
     setError(err.message || "Failed to generate quiz");
   } finally {
+    generationAbortRef.current = null;
     setLoading(false);
   }
 };
@@ -812,15 +839,28 @@ export default function Dashboard() {
               />
             </div>
 
-            <Button
-              id="quiz-generate"
-              className="w-full bg-blue-600 hover:bg-blue-700 mt-2"
-              onClick={generateQuizFromPrompt}
-              disabled={loading}
-            >
-              {loading ? "Generating Quiz..." : "Generate Quiz"}
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+            <div className="mt-2 flex gap-2">
+              <Button
+                id="quiz-generate"
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                onClick={generateQuizFromPrompt}
+                disabled={loading}
+              >
+                {loading ? "Generating Quiz..." : "Generate Quiz"}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              {loading && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={pauseQuizGeneration}
+                  className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                >
+                  <PauseCircle className="mr-1 h-4 w-4" />
+                  Pause
+                </Button>
+              )}
+            </div>
 
             {error && (
               <Alert variant="destructive">
