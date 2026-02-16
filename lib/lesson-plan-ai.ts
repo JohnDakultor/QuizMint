@@ -185,8 +185,8 @@ Return ONLY valid JSON, no other text.`;
             content: userPrompt 
           }
         ],
-        temperature: 0.7,
-        max_tokens: 4000,
+        temperature: 0.3,
+        max_tokens: Number(process.env.LESSON_PLAN_MAX_TOKENS || 8000),
       }),
     });
 
@@ -236,18 +236,17 @@ function safeExtractJSON(raw: string) {
         .replace(/```json/gi, "")
         .replace(/```/g, "")
         .replace(/\u0000/g, "")
+        .replace(/[\u0001-\u001F]+/g, " ")
         .trim();
 
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
+      const balancedJson = extractBalancedJSONObject(cleaned);
+      if (!balancedJson) {
         throw new Error("No JSON object found in AI response");
       }
-
-      const jsonString = jsonMatch[0];
       try {
-        return JSON.parse(jsonString);
+        return JSON.parse(balancedJson);
       } catch {
-        return attemptJSONRepair(jsonString);
+        return attemptJSONRepair(balancedJson);
       }
     } catch (repairError: any) {
       console.error("JSON parsing failed:", repairError?.message || repairError);
@@ -267,8 +266,6 @@ function attemptJSONRepair(jsonString: string) {
   repaired = repaired.replace(/[â€œâ€]/g, '"');
   repaired = repaired.replace(/[â€˜â€™]/g, "'");
 
-  // Normalize escaped newlines
-  repaired = repaired.replace(/\\n/g, "\n");
   repaired = repaired.replace(/\r\n/g, "\n");
 
   // If quotes are unbalanced, trim to the last complete quote
@@ -294,6 +291,55 @@ function attemptJSONRepair(jsonString: string) {
   }
 
   return JSON.parse(repaired);
+}
+
+function extractBalancedJSONObject(input: string) {
+  const start = input.indexOf("{");
+  if (start < 0) return null;
+
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let end = -1;
+
+  for (let i = start; i < input.length; i++) {
+    const ch = input[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{") depth += 1;
+    if (ch === "}") depth -= 1;
+
+    if (depth === 0) {
+      end = i;
+      break;
+    }
+  }
+
+  if (end === -1) {
+    // truncated output: return from first "{" to end; repair step will attempt balancing
+    return input.slice(start).trim();
+  }
+
+  return input.slice(start, end + 1).trim();
 }
 
 function createMinimalValidLessonPlan(input: LessonPlanInput) {

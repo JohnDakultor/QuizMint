@@ -260,8 +260,8 @@ IMPORTANT: DO NOT make generic slides. Use the specific content provided above t
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.6,
-        max_tokens: 4000,
+        temperature: 0.3,
+        max_tokens: Number(process.env.LESSON_PLAN_PPT_MAX_TOKENS || 8000),
       }),
     });
 
@@ -459,15 +459,100 @@ function buildContentRichFallbackDeck(input: LessonPlanPptInput, outline: any): 
 function safeExtractJSON(raw: string): any {
   try {
     return JSON.parse(raw);
-  } catch {
+  } catch (error: any) {
+    console.warn("PPT direct JSON parse failed:", error?.message);
     try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+      const cleaned = raw
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .replace(/\u0000/g, "")
+        .replace(/[\u0001-\u001F]+/g, " ")
+        .trim();
+
+      const balancedJson = extractBalancedJSONObject(cleaned);
+      if (!balancedJson) {
+        throw new Error("No JSON object found in AI response");
       }
-    } catch (innerErr) {
-      console.error("Failed to extract JSON from AI response");
+
+      try {
+        return JSON.parse(balancedJson);
+      } catch {
+        return attemptJSONRepair(balancedJson);
+      }
+    } catch (innerErr: any) {
+      console.error("Failed to extract PPT JSON from AI response:", innerErr?.message || innerErr);
     }
     throw new Error("No valid JSON found in response");
   }
+}
+
+function attemptJSONRepair(jsonString: string) {
+  let repaired = jsonString;
+
+  // Remove trailing commas before } or ]
+  repaired = repaired.replace(/,\s*([\]}])/g, "$1");
+
+  // Balance braces/brackets if output is truncated
+  const openBraces = (repaired.match(/\{/g) || []).length;
+  const closeBraces = (repaired.match(/\}/g) || []).length;
+  const openBrackets = (repaired.match(/\[/g) || []).length;
+  const closeBrackets = (repaired.match(/\]/g) || []).length;
+
+  if (closeBraces < openBraces) {
+    repaired += "}".repeat(openBraces - closeBraces);
+  }
+  if (closeBrackets < openBrackets) {
+    repaired += "]".repeat(openBrackets - closeBrackets);
+  }
+
+  return JSON.parse(repaired);
+}
+
+function extractBalancedJSONObject(input: string) {
+  const start = input.indexOf("{");
+  if (start < 0) return null;
+
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let end = -1;
+
+  for (let i = start; i < input.length; i++) {
+    const ch = input[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{") depth += 1;
+    if (ch === "}") depth -= 1;
+
+    if (depth === 0) {
+      end = i;
+      break;
+    }
+  }
+
+  if (end === -1) {
+    // truncated output: let repair step attempt balancing
+    return input.slice(start).trim();
+  }
+
+  return input.slice(start, end + 1).trim();
 }
