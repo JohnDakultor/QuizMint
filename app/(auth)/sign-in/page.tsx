@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { signIn, getSession } from "next-auth/react";
 import { Eye, EyeOff } from "lucide-react";
 import { useRecaptcha } from "@/components/ui/use-recaptcha";
 
-export default function SignIn() {
+function SignInContent() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
@@ -239,5 +239,13 @@ export default function SignIn() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function SignIn() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-50 dark:bg-zinc-900" />}>
+      <SignInContent />
+    </Suspense>
   );
 }

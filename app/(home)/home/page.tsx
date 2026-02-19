@@ -232,7 +232,7 @@ export default function HomeDashboardPage() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50 shadow-sm">
+        <Card className="border-indigo-200 bg-linear-to-brrom-indigo-50 to-blue-50 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
               <Brain className="w-4 h-4 text-indigo-600" /> Quizzes Generated
@@ -243,7 +243,7 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50 shadow-sm">
+        <Card className="border-cyan-200 bg-linear-to-br from-cyan-50 to-sky-50 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-indigo-600" /> Lesson Plans Generated
@@ -254,7 +254,7 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 shadow-sm">
+        <Card className="border-violet-200 bg-linear-to-br from-violet-50 to-fuchsia-50 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
               <Clock3 className="w-4 h-4 text-indigo-600" /> Usage / Reset Timer
@@ -267,7 +267,7 @@ export default function HomeDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 shadow-sm">
+        <Card className="border-amber-200 bg-linear-to-brrom-amber-50 to-yellow-50 shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">Today Snapshot</CardTitle>
           </CardHeader>
@@ -285,7 +285,7 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-sm">
+        <Card className="border-emerald-200 bg-linear-to-br from-emerald-50 to-teal-50 shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">Usage Health</CardTitle>
           </CardHeader>
@@ -304,7 +304,7 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-pink-200 bg-gradient-to-br from-pink-50 to-rose-50 shadow-sm">
+        <Card className="border-pink-200 bg-linear-to-br from-pink-50 to-rose-50 shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">Classroom Queue</CardTitle>
           </CardHeader>
@@ -321,7 +321,7 @@ export default function HomeDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-blue-200 bg-gradient-to-br from-white to-blue-50 shadow-sm">
+        <Card className="border-blue-200 bg-linear-to-br from-white to-blue-50 shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">Recent Quizzes</CardTitle>
           </CardHeader>
@@ -345,7 +345,7 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-violet-200 bg-gradient-to-br from-white to-violet-50 shadow-sm">
+        <Card className="border-violet-200 bg-linear-to-br from-white to-violet-50 shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">Recent Lesson Plans</CardTitle>
           </CardHeader>
@@ -370,7 +370,7 @@ export default function HomeDashboardPage() {
         </Card>
       </div>
 
-      <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50 to-cyan-50 shadow-sm">
+      <Card className="border-indigo-200 bg-linear-to-r from-indigo-50 to-cyan-50 shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Dashboard Quick Actions</CardTitle>
         </CardHeader>
@@ -387,14 +387,14 @@ export default function HomeDashboardPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-fuchsia-200 bg-gradient-to-r from-fuchsia-50 to-pink-50 shadow-sm">
+      <Card className="border-fuchsia-200 bg-linear-to-r from-fuchsia-50 to-pink-50 shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Quick Templates</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div className="space-y-3">
             <p className="text-sm font-semibold text-fuchsia-700">Quiz Generator Samples (10)</p>
-            <div className="max-h-[420px] overflow-auto premium-scrollbar space-y-2 pr-1">
+            <div className="max-h-105 overflow-auto premium-scrollbar space-y-2 pr-1">
               {QUIZ_TEMPLATES.map((template, idx) => (
                 <div key={template} className="border border-fuchsia-200 rounded-lg p-3 bg-white/95 hover:bg-white transition space-y-2">
                   <p className="text-xs font-medium text-fuchsia-700">Quiz #{idx + 1}</p>
@@ -409,7 +409,7 @@ export default function HomeDashboardPage() {
 
           <div className="space-y-3">
             <p className="text-sm font-semibold text-fuchsia-700">Lesson Plan Samples (10)</p>
-            <div className="max-h-[420px] overflow-auto premium-scrollbar space-y-2 pr-1">
+            <div className="max-h-105 overflow-auto premium-scrollbar space-y-2 pr-1">
               {LESSON_TEMPLATES.map((template, idx) => {
                 const full = `Topic: ${template.topic}\nSubject: ${template.subject}\nGrade: ${template.grade}\nDays: ${template.days}\nMinutes per day: ${template.minutesPerDay}\nObjectives: ${template.objectives}\nConstraints: ${template.constraints}`;
                 return (
