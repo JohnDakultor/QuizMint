@@ -5,6 +5,19 @@ import { prisma } from "@/lib/prisma";
 import { generateLessonPlanPptx } from "@/lib/generate-lesson-plan-pptx";
 import type { PptDeck } from "@/lib/lesson-plan-ppt-ai";
 
+const PROVIDER_ISSUE_MESSAGE =
+  "Server issue - we're fixing it. Please try again in a few minutes.";
+
+function isProviderIssueError(err: unknown): boolean {
+  const message = String((err as { message?: string })?.message || "");
+  return (
+    message.includes("AI response failed:") ||
+    message.includes("Quota exceeded") ||
+    message.includes('"code":402') ||
+    message.includes("Provider returned error")
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -44,6 +57,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("Generate PPTX error:", err);
+    if (isProviderIssueError(err)) {
+      return new Response(PROVIDER_ISSUE_MESSAGE, { status: 503 });
+    }
     return new Response(`Failed to generate PPTX: ${err.message}`, {
       status: 500,
     });

@@ -12,9 +12,21 @@ import { generateLessonPlanPptx } from "@/lib/generate-lesson-plan-pptx";
 const FREE_PLAN_LIMIT = 3;
 const RESET_HOURS = 3;
 
+const PROVIDER_ISSUE_MESSAGE =
+  "Server issue - we're fixing it. Please try again in a few minutes.";
 
 export const runtime = "nodejs";
 const lessonPlanCache = new Map<string, any>();
+
+function isProviderIssueError(err: unknown): boolean {
+  const message = String((err as { message?: string })?.message || "");
+  return (
+    message.includes("AI response failed:") ||
+    message.includes("Quota exceeded") ||
+    message.includes('"code":402') ||
+    message.includes("Provider returned error")
+  );
+}
 
 function enhanceLessonPlanWithContext(lessonPlan: any, topic: string, subject: string, grade: string, dayIndex: number) {
   if (!lessonPlan.days || !Array.isArray(lessonPlan.days)) return lessonPlan;
@@ -792,6 +804,9 @@ export async function POST(req: NextRequest) {
         });
       } catch (docxError: any) {
         console.error("DOCX Generation Error:", docxError);
+        if (isProviderIssueError(docxError)) {
+          return new Response(PROVIDER_ISSUE_MESSAGE, { status: 503 });
+        }
         return new Response(`Failed to generate DOCX: ${docxError.message}`, { status: 500 });
       }
     }
@@ -815,6 +830,9 @@ export async function POST(req: NextRequest) {
         });
       } catch (pptError: any) {
         console.error("PPTX Generation Error:", pptError);
+        if (isProviderIssueError(pptError)) {
+          return new Response(PROVIDER_ISSUE_MESSAGE, { status: 503 });
+        }
         return new Response(`Failed to generate PPTX: ${pptError.message}`, { status: 500 });
       }
     }
@@ -834,6 +852,9 @@ export async function POST(req: NextRequest) {
         });
       } catch (pdfError: any) {
         console.error("PDF Generation Error:", pdfError);
+        if (isProviderIssueError(pdfError)) {
+          return new Response(PROVIDER_ISSUE_MESSAGE, { status: 503 });
+        }
         return new Response(`Failed to generate PDF: ${pdfError.message}`, { status: 500 });
       }
     }
@@ -879,6 +900,9 @@ export async function POST(req: NextRequest) {
       return new Response(null, { status: 499 });
     }
     console.error("Lesson Plan API Error:", err);
+    if (isProviderIssueError(err)) {
+      return new Response(PROVIDER_ISSUE_MESSAGE, { status: 503 });
+    }
     return new Response(`Internal server error: ${err.message}`, { status: 500 });
   }
 }

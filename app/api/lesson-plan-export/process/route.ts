@@ -5,6 +5,18 @@ import { prisma } from "@/lib/prisma";
 import { processLessonPlanExportJob } from "@/lib/lesson-plan-export";
 
 export const runtime = "nodejs";
+const PROVIDER_ISSUE_MESSAGE =
+  "Server issue - we're fixing it. Please try again in a few minutes.";
+
+function isProviderIssueError(err: unknown): boolean {
+  const message = String((err as { message?: string })?.message || "");
+  return (
+    message.includes("AI response failed:") ||
+    message.includes("Quota exceeded") ||
+    message.includes('"code":402') ||
+    message.includes("Provider returned error")
+  );
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -50,6 +62,9 @@ export async function POST(req: NextRequest) {
       error: job.error || null,
     });
   } catch (err: any) {
+    if (isProviderIssueError(err)) {
+      return NextResponse.json({ error: PROVIDER_ISSUE_MESSAGE }, { status: 503 });
+    }
     return NextResponse.json(
       { error: err?.message || "Failed to process job" },
       { status: 500 }
