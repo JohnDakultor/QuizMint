@@ -233,7 +233,7 @@ content = meaningfulText;  // override to pass to AI
     const basePrompt =
       prompt?.trim() || "Create a quiz based on the uploaded document.";
 
-    const { enhancedPrompt, cachedResponse, sources, ragMeta } =
+    const { enhancedPrompt, cachedResponse, sources, ragMeta, sourceMode } =
       await enhancePromptWithRAG({
         finalPrompt: basePrompt,
         namespace,
@@ -310,6 +310,11 @@ content = meaningfulText;  // override to pass to AI
       message: "Quiz generated",
       quiz: savedQuiz,
       sources: sources ?? [],
+      sourceTrace: {
+        mode: sourceMode ?? "none",
+        fromCache: Boolean(cachedResponse),
+        sourceCount: (sources ?? []).length,
+      },
     });
   } catch (err: any) {
     console.error("Upload file error:", err);

@@ -1064,6 +1064,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import Tour from "@/components/ui/tour";
+import SkeletonLoading from "@/components/ui/skeleton-loading";
+import LoadingProgress from "@/components/ui/loading-progress";
 
 const FREE_PLAN_LIMIT = 3;
 
@@ -1617,6 +1619,9 @@ export default function LessonPlanPage() {
   const [subscriptionPlan, setSubscriptionPlan] = useState<string>("free");
   const [pptxDeck, setPptxDeck] = useState<any | null>(null);
   const [loadingSlides, setLoadingSlides] = useState(false);
+  const [lessonProgress, setLessonProgress] = useState(0);
+  const [slidesProgress, setSlidesProgress] = useState(0);
+  const [pptxProgress, setPptxProgress] = useState(0);
   const [showPptxEditor, setShowPptxEditor] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyPlans, setHistoryPlans] = useState<any[]>([]);
@@ -1693,8 +1698,54 @@ export default function LessonPlanPage() {
     generationAbortRef.current.abort();
     generationAbortRef.current = null;
     setLoading(false);
+    setLessonProgress(0);
     setError("Generation paused.");
   }
+
+  useEffect(() => {
+    if (!loading) {
+      setLessonProgress(0);
+      return;
+    }
+    setLessonProgress(7);
+    const id = setInterval(() => {
+      setLessonProgress((prev) => {
+        if (prev >= 92) return prev;
+        return prev + Math.max(1, Math.floor((100 - prev) / 12));
+      });
+    }, 600);
+    return () => clearInterval(id);
+  }, [loading]);
+
+  useEffect(() => {
+    if (!loadingSlides) {
+      setSlidesProgress(0);
+      return;
+    }
+    setSlidesProgress(10);
+    const id = setInterval(() => {
+      setSlidesProgress((prev) => {
+        if (prev >= 94) return prev;
+        return prev + Math.max(1, Math.floor((100 - prev) / 10));
+      });
+    }, 500);
+    return () => clearInterval(id);
+  }, [loadingSlides]);
+
+  useEffect(() => {
+    if (!downloadingPptx) {
+      setPptxProgress(0);
+      return;
+    }
+    setPptxProgress(12);
+    const id = setInterval(() => {
+      setPptxProgress((prev) => {
+        if (prev >= 95) return prev;
+        return prev + Math.max(1, Math.floor((100 - prev) / 11));
+      });
+    }, 500);
+    return () => clearInterval(id);
+  }, [downloadingPptx]);
 
   async function generateLessonPlan(formData: FormData) {
     const formObj = Object.fromEntries(formData.entries());
@@ -2311,7 +2362,7 @@ export default function LessonPlanPage() {
                   </>
                 )}
               </Button>
-              {loading && (
+            {loading && (
                 <Button
                   type="button"
                   variant="outline"
@@ -2323,6 +2374,12 @@ export default function LessonPlanPage() {
                 </Button>
               )}
             </div>
+            {loading && (
+              <LoadingProgress
+                label="Generating lesson plan..."
+                percent={lessonProgress}
+              />
+            )}
           </form>
           
           {error && (
@@ -2403,6 +2460,18 @@ export default function LessonPlanPage() {
                 ? "Premium Only: Edit PPTX"
                 : "Edit PPTX Before Download"}
             </Button>
+            {loadingSlides && (
+              <LoadingProgress
+                label="Preparing editable PPTX slides..."
+                percent={slidesProgress}
+              />
+            )}
+            {downloadingPptx && (
+              <LoadingProgress
+                label="Generating PPTX file..."
+                percent={pptxProgress}
+              />
+            )}
 
             {/* Usage Indicator */}
             <div data-pdf-keep>
@@ -2592,7 +2661,7 @@ export default function LessonPlanPage() {
       )}
 
       <Dialog open={showPptxEditor} onOpenChange={setShowPptxEditor}>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto premium-scrollbar">
           <DialogHeader>
             <DialogTitle>Edit PPTX Slides</DialogTitle>
           </DialogHeader>
@@ -2630,7 +2699,11 @@ export default function LessonPlanPage() {
         </div>
         <div className="p-4 space-y-3 overflow-y-auto h-full">
           {historyLoading && (
-            <div className="text-sm text-blue-700">Loading history...</div>
+            <div className="space-y-3">
+              <SkeletonLoading className="h-20 w-full bg-blue-100" />
+              <SkeletonLoading className="h-20 w-full bg-blue-100" />
+              <SkeletonLoading className="h-20 w-full bg-blue-100" />
+            </div>
           )}
           {!historyLoading && dedupedHistoryPlans.length === 0 && (
             <div className="text-sm text-blue-700">

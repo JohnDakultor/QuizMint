@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
@@ -21,6 +21,8 @@ export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/home";
 
   const { getToken } = useRecaptcha();
 
@@ -70,7 +72,7 @@ export default function SignIn() {
         }),
       ]);
 
-      router.push("/home");
+      router.push(callbackUrl);
     } catch (err) {
       console.error(err);
       setError("Something went wrong. Please try again.");
@@ -94,7 +96,7 @@ export default function SignIn() {
     try {
       // ✅ Use NextAuth's built-in Google redirect
       await signIn("google", {
-        callbackUrl: "/home", // After login, redirect here
+        callbackUrl, // After login, redirect here
       });
     } catch (err: any) {
       console.error("Google button error:", err);

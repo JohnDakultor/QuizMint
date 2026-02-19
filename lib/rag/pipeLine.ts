@@ -1,4 +1,3 @@
-// lib/rag/ragPipeline.ts
 import { embed, normalizeForEmbedding } from "./embed";
 import { semanticCacheLookup } from "./semanticCache";
 import { retrieveContext, RagChunk } from "./retrieve";
@@ -7,7 +6,7 @@ import { buildContext } from "./context";
 interface RagEnhanceInput {
   finalPrompt: string;
   namespace: string;
-  cacheKey?: string; // optional override
+  cacheKey?: string;
   topK?: number;
   similarityThreshold?: number;
 }
@@ -23,6 +22,7 @@ export async function enhancePromptWithRAG({
   cachedResponse?: string;
   sources?: { url: string; title?: string }[];
   hasContext?: boolean;
+  sourceMode?: "semantic_cache" | "documents" | "none";
   ragMeta?: {
     embedding: number[];
     namespace: string;
@@ -31,7 +31,7 @@ export async function enhancePromptWithRAG({
 }> {
   const normalizedPrompt = normalizeForEmbedding(finalPrompt);
   if (!normalizedPrompt) {
-    return { enhancedPrompt: finalPrompt };
+    return { enhancedPrompt: finalPrompt, sourceMode: "none" };
   }
 
   const safeTopK = Math.min(Math.max(Math.floor(topK), 1), 20);
@@ -40,38 +40,35 @@ export async function enhancePromptWithRAG({
 
   const embedding = await embed(normalizedPrompt);
 
-  // 1️⃣ semantic cache (FULL RESPONSE cache)
-  const cached = await semanticCacheLookup(
-    embedding,
-    cacheNamespace,
-    safeThreshold
-  );
-
-  if (cached) {
-    return {
-      enhancedPrompt: finalPrompt,
-      cachedResponse: cached,
-    };
-  }
-
-  // 2️⃣ retrieve context
+  // Always resolve retrieval sources so UI can show citations even on cache hit.
   const chunks = await retrieveContext(embedding, {
     topK: safeTopK,
     namespace,
   });
   const context = buildContext(chunks);
+  const sources = buildSources(chunks);
 
-  // 3️⃣ inject context ABOVE user prompt
+  const cached = await semanticCacheLookup(embedding, cacheNamespace, safeThreshold);
+
+  if (cached) {
+    return {
+      enhancedPrompt: finalPrompt,
+      cachedResponse: cached,
+      sources,
+      hasContext: Boolean(context),
+      sourceMode: sources.length ? "semantic_cache" : "none",
+    };
+  }
+
   const enhancedPrompt = context
     ? `${context}\n\nUser request:\n${finalPrompt}`
     : finalPrompt;
-
-  const sources = buildSources(chunks);
 
   return {
     enhancedPrompt,
     sources,
     hasContext: Boolean(context),
+    sourceMode: sources.length ? "documents" : "none",
     ragMeta: {
       embedding,
       namespace: cacheNamespace,

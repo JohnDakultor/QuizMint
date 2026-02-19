@@ -13,6 +13,8 @@ import {
   ChevronLeft,
   Presentation,
   CircleHelp,
+  Sparkles,
+  Ellipsis,
 } from "lucide-react";
 import Image from "next/image";
 import icon from "@/public/icon.png";
@@ -20,11 +22,12 @@ import icon from "@/public/icon.png";
 export default function Navigation() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<{ username: string } | null>(null);
   const tourId =
     pathname === "/account"
       ? "account"
-      : pathname === "/home"
+      : pathname === "/generate-quiz"
       ? "home-quiz"
       : pathname === "/lessonPlan"
       ? "lesson-plan"
@@ -44,6 +47,10 @@ export default function Navigation() {
     );
   }, [collapsed]);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   /* Fetch user */
   useEffect(() => {
     fetch("/api/display-user")
@@ -53,11 +60,15 @@ export default function Navigation() {
   }, []);
 
   const tabs = [
-    { href: "/home", icon: <Home size={22} />, label: "Home" },
+    { href: "/home", icon: <Home size={22} />, label: "Dashboard" },
+    { href: "/generate-quiz", icon: <Sparkles size={22} />, label: "Generate Quiz" },
     { href: "/subscription", icon: <CreditCard size={22} />, label: "Subscription" },
     { href: "/lessonPlan", icon: <Presentation size={22} />, label: "Lesson Plan" },
     { href: "/account", icon: <User size={22} />, label: "Account" },
   ];
+  const mobilePrimaryTabs = tabs.filter((t) =>
+    ["/home", "/generate-quiz", "/lessonPlan", "/account"].includes(t.href)
+  );
 
   return (
     <>
@@ -140,41 +151,69 @@ export default function Navigation() {
       {/* ================= Mobile Bottom Nav ================= */}
 <nav
   className="
-    fixed bottom-4 inset-x-0 z-50
+    fixed bottom-3 inset-x-0 z-50
     sm:hidden
-    w-[90%] max-w-md mx-auto
-    flex justify-between items-center
+    w-[94%] max-w-md mx-auto
+    flex items-center justify-between
     bg-linear-to-r from-purple-800 via-indigo-900 to-blue-800
-    rounded-full shadow-xl
-    px-4 py-2
+    rounded-2xl shadow-xl
+    px-2 py-2
   "
-  style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0) + 0.5rem)" }}
+  style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0) + 0.35rem)" }}
 >
-  {tabs.map((tab) => (
+  {mobilePrimaryTabs.map((tab) => (
     <MobileIcon key={tab.href} {...tab} active={pathname === tab.href} />
   ))}
 
   <button
-    onClick={() =>
-      tourId &&
-      window.dispatchEvent(
-        new CustomEvent("start-tour", { detail: { id: tourId } })
-      )
-    }
-    className="flex flex-col items-center justify-center text-white hover:text-yellow-400"
+    onClick={() => setMobileMenuOpen((v) => !v)}
+    className={`min-w-[56px] flex flex-col items-center justify-center px-2 py-1 rounded-xl transition ${
+      mobileMenuOpen ? "bg-yellow-400 text-white" : "text-white hover:bg-yellow-400 hover:text-white"
+    }`}
   >
-    <CircleHelp size={20} />
-    <span className="text-[10px] mt-1">Help</span>
-  </button>
-
-  <button
-    onClick={() => signOut()}
-    className="flex flex-col items-center justify-center text-red-400 hover:text-red-500"
-  >
-    <LogOut size={20} />
-    <span className="text-[10px] mt-1">Logout</span>
+    <Ellipsis size={20} />
+    <span className="text-[9px] mt-1">More</span>
   </button>
 </nav>
+
+{mobileMenuOpen && (
+  <div className="sm:hidden fixed inset-0 z-50">
+    <button
+      aria-label="Close menu"
+      className="absolute inset-0 bg-black/30"
+      onClick={() => setMobileMenuOpen(false)}
+    />
+    <div className="absolute bottom-24 right-3 w-56 rounded-xl border border-zinc-200 bg-white shadow-xl p-2 space-y-1">
+      <Link
+        href="/subscription"
+        className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-zinc-100"
+      >
+        <CreditCard size={16} />
+        Subscription
+      </Link>
+      <button
+        onClick={() => {
+          setMobileMenuOpen(false);
+          tourId &&
+            window.dispatchEvent(
+              new CustomEvent("start-tour", { detail: { id: tourId } })
+            );
+        }}
+        className="w-full text-left flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-zinc-100"
+      >
+        <CircleHelp size={16} />
+        Help / Tour
+      </button>
+      <button
+        onClick={() => signOut()}
+        className="w-full text-left flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+      >
+        <LogOut size={16} />
+        Logout
+      </button>
+    </div>
+  </div>
+)}
 
     </>
   );
@@ -212,15 +251,15 @@ function MobileIcon({ href, icon, label, active }: any) {
       href={href}
       className={`
         flex flex-col items-center justify-center
-        px-3 py-1
-        rounded-full transition
-        text-xs
+        min-w-[56px] px-2 py-1
+        rounded-xl transition
+        text-[11px]
         ${active ? "bg-yellow-400 text-white" : "text-white hover:bg-yellow-400 hover:text-white"}
       `}
     >
       {/* Icon size smaller and consistent */}
       <span className="">{icon}</span>
-      <span className="text-[10px] mt-1">{label}</span>
+      <span className="text-[9px] mt-1 whitespace-nowrap">{label}</span>
     </Link>
   );
 }

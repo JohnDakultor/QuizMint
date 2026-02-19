@@ -1,1024 +1,444 @@
-// "use client";
-
-// import { Alert, AlertDescription } from "@/components/ui/alert";
-// import { Button } from "@/components/ui/button";
-// import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-// import jsPDF from "jspdf";
-// import { ArrowRight, Badge, Copy, FileDown, X } from "lucide-react";
-// import { useState, useRef, useEffect, SetStateAction } from "react";
-// import FileUpload from "@/components/ui/file-upload";
-
-// import { motion, AnimatePresence } from "framer-motion";
-
-// export default function Dashboard() {
-//   const [prompt, setPrompt] = useState(""); // User quiz prompt
-//   const [quiz, setQuiz] = useState<any | null>(null);
-//   const [loading, setLoading] = useState(false);
-//   const [error, setError] = useState("");
-//   const [user, setUser] = useState<any>(null);
-//   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-//   const quizRef = useRef<HTMLDivElement>(null);
-
-//   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-
-//   useEffect(() => {
-//     const fetchUser = async () => {
-//       try {
-//         const res = await fetch("/api/user");
-//         if (!res.ok) return;
-//         const data = await res.json();
-//         setUser(data.user);
-//       } catch (err) {
-//         console.error(err);
-//       }
-//     };
-//     fetchUser();
-//   }, []);
-
-//   const handleDownloadWord = async () => {
-//     if (!quiz) return;
-
-//     if (!user || user.subscriptionPlan !== "premium") {
-//       setShowSubscribeModal(true);
-//       return;
-//     }
-
-//     try {
-//       const res = await fetch("/api/download-file", {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ quiz, format: "word" }),
-//       });
-
-//       if (!res.ok) {
-//         const data = await res.json();
-//         alert(data.error || "Failed to download Word file");
-//         return;
-//       }
-
-//       const blob = await res.blob();
-//       const url = URL.createObjectURL(blob);
-//       const a = document.createElement("a");
-//       a.href = url;
-//       a.download = "QuizMint.docx";
-//       document.body.appendChild(a);
-//       a.click();
-//       a.remove();
-//       URL.revokeObjectURL(url);
-//     } catch (err) {
-//       console.error(err);
-//       alert("Error downloading Word file");
-//     }
-//   };
-
-//   const handleDownloadPPT = async () => {
-//     if (!quiz) return;
-
-//     if (!user || user.subscriptionPlan !== "premium") {
-//       setShowSubscribeModal(true);
-//       return;
-//     }
-
-//     try {
-//       const res = await fetch("/api/download-file", {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ quiz, format: "ppt" }),
-//       });
-
-//       if (!res.ok) {
-//         const data = await res.json();
-//         alert(data.error || "Failed to download PPT file");
-//         return;
-//       }
-
-//       const blob = await res.blob();
-//       const url = URL.createObjectURL(blob);
-//       const a = document.createElement("a");
-//       a.href = url;
-//       a.download = "QUizMint.pptx";
-//       document.body.appendChild(a);
-//       a.click();
-//       a.remove();
-//       URL.revokeObjectURL(url);
-//     } catch (err) {
-//       console.error(err);
-//       alert("Error downloading PPT file");
-//     }
-//   };
-
-//   const handleFileUpload = async (file: File) => {
-//     if (!user) return setShowSubscribeModal(true);
-//     if (user.subscriptionPlan !== "premium") return setShowSubscribeModal(true);
-
-//     setLoading(true);
-//     try {
-//       const formData = new FormData();
-//       formData.append("file", file);
-//       formData.append("prompt", prompt);
-//       formData.append("difficulty", "easy");
-//       formData.append("adaptiveLearning", "true");
-
-//       const res = await fetch("/api/upload-file", {
-//         method: "POST",
-//         body: formData,
-//       });
-//       const data = await res.json();
-//       if (data.quiz) setQuiz(data.quiz);
-//       else setError(data.error);
-//     } catch (err) {
-//       setError("Failed to generate quiz");
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const generateQuizFromPrompt = async () => {
-//     if (!prompt.trim() && !uploadedFile) return;
-//     setLoading(true);
-//     setQuiz(null);
-//     setError("");
-
-//     try {
-//       const difficulty = user?.aiDifficulty || "easy";
-//       const adaptiveLearning = user?.adaptiveLearning ?? false; // read from DB
-
-//       if (uploadedFile) {
-//         const formData = new FormData();
-//         formData.append("file", uploadedFile);
-//         formData.append("prompt", prompt);
-
-//         // send DB-controlled values
-//         formData.append("difficulty", difficulty);
-//         formData.append(
-//           "adaptiveLearning",
-//           adaptiveLearning ? "true" : "false"
-//         );
-
-//         const res = await fetch("/api/upload-file", {
-//           method: "POST",
-//           body: formData,
-//         });
-//         const data = await res.json();
-//         if (!res.ok)
-//           setError(data.error || "Failed to generate quiz from file");
-//         else {
-//           setQuiz(data.quiz);
-//           setUploadedFile(null);
-//         }
-//       } else {
-//         const res = await fetch("/api/generate-quiz", {
-//           method: "POST",
-//           headers: { "Content-Type": "application/json" },
-//           body: JSON.stringify({
-//             text: prompt,
-//             difficulty,
-//             adaptiveLearning,
-//           }),
-//         });
-//         const data = await res.json();
-//         if (!res.ok)
-//           setError(data.error || "Failed to generate quiz from prompt");
-//         else setQuiz(data.quiz);
-//       }
-//     } catch (err) {
-//       setError("Failed to generate quiz");
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const handleCopy = async () => {
-//     if (!quiz) return;
-//     let textToCopy = `${quiz.title}\n\n${quiz.instructions}\n\n`;
-//     quiz.questions.forEach((q: any, i: number) => {
-//       textToCopy += `${i + 1}. ${q.question}\n`;
-//       q.options.forEach((opt: string, j: number) => {
-//         textToCopy += `   ${String.fromCharCode(97 + j)}) ${opt}\n`;
-//       });
-//       textToCopy += `   ✅ Answer: ${q.answer}\n\n`;
-//     });
-//     await navigator.clipboard.writeText(textToCopy);
-//     alert("Copied formatted quiz to clipboard!");
-//   };
-
-//   const handleDownloadPDF = () => {
-//     if (!quiz) return;
-
-//     const pdf = new jsPDF({ unit: "pt", format: "a4" });
-//     const pageWidth = pdf.internal.pageSize.width;
-//     const pageHeight = pdf.internal.pageSize.height;
-//     const margin = 40;
-//     const lineHeight = 18;
-//     let y = margin;
-
-//     const addLine = (
-//       text: string,
-//       indent = 0,
-//       fontStyle: "normal" | "bold" | "italic" = "normal"
-//     ) => {
-//       pdf.setFont("helvetica", fontStyle);
-//       const lines = pdf.splitTextToSize(
-//         text ?? "",
-//         pageWidth - margin * 2 - indent
-//       );
-//       lines.forEach((line: string) => {
-//         if (y + lineHeight > pageHeight - margin) {
-//           pdf.addPage();
-//           y = margin;
-//         }
-//         pdf.text(line, margin + indent, y);
-//         y += lineHeight;
-//       });
-//     };
-
-//     addLine(quiz.title ?? "", 0, "bold");
-//     y += 5;
-//     addLine(quiz.instructions ?? "", 0, "italic");
-//     y += 10;
-
-//     quiz.questions.forEach((q: any, i: number) => {
-//       addLine(`${i + 1}. ${q.question ?? ""}`, 0, "bold");
-//       q.options.forEach((opt: string, j: number) =>
-//         addLine(`   ${String.fromCharCode(97 + j)}) ${opt ?? ""}`, 0)
-//       );
-//       addLine(`   Answer: ${q.answer ?? ""}`, 0, "italic");
-//       y += 10;
-//     });
-
-//     pdf.save("QuizMint Quiz.pdf");
-//   };
-
-//   return (
-//     <div className="flex flex-col items-center w-full max-w-6xl px-6">
-//       <section className="flex flex-col items-center text-center mt-16 max-w-3xl">
-//         <Badge className="mb-3 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
-//           AI-Powered Quiz Generator
-//         </Badge>
-//         <h1 className="text-5xl font-bold leading-tight mb-4">
-//           Ask any document or lesson in seconds
-//         </h1>
-//         <p className="text-lg text-zinc-600 dark:text-zinc-400 mb-8">
-//           Write instructions or upload a document — QuizMint’s AI will generate
-//           a quiz.
-//         </p>
-
-//         <textarea
-//           placeholder="Write your quiz instructions or prompt here..."
-//           value={prompt}
-//           onChange={(e) => setPrompt(e.target.value)}
-//           className="w-full max-w-md mb-2 rounded border border-zinc-300 p-2 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100"
-//         />
-
-//         <div className="flex gap-2 mb-4">
-//           <Button
-//             className="bg-blue-600 hover:bg-blue-700"
-//             onClick={generateQuizFromPrompt}
-//             disabled={loading}
-//           >
-//             {loading ? "Generating..." : "Generate from Prompt"}
-//             <ArrowRight className="ml-2 h-4 w-4" />
-//           </Button>
-//           <FileUpload
-//             onFileSelect={(file) => {
-//               if (!user || user.subscriptionPlan !== "premium") {
-//                 setShowSubscribeModal(true);
-//                 return;
-//               }
-//               setUploadedFile(file); // just store the file
-//             }}
-//           />
-//         </div>
-
-//         {error && (
-//           <Alert variant="destructive" className="w-full max-w-md">
-//             <AlertDescription>{error}</AlertDescription>
-//           </Alert>
-//         )}
-
-//         <AnimatePresence>
-//           {quiz && (
-//             <motion.div
-//               key="quiz-card"
-//               initial={{ opacity: 0, y: 20 }}
-//               animate={{ opacity: 1, y: 0 }}
-//               exit={{ opacity: 0, y: 20 }}
-//               transition={{ duration: 0.3 }}
-//               className="w-full max-w-2xl"
-//             >
-//               <Card className="mb-10 w-full max-w-2xl border-zinc-200 dark:border-zinc-800">
-//                 <CardHeader className="relative pb-4">
-//                   {/* X BUTTON (TOP RIGHT ALWAYS) */}
-//                   <button
-//                     onClick={() => setQuiz(null)}
-//                     className="absolute right-2 top-2 text-gray-500 hover:text-red-500"
-//                   >
-//                     <X className="w-5 h-5" />
-//                   </button>
-
-//                   {/* TITLE */}
-//                   <CardTitle className="text-xl font-semibold mb-3">
-//                     🧩 Generated Quiz
-//                   </CardTitle>
-
-//                   {/* ACTION BUTTONS */}
-//                   <div className="flex flex-wrap gap-2 w-full">
-//                     <Button size="sm" variant="outline" onClick={handleCopy}>
-//                       <Copy className="w-4 h-4 mr-1" /> Copy
-//                     </Button>
-
-//                     <Button size="sm" onClick={handleDownloadPDF}>
-//                       <FileDown className="w-4 h-4 mr-1" /> PDF
-//                     </Button>
-
-//                     <Button size="sm" onClick={handleDownloadWord}>
-//                       <FileDown className="w-4 h-4 mr-1" /> Word
-//                     </Button>
-
-//                     <Button size="sm" onClick={handleDownloadPPT}>
-//                       <FileDown className="w-4 h-4 mr-1" /> PPT
-//                     </Button>
-//                   </div>
-//                 </CardHeader>
-
-//                 <CardContent>
-//                   <div className="max-h-96 overflow-y-auto border p-5 rounded-lg bg-linear-to-br from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-800 shadow-sm">
-//                     <div
-//                       ref={quizRef}
-//                       className="space-y-4 text-left text-base text-zinc-800 dark:text-zinc-200 leading-relaxed"
-//                     >
-//                       {quiz.questions.map((q: any, i: number) => (
-//                         <div
-//                           key={i}
-//                           className="p-3 bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-700 shadow-sm"
-//                         >
-//                           <p className="font-semibold mb-2">
-//                             {i + 1}. {q.question}
-//                           </p>
-//                           <ul className="space-y-1 ml-4 list-disc">
-//                             {q.options.map((opt: string, j: number) => (
-//                               <li key={j}>{opt}</li>
-//                             ))}
-//                           </ul>
-//                           <p className="mt-2 text-sm text-green-600 dark:text-green-400">
-//                             ✅ Correct answer: <strong>{q.answer}</strong>
-//                           </p>
-//                           {q.hint && (
-//                             <p className="mt-1 text-sm text-yellow-600 dark:text-yellow-400">
-//                               💡 Hint: {q.hint}
-//                             </p>
-//                           )}
-//                           {q.explanation && (
-//                             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-//                               📝 Explanation: {q.explanation}
-//                             </p>
-//                           )}
-//                         </div>
-//                       ))}
-//                     </div>
-//                   </div>
-//                 </CardContent>
-//               </Card>
-//             </motion.div>
-//           )}
-//         </AnimatePresence>
-//       </section>
-
-//       {showSubscribeModal && (
-//         <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
-//           <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl shadow-lg w-80 text-center">
-//             <h2 className="text-xl font-bold mb-3">Subscription Required</h2>
-//             <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-4">
-//               Uploading files is available only for premium members.
-//             </p>
-//             <Button
-//               className="w-full bg-blue-600 hover:bg-blue-700"
-//               onClick={() => (window.location.href = "/subscription")}
-//             >
-//               Subscribe Now
-//             </Button>
-//             <Button
-//               variant="outline"
-//               className="w-full mt-2"
-//               onClick={() => setShowSubscribeModal(false)}
-//             >
-//               Cancel
-//             </Button>
-//           </div>
-//         </div>
-//       )}
-
-//       {uploadedFile && (
-//         <div className="mt-2 text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
-//           <span>✅ File uploaded: {uploadedFile.name}</span>
-//           <Button
-//             size="sm"
-//             variant="outline"
-//             onClick={() => setUploadedFile(null)}
-//           >
-//             Remove
-//           </Button>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, Copy, FileDown, PauseCircle, X } from "lucide-react";
-import FileUpload from "@/components/ui/file-upload";
-import { motion } from "framer-motion";
-import jsPDF from "jspdf";
-import { SourceIcons, SourceIcon } from "@/components/source-icons";
-import Tour from "@/components/ui/tour";
-import AdUnlockButton from "@/components/ad-unlock-button";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { BookOpen, Brain, Clock3, FileText, Sparkles } from "lucide-react";
 
-export default function Dashboard() {
-  const [prompt, setPrompt] = useState("");
-  const [quiz, setQuiz] = useState<any | null>(null);
-  const [sources, setSources] = useState<SourceIcon[]>([]);
-  const [lastLoaded, setLastLoaded] = useState<boolean>(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [adUnlockInfo, setAdUnlockInfo] = useState<{
-    available: boolean;
-    nextAdResetAt?: string | null;
-    nextFreeAt?: string | null;
-    remaining?: number;
-  } | null>(null);
-  const [user, setUser] = useState<any>(null);
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const quizRef = useRef<HTMLDivElement>(null);
-  const generationAbortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch("/api/user");
-        if (!res.ok) return;
-        const data = await res.json();
-        setUser(data.user);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchUser();
-  }, []);
-
-  const tourSteps = [
-    {
-      element: "#quiz-input",
-      popover: {
-        title: "Paste or type",
-        description:
-          "Example: Create a 10-item quiz about the water cycle. Use 5 multiple choice and 5 true/false. Or paste a youtube link here.",
-      },
-    },
-    {
-      element: "#quiz-upload",
-      popover: {
-        title: "Upload a file",
-        description: "Upload a document to generate questions from your content.",
-      },
-    },
-    {
-      element: "#quiz-generate",
-      popover: {
-        title: "Generate quiz",
-        description: "Click to generate your quiz using AI and your sources.",
-      },
-    },
-    {
-      element: "#quiz-output",
-      popover: {
-        title: "Your quiz",
-        description:
-          "Your generated quiz appears here. You can copy or download it.",
-      },
-    },
-  ];
-
-  useEffect(() => {
-    const fetchLatestQuiz = async () => {
-      try {
-        const res = await fetch("/api/quizzes/latest");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data?.quiz) {
-          setQuiz(data.quiz);
-          setLastLoaded(true);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchLatestQuiz();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      generationAbortRef.current?.abort();
-      generationAbortRef.current = null;
-    };
-  }, []);
-
-  const pauseQuizGeneration = () => {
-    if (!generationAbortRef.current) return;
-    generationAbortRef.current.abort();
-    generationAbortRef.current = null;
-    setLoading(false);
-    setError("Generation paused.");
-  };
-
-  const handlePaste = async () => {
-    const text = await navigator.clipboard.readText();
-    setPrompt((prev) => prev + text);
-  };
-
-  const handleCopy = async () => {
-    if (!quiz) return;
-    let textToCopy = `${quiz.title}\n\n${quiz.instructions}\n\n`;
-    quiz.questions.forEach((q: any, i: number) => {
-      textToCopy += `${i + 1}. ${q.question}\n`;
-      q.options.forEach((opt: string, j: number) => {
-        textToCopy += `   ${String.fromCharCode(97 + j)}) ${opt}\n`;
-      });
-      textToCopy += `    Answer: ${q.answer}\n\n`;
-    });
-    await navigator.clipboard.writeText(textToCopy);
-    alert("Copied formatted quiz to clipboard!");
-  };
-
-  const handleDownloadPDF = () => {
-    if (!quiz) return;
-    const pdf = new jsPDF({ unit: "pt", format: "a4" });
-    const pageWidth = pdf.internal.pageSize.width;
-    const pageHeight = pdf.internal.pageSize.height;
-    const margin = 40;
-    const lineHeight = 18;
-    let y = margin;
-
-    const addLine = (
-      text: string,
-      indent = 0,
-      fontStyle: "normal" | "bold" | "italic" = "normal",
-    ) => {
-      pdf.setFont("helvetica", fontStyle);
-      const lines = pdf.splitTextToSize(
-        text ?? "",
-        pageWidth - margin * 2 - indent,
-      );
-      lines.forEach((line: string) => {
-        if (y + lineHeight > pageHeight - margin) {
-          pdf.addPage();
-          y = margin;
-        }
-        pdf.text(line, margin + indent, y);
-        y += lineHeight;
-      });
-    };
-
-    addLine(quiz.title ?? "", 0, "bold");
-    y += 5;
-    addLine(quiz.instructions ?? "", 0, "italic");
-    y += 10;
-
-    quiz.questions.forEach((q: any, i: number) => {
-      addLine(`${i + 1}. ${q.question ?? ""}`, 0, "bold");
-      q.options.forEach((opt: string, j: number) =>
-        addLine(`   ${String.fromCharCode(97 + j)}) ${opt ?? ""}`, 0),
-      );
-      addLine(`   Answer: ${q.answer ?? ""}`, 0, "italic");
-      y += 10;
-    });
-
-    pdf.save("QuizMint Quiz.pdf");
-  };
-
-  const handleDownloadWord = async () => {
-    if (!quiz) return;
-    if (!user || user.subscriptionPlan !== "premium")
-      return setShowSubscribeModal(true);
-
-    try {
-      const res = await fetch("/api/download-file", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quiz, format: "word" }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        alert(data.error || "Failed to download Word file");
-        return;
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "QuizMint.docx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
-      alert("Error downloading Word file");
-    }
-  };
-
-  const handleDownloadPPT = async () => {
-    if (!quiz) return;
-    if (!user || user.subscriptionPlan !== "premium")
-      return setShowSubscribeModal(true);
-
-    try {
-      const res = await fetch("/api/download-file", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quiz, format: "ppt" }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        alert(data.error || "Failed to download PPT file");
-        return;
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "QuizMint.pptx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
-      alert("Error downloading PPT file");
-    }
-  };
-
-  const generateQuizFromPrompt = async () => {
-    if (!prompt.trim() && !uploadedFile) return;
-    setLoading(true);
-    setQuiz(null);
-    setError("");
-    setSources([]);
-    setAdUnlockInfo(null);
-
-    try {
-      generationAbortRef.current?.abort();
-      const controller = new AbortController();
-      generationAbortRef.current = controller;
-
-      const difficulty = user?.aiDifficulty || "easy";
-      const adaptiveLearning = user?.adaptiveLearning ?? false;
-
-      if (uploadedFile) {
-        const formData = new FormData();
-        formData.append("file", uploadedFile);
-        formData.append("prompt", prompt);
-        formData.append("difficulty", difficulty);
-        formData.append("adaptiveLearning", adaptiveLearning.toString());
-
-        const res = await fetch("/api/upload-file", {
-          method: "POST",
-          body: formData,
-          signal: controller.signal,
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          // Backend sent 400 or other error
-          setError(
-            data.message || data.error || "Failed to generate quiz from file",
-          );
-        } else {
-          setQuiz(data.quiz);
-          setSources(Array.isArray(data.sources) ? data.sources : []);
-          setLastLoaded(false);
-          setUploadedFile(null);
-        }
-      } else {
-        const requestBody = {
-          text: prompt,
-          difficulty: difficulty, // This will always be a valid string
-          adaptiveLearning: adaptiveLearning, // This will always be a boolean
-        };
-
-    
-
-      const res = await fetch("/api/generate-quiz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-
-    
-      // Get the response as text first
-      const responseText = await res.text();
-      
-      
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-     
-        throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
-      }
-
-      if (!res.ok) {
-        if (res.status === 403 && data?.error?.toString().includes("Free limit")) {
-          setAdUnlockInfo({
-            available: Boolean(data?.adResetAvailable),
-            nextAdResetAt: data?.nextAdResetAt || null,
-            nextFreeAt: data?.nextFreeAt || null,
-            remaining:
-              typeof data?.adResetsRemaining === "number"
-                ? data.adResetsRemaining
-                : undefined,
-          });
-        }
-        setError(
-          data.error || data.message || `Failed to generate quiz (${res.status})`
-        );
-      } else {
-        
-        
-        // Debug the quiz object
-        
-        
-        // Check if quiz has questions
-        if (!data.quiz) {
-         
-          setError("No quiz data received from server");
-        } else if (!data.quiz.questions || data.quiz.questions.length === 0) {
-        
-          setError("Quiz generated but has no questions");
-        } else {
-          
-          setQuiz(data.quiz);
-          setSources(Array.isArray(data.sources) ? data.sources : []);
-          setLastLoaded(false);
-          setAdUnlockInfo(null);
-        }
-      }
-    }
-  } catch (err: any) {
-    if (err?.name === "AbortError") {
-      setError("Generation paused.");
-      return;
-    }
-   
-    setError(err.message || "Failed to generate quiz");
-  } finally {
-    generationAbortRef.current = null;
-    setLoading(false);
-  }
+type DashboardSummary = {
+  subscriptionPlan: string;
+  quizUsage: number;
+  lastQuizAt: string | null;
+  adResetRemaining: number;
+  lastActivityAt: string | null;
+  quizCount: number;
+  lessonPlanCount: number;
+  todayQuizCount: number;
+  todayLessonPlanCount: number;
+  recentQuizzes: { id: number; title: string; createdAt: string }[];
+  recentPlans: { id: string; title: string; subject: string; createdAt: string }[];
 };
+
+const FREE_QUIZ_LIMIT = 3;
+const COOLDOWN_HOURS = 3;
+const QUIZ_TEMPLATES = [
+  "Create a 10-item Grade 7 science quiz about ecosystems with multiple choice and true/false.",
+  "Create a 15-item Grade 8 math quiz about linear equations with mixed question types and explanations.",
+  "Create a 12-item Grade 9 biology quiz about cell division with hints for difficult items.",
+  "Create a 20-item Grade 10 chemistry quiz about acids and bases with medium difficulty.",
+  "Create a 10-item Grade 6 history quiz about ancient Egypt using multiple choice and fill-in-the-blank.",
+  "Create a 15-item Grade 11 physics quiz about Newton's laws with concept-first questions.",
+  "Create a 10-item English quiz on subject-verb agreement for Grade 8 with clear answer explanations.",
+  "Create a 12-item geography quiz about world climate zones for Grade 9 with true/false and MCQ.",
+  "Create a 10-item computer science quiz about algorithms for Grade 10 with practical scenarios.",
+  "Create a 15-item health education quiz about nutrition for Grade 7 with mixed formats.",
+];
+
+const LESSON_TEMPLATES = [
+  {
+    topic: "Water Cycle",
+    subject: "Science",
+    grade: "Grade 7",
+    days: "2",
+    minutesPerDay: "40",
+    objectives: "Explain evaporation, condensation, precipitation, and collection.",
+    constraints: "Include one group activity and one exit ticket per day.",
+  },
+  {
+    topic: "Linear Equations",
+    subject: "Mathematics",
+    grade: "Grade 8",
+    days: "3",
+    minutesPerDay: "45",
+    objectives: "Solve one-step and two-step linear equations accurately.",
+    constraints: "Use scaffolded examples and a short formative quiz on Day 3.",
+  },
+  {
+    topic: "Photosynthesis",
+    subject: "Biology",
+    grade: "Grade 9",
+    days: "2",
+    minutesPerDay: "40",
+    objectives: "Describe process inputs/outputs and why plants need photosynthesis.",
+    constraints: "Add diagram labeling and misconception checks.",
+  },
+  {
+    topic: "Industrial Revolution",
+    subject: "History",
+    grade: "Grade 9",
+    days: "3",
+    minutesPerDay: "40",
+    objectives: "Analyze social and economic impacts of industrialization.",
+    constraints: "Include source analysis and a reflection paragraph.",
+  },
+  {
+    topic: "Newton's Laws",
+    subject: "Physics",
+    grade: "Grade 10",
+    days: "3",
+    minutesPerDay: "45",
+    objectives: "Apply all three laws to real-world motion problems.",
+    constraints: "Include one low-cost classroom experiment.",
+  },
+  {
+    topic: "Atoms and Elements",
+    subject: "Chemistry",
+    grade: "Grade 8",
+    days: "2",
+    minutesPerDay: "40",
+    objectives: "Differentiate atoms, molecules, and elements.",
+    constraints: "Use visual models and vocabulary checks.",
+  },
+  {
+    topic: "Grammar: Active vs Passive Voice",
+    subject: "English",
+    grade: "Grade 8",
+    days: "2",
+    minutesPerDay: "40",
+    objectives: "Convert active voice to passive voice correctly.",
+    constraints: "Include sentence transformation drills.",
+  },
+  {
+    topic: "Map Skills",
+    subject: "Geography",
+    grade: "Grade 7",
+    days: "2",
+    minutesPerDay: "40",
+    objectives: "Read scale, symbols, and coordinates on maps.",
+    constraints: "Add hands-on worksheet and peer check.",
+  },
+  {
+    topic: "Intro to Algorithms",
+    subject: "Computer Science",
+    grade: "Grade 10",
+    days: "3",
+    minutesPerDay: "45",
+    objectives: "Trace and design simple step-by-step algorithms.",
+    constraints: "Use pseudocode practice and debugging tasks.",
+  },
+  {
+    topic: "Healthy Nutrition",
+    subject: "Health",
+    grade: "Grade 7",
+    days: "2",
+    minutesPerDay: "40",
+    objectives: "Classify food groups and design a balanced meal.",
+    constraints: "Include culturally relevant meal examples.",
+  },
+];
+
+function getResetTimer(lastQuizAt: string | null) {
+  if (!lastQuizAt) return null;
+  const cooldownMs = COOLDOWN_HOURS * 60 * 60 * 1000;
+  const end = new Date(lastQuizAt).getTime() + cooldownMs;
+  const remaining = end - Date.now();
+  if (remaining <= 0) return null;
+
+  const h = Math.floor(remaining / 3600000);
+  const m = Math.floor((remaining % 3600000) / 60000);
+  const s = Math.floor((remaining % 60000) / 1000);
+  return `${h}h ${m}m ${s}s`;
+}
+
+export default function HomeDashboardPage() {
+  const [data, setData] = useState<DashboardSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [copiedTemplate, setCopiedTemplate] = useState<string | null>(null);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setTick((v) => v + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/dashboard/summary", { cache: "no-store" });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || "Failed to load dashboard");
+        if (mounted) setData(json);
+      } catch (err: any) {
+        if (mounted) setError(err.message || "Failed to load dashboard");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const usageStatus = useMemo(() => {
+    if (!data) return "-";
+    const plan = (data.subscriptionPlan || "free").toLowerCase();
+    if (plan !== "free") return "Unlimited";
+
+    const left = Math.max(FREE_QUIZ_LIMIT - (data.quizUsage || 0), 0);
+    if (left > 0) return `${left} / ${FREE_QUIZ_LIMIT} left`;
+
+    const timer = getResetTimer(data.lastQuizAt);
+    return timer ? `Locked - resets in ${timer}` : `Ready to generate`;
+  }, [data]);
+
+  const todaySummary = useMemo(() => {
+    if (!data) return "-";
+    return `${data.todayQuizCount} quizzes - ${data.todayLessonPlanCount} lesson plans`;
+  }, [data]);
+
+  async function copyTemplate(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTemplate(text);
+      setTimeout(() => setCopiedTemplate(null), 1600);
+    } catch {
+      setCopiedTemplate(null);
+    }
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center w-full px-6 min-h-screen">
-      <Tour steps={tourSteps} tourId="home-quiz" />
-      <section className="flex flex-col lg:flex-row gap-8 justify-center w-full max-w-7xl">
-        {/* ================= INPUT CARD ================= */}
-        <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-120 h-137.5">
-          <CardHeader>
-            <CardTitle className="text-xl font-semibold">
-              {" "}
-              Create Quiz Input
-            </CardTitle>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Paste text or youtube link, write instructions, or upload a document.
-            </p>
-          </CardHeader>
-
-          <CardContent className="space-y-4 flex flex-col h-full">
-            <div className="relative flex-1">
-              <textarea
-                id="quiz-input"
-                placeholder="Paste text, youtube link, or instructions here..."
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                className="h-full w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-              <div className="absolute bottom-3 right-3 flex gap-2">
-                <Button size="sm" variant="outline" onClick={handlePaste}>
-                  Paste
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setPrompt("")}
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
-
-            <div id="quiz-upload">
-              <FileUpload
-              onFileSelect={(file) => {
-                if (!user || user.subscriptionPlan !== "premium") {
-                  setShowSubscribeModal(true);
-                  return;
-                }
-                setUploadedFile(file);
-              }}
-              />
-            </div>
-
-            <div className="mt-2 flex gap-2">
-              <Button
-                id="quiz-generate"
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                onClick={generateQuizFromPrompt}
-                disabled={loading}
-              >
-                {loading ? "Generating Quiz..." : "Generate Quiz"}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-              {loading && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={pauseQuizGeneration}
-                  className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                >
-                  <PauseCircle className="mr-1 h-4 w-4" />
-                  Pause
-                </Button>
-              )}
-            </div>
-
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>
-                  <div className="space-y-2">
-                    <div>{error}</div>
-                    {adUnlockInfo && (
-                      <div className="text-sm text-muted-foreground">
-                        {adUnlockInfo.nextFreeAt && (
-                          <div>
-                            Free limit resets at{" "}
-                            {new Date(adUnlockInfo.nextFreeAt).toLocaleTimeString()}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {adUnlockInfo && (
-              <AdUnlockButton
-                disabled={!adUnlockInfo.available}
-                cooldownUntil={adUnlockInfo.nextAdResetAt || undefined}
-                remaining={adUnlockInfo.remaining}
-                onUnlocked={() => {
-                  setError("Usage reset. You can generate again.");
-                  setAdUnlockInfo(null);
-                }}
-              />
-            )}
-
-            {uploadedFile && (
-              <div className="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
-                <span> {uploadedFile.name}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setUploadedFile(null)}
-                >
-                  Remove
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ================= OUTPUT CARD (ALWAYS VISIBLE) ================= */}
-        <Card
-          id="quiz-output"
-          className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-130 h-137.5 flex flex-col"
-        >
-          <CardHeader className="relative">
-            <CardTitle className="text-xl font-semibold">
-              {" "}
-              Generated Quiz
-            </CardTitle>
-
-            {lastLoaded && (
-              <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                Showing last generated quiz
-              </div>
-            )}
-
-            {quiz && (
-              <button
-                onClick={() => {
-                  setQuiz(null);
-                  setLastLoaded(false);
-                }}
-                className="absolute right-4 top-4 text-zinc-400 hover:text-red-500"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            )}
-
-            <div className="flex flex-wrap gap-2 mt-3">
-              <Button size="sm" variant="outline" onClick={handleCopy}>
-                <Copy className="w-4 h-4 mr-1" /> Copy
-              </Button>
-              <Button size="sm" onClick={handleDownloadPDF}>
-                PDF
-              </Button>
-              <Button size="sm" onClick={handleDownloadWord}>
-                Word
-              </Button>
-              <Button size="sm" onClick={handleDownloadPPT}>
-                PPT
-              </Button>
-            </div>
-
-            {sources.length > 0 ? (
-              <div className="mt-3">
-                <SourceIcons sources={sources} variant="pills" />
-              </div>
-            ) : null}
-          </CardHeader>
-
-          <CardContent className="flex-1 max-h-112.5 overflow-y-auto space-y-4 pr-2">
-            {quiz ? (
-              quiz.questions.map((q: any, i: number) => (
-                <div
-                  key={i}
-                  className="p-4 rounded-lg border bg-white dark:bg-zinc-900"
-                >
-                  <p className="font-semibold mb-2">
-                    {i + 1}. {q.question}
-                  </p>
-                  <ul className="ml-4 list-disc space-y-1">
-                    {q.options.map((opt: string, j: number) => (
-                      <li key={j}>{opt}</li>
-                    ))}
-                  </ul>
-                  <p className="mt-2 text-sm text-green-600">
-                    {" "}
-                    Answer: <strong>{q.answer}</strong>
-                  </p>
-                  {q.explanation && (
-                    <p className="mt-1 text-sm text-zinc-500">
-                      📝 {q.explanation}
-                    </p>
-                  )}
-                </div>
-              ))
-            ) : (
-              <p className="text-zinc-400 text-center mt-20">
-                Your generated quiz will appear here
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* ================= SUBSCRIBE MODAL ================= */}
-      {showSubscribeModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl shadow-lg w-80 text-center">
-            <h2 className="text-xl font-bold mb-3">Subscription Required</h2>
-            <p className="text-sm text-zinc-600 dark:text-zinc-300 mb-4">
-              Uploading files is available only for premium members.
-            </p>
-            <Button
-              className="w-full bg-blue-600 hover:bg-blue-700"
-              onClick={() => (window.location.href = "/subscription")}
-            >
-              Subscribe Now
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full mt-2"
-              onClick={() => setShowSubscribeModal(false)}
-            >
-              Cancel
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+      <div className="rounded-2xl border border-indigo-200/40 bg-linear-to-r from-indigo-900 via-blue-900 to-cyan-800 text-white p-6 shadow-lg">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
+            <p className="text-blue-100 mt-1">Manage lesson planning, quiz creation, and classroom workflow from one place.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge className="bg-white/20 text-white border border-white/20">
+              Plan: {(data?.subscriptionPlan || "free").toUpperCase()}
+            </Badge>
+            <Button asChild className="bg-white text-indigo-900 hover:bg-blue-50">
+              <Link href="/generate-quiz">Open Quiz Generator</Link>
             </Button>
           </div>
         </div>
+      </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
+              <Brain className="w-4 h-4 text-indigo-600" /> Quizzes Generated
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-zinc-900">{loading ? "-" : data?.quizCount ?? 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-indigo-600" /> Lesson Plans Generated
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-zinc-900">{loading ? "-" : data?.lessonPlanCount ?? 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
+              <Clock3 className="w-4 h-4 text-indigo-600" /> Usage / Reset Timer
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-lg font-semibold text-zinc-900">{loading ? "-" : usageStatus}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Today Snapshot</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-zinc-500">Activity today</p>
+            <p className="text-xl font-semibold">{loading ? "-" : todaySummary}</p>
+            <p className="text-xs text-zinc-500">
+              Last activity:{" "}
+              {loading
+                ? "-"
+                : data?.lastActivityAt
+                  ? new Date(data.lastActivityAt).toLocaleString()
+                  : "No activity yet"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Usage Health</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-zinc-500">Free-tier ad unlock remaining</p>
+            <p className="text-xl font-semibold">
+              {loading ? "-" : (data?.subscriptionPlan || "free") === "free" ? `${data?.adResetRemaining ?? 0} / 5` : "Not applicable"}
+            </p>
+            <p className="text-xs text-zinc-500">
+              {loading
+                ? "-"
+                : (data?.subscriptionPlan || "free") === "free"
+                  ? "Watches available in current window"
+                  : "Premium/Pro does not use ad reset"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-pink-200 bg-gradient-to-br from-pink-50 to-rose-50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Classroom Queue</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-zinc-500">Continue where you left off</p>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/generate-quiz">Resume Quiz Workflow</Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/lessonPlan">Resume Lesson Workflow</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="border-blue-200 bg-gradient-to-br from-white to-blue-50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Recent Quizzes</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {!data?.recentQuizzes?.length ? (
+              <p className="text-sm text-zinc-500">No quizzes yet.</p>
+            ) : (
+              data.recentQuizzes.map((quiz) => (
+                <div key={quiz.id} className="flex items-center justify-between border border-blue-100 bg-white/90 rounded-lg px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{quiz.title}</p>
+                    <p className="text-xs text-zinc-500">{new Date(quiz.createdAt).toLocaleString()}</p>
+                  </div>
+                  <FileText className="w-4 h-4 text-zinc-400" />
+                </div>
+              ))
+            )}
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/generate-quiz">Create New Quiz</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="border-violet-200 bg-gradient-to-br from-white to-violet-50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Recent Lesson Plans</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {!data?.recentPlans?.length ? (
+              <p className="text-sm text-zinc-500">No lesson plans yet.</p>
+            ) : (
+              data.recentPlans.map((plan) => (
+                <div key={plan.id} className="flex items-center justify-between border border-violet-100 bg-white/90 rounded-lg px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{plan.title}</p>
+                    <p className="text-xs text-zinc-500">{plan.subject} - {new Date(plan.createdAt).toLocaleDateString()}</p>
+                  </div>
+                  <Sparkles className="w-4 h-4 text-zinc-400" />
+                </div>
+              ))
+            )}
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/lessonPlan">Create Lesson Plan</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50 to-cyan-50 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Dashboard Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Button asChild className="bg-indigo-600 hover:bg-indigo-700 text-white">
+            <Link href="/generate-quiz">Generate Quiz</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/lessonPlan">Generate Lesson Plan</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/account">Manage Account</Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-fuchsia-200 bg-gradient-to-r from-fuchsia-50 to-pink-50 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Quick Templates</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-fuchsia-700">Quiz Generator Samples (10)</p>
+            <div className="max-h-[420px] overflow-auto premium-scrollbar space-y-2 pr-1">
+              {QUIZ_TEMPLATES.map((template, idx) => (
+                <div key={template} className="border border-fuchsia-200 rounded-lg p-3 bg-white/95 hover:bg-white transition space-y-2">
+                  <p className="text-xs font-medium text-fuchsia-700">Quiz #{idx + 1}</p>
+                  <p className="text-sm text-zinc-700">{template}</p>
+                  <Button size="sm" variant="outline" onClick={() => copyTemplate(template)}>
+                    {copiedTemplate === template ? "Copied" : "Copy Quiz Prompt"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-fuchsia-700">Lesson Plan Samples (10)</p>
+            <div className="max-h-[420px] overflow-auto premium-scrollbar space-y-2 pr-1">
+              {LESSON_TEMPLATES.map((template, idx) => {
+                const full = `Topic: ${template.topic}\nSubject: ${template.subject}\nGrade: ${template.grade}\nDays: ${template.days}\nMinutes per day: ${template.minutesPerDay}\nObjectives: ${template.objectives}\nConstraints: ${template.constraints}`;
+                return (
+                  <div key={full} className="border border-fuchsia-200 rounded-lg p-3 bg-white/95 hover:bg-white transition space-y-2">
+                    <p className="text-xs font-medium text-fuchsia-700">Lesson #{idx + 1}</p>
+                    <p className="text-sm text-zinc-700"><span className="font-medium">Topic:</span> {template.topic}</p>
+                    <p className="text-sm text-zinc-700"><span className="font-medium">Subject:</span> {template.subject}</p>
+                    <p className="text-sm text-zinc-700"><span className="font-medium">Grade:</span> {template.grade}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => copyTemplate(template.topic)}>
+                        {copiedTemplate === template.topic ? "Copied" : "Copy Topic"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => copyTemplate(template.subject)}>
+                        {copiedTemplate === template.subject ? "Copied" : "Copy Subject"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => copyTemplate(template.grade)}>
+                        {copiedTemplate === template.grade ? "Copied" : "Copy Grade"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => copyTemplate(full)}>
+                        {copiedTemplate === full ? "Copied" : "Copy Full Inputs"}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

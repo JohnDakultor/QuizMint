@@ -144,3 +144,29 @@ html {
 .quizmint-tour .driver-popover-footer button {
   border-radius: 9999px;
 }
+
+/* Premium scrollbar style (opt-in per element) */
+.premium-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #7c3aed #f5f3ff;
+}
+
+.premium-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.premium-scrollbar::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, #f5f3ff 0%, #eef2ff 100%);
+  border-radius: 999px;
+}
+
+.premium-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #8b5cf6 0%, #4f46e5 100%);
+  border-radius: 999px;
+  border: 2px solid #f5f3ff;
+}
+
+.premium-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #7c3aed 0%, #4338ca 100%);
+}

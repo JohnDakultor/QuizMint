@@ -1,8 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import SkeletonLoading from "@/components/ui/skeleton-loading";
 import {
   Table,
   TableBody,
@@ -34,17 +37,29 @@ import {
 
 const COLORS = ["#60a5fa", "#34d399", "#f59e0b", "#f97316", "#ef4444"];
 
+type AnalyticsMode = "quiz" | "lesson";
+
 export default function AnalyticsPageClient() {
+  const router = useRouter();
+  const [mode, setMode] = useState<AnalyticsMode>("quiz");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [charts, setCharts] = useState<any>(null);
 
-  // Fetch summary first
   useEffect(() => {
     async function loadSummary() {
       try {
-        const res = await fetch("/api/analytics?summary=true");
+        setLoading(true);
+        setError(null);
+        setSummary(null);
+        setCharts(null);
+
+        const res = await fetch(`/api/analytics?mode=${mode}&summary=true`);
+        if (res.status === 403) {
+          router.replace("/subscription");
+          return;
+        }
         if (!res.ok) throw new Error("Failed to fetch analytics summary");
         setSummary(await res.json());
       } catch (err: any) {
@@ -54,15 +69,14 @@ export default function AnalyticsPageClient() {
       }
     }
     loadSummary();
-  }, []);
+  }, [mode, router]);
 
-  // Fetch charts lazily after summary
   useEffect(() => {
     if (!summary) return;
 
     async function loadCharts() {
       try {
-        const res = await fetch("/api/analytics?full=true");
+        const res = await fetch(`/api/analytics?mode=${mode}&full=true`);
         if (!res.ok) throw new Error("Failed to fetch full analytics data");
         setCharts(await res.json());
       } catch (err) {
@@ -70,9 +84,9 @@ export default function AnalyticsPageClient() {
       }
     }
     loadCharts();
-  }, [summary]);
+  }, [summary, mode]);
 
-  const questionHistogramBuckets = useMemo(() => {
+  const histogramBuckets = useMemo(() => {
     if (!charts?.questionDistribution) return [];
     const buckets = { "0": 0, "1-3": 0, "4-6": 0, "7-10": 0, "11+": 0 };
     charts.questionDistribution.forEach((q: any) => {
@@ -86,13 +100,6 @@ export default function AnalyticsPageClient() {
     return Object.entries(buckets).map(([bucket, count]) => ({ bucket, count }));
   }, [charts]);
 
-  if (loading)
-    return (
-      <div className="flex items-center justify-center h-[50vh]">
-        Loading analytics...
-      </div>
-    );
-
   if (error)
     return (
       <Alert variant="destructive" className="max-w-3xl mx-auto mt-16">
@@ -100,54 +107,79 @@ export default function AnalyticsPageClient() {
       </Alert>
     );
 
-  if (!summary) return null;
-
-  const adaptivePercentage = Math.round(
-    (summary.adaptiveQuizzes / summary.totalQuizzes) * 100
+  const isLesson = mode === "lesson";
+  const chartsLoading = Boolean(summary) && !charts;
+  const percentage = Math.round(
+    (((summary?.adaptiveQuizzes as number) || 0) /
+      Math.max((summary?.totalQuizzes as number) || 1, 1)) *
+      100
   );
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-      <h1 className="text-3xl font-bold text-center mb-6">📊 Quiz Analytics</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-3xl font-bold">
+          {isLesson ? "Lesson Plan Analytics" : "Quiz Analytics"}
+        </h1>
+        <div className="inline-flex rounded-lg border bg-white p-1">
+          <Button
+            size="sm"
+            variant={!isLesson ? "default" : "ghost"}
+            onClick={() => setMode("quiz")}
+          >
+            Quiz
+          </Button>
+          <Button
+            size="sm"
+            variant={isLesson ? "default" : "ghost"}
+            onClick={() => setMode("lesson")}
+          >
+            Lesson Plans
+          </Button>
+        </div>
+      </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6">
         {[
-          { label: "Total Quizzes", value: summary.totalQuizzes },
-          { label: "Adaptive Quizzes", value: `${adaptivePercentage}%` },
-          { label: "Avg Questions", value: summary.avgQuestions ?? 0 },
-          { label: "Median Questions", value: summary.medianQuestions ?? 0 },
+          { label: isLesson ? "Total Plans" : "Total Quizzes", value: summary?.totalQuizzes },
+          {
+            label: isLesson ? "Multi-Day Plans" : "Adaptive Quizzes",
+            value: `${percentage}%`,
+          },
+          { label: isLesson ? "Avg Days" : "Avg Questions", value: summary?.avgQuestions ?? 0 },
+          {
+            label: isLesson ? "Median Days" : "Median Questions",
+            value: summary?.medianQuestions ?? 0,
+          },
         ].map((item, i) => (
           <Card key={i} className="min-w-0 overflow-hidden">
             <CardHeader>
               <CardTitle className="text-center">{item.label}</CardTitle>
             </CardHeader>
-            <CardContent className="flex justify-center items-center">
-              <div className="text-2xl sm:text-3xl font-bold">{item.value}</div>
+            <CardContent className="flex justify-center items-center h-16">
+              {loading || !summary ? (
+                <SkeletonLoading className="h-8 w-20" />
+              ) : (
+                <div className="text-2xl sm:text-3xl font-bold">{item.value}</div>
+              )}
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Charts */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Difficulty Distribution */}
         <Card className="min-w-0 overflow-hidden">
           <CardHeader>
-            <CardTitle>Difficulty Distribution</CardTitle>
+            <CardTitle>{isLesson ? "Subject Distribution" : "Difficulty Distribution"}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col min-h-[260px]">
-            {charts?.difficultyDistribution?.length ? (
+            {loading || chartsLoading ? (
+              <SkeletonLoading className="h-[220px] w-full" />
+            ) : charts?.difficultyDistribution?.length ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Tooltip />
-                  <Pie
-                    data={charts.difficultyDistribution}
-                    dataKey="value"
-                    nameKey="name"
-                    outerRadius="80%"
-                    label
-                  >
+                  <Pie data={charts.difficultyDistribution} dataKey="value" nameKey="name" outerRadius="80%" label>
                     {charts.difficultyDistribution.map((_: any, i: number) => (
                       <Cell key={i} fill={COLORS[i % COLORS.length]} />
                     ))}
@@ -160,23 +192,18 @@ export default function AnalyticsPageClient() {
           </CardContent>
         </Card>
 
-        {/* Question Types */}
         <Card className="min-w-0 overflow-hidden">
           <CardHeader>
-            <CardTitle>Question Types</CardTitle>
+            <CardTitle>{isLesson ? "Grade Distribution" : "Question Types"}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col min-h-[260px]">
-            {charts?.questionTypeData?.length ? (
+            {loading || chartsLoading ? (
+              <SkeletonLoading className="h-[220px] w-full" />
+            ) : charts?.questionTypeData?.length ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Tooltip />
-                  <Pie
-                    data={charts.questionTypeData}
-                    dataKey="count"
-                    nameKey="type"
-                    outerRadius="80%"
-                    label
-                  >
+                  <Pie data={charts.questionTypeData} dataKey="count" nameKey="type" outerRadius="80%" label>
                     {charts.questionTypeData.map((_: any, i: number) => (
                       <Cell key={i} fill={COLORS[i % COLORS.length]} />
                     ))}
@@ -189,15 +216,16 @@ export default function AnalyticsPageClient() {
           </CardContent>
         </Card>
 
-        {/* Questions per Quiz */}
         <Card className="min-w-0 overflow-hidden">
           <CardHeader>
-            <CardTitle>Questions Per Quiz</CardTitle>
+            <CardTitle>{isLesson ? "Days Per Plan" : "Questions Per Quiz"}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col min-h-[260px]">
-            {questionHistogramBuckets.length ? (
+            {loading || chartsLoading ? (
+              <SkeletonLoading className="h-[220px] w-full" />
+            ) : histogramBuckets.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={questionHistogramBuckets}>
+                <BarChart data={histogramBuckets}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="bucket" />
                   <YAxis />
@@ -212,15 +240,17 @@ export default function AnalyticsPageClient() {
         </Card>
       </div>
 
-      {/* Trend + Radar */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        {/* Trend */}
         <Card className="lg:col-span-2 min-w-0 overflow-hidden">
           <CardHeader>
-            <CardTitle>Quizzes Created (Last 30 days)</CardTitle>
+            <CardTitle>
+              {isLesson ? "Lesson Plans Created (Last 30 days)" : "Quizzes Created (Last 30 days)"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col min-h-80">
-            {charts?.trendData?.length ? (
+            {loading || chartsLoading ? (
+              <SkeletonLoading className="h-[280px] w-full" />
+            ) : charts?.trendData?.length ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={charts.trendData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -228,12 +258,7 @@ export default function AnalyticsPageClient() {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="quizzes"
-                    stroke={COLORS[1]}
-                    strokeWidth={2}
-                  />
+                  <Line type="monotone" dataKey="quizzes" stroke={COLORS[1]} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -242,29 +267,22 @@ export default function AnalyticsPageClient() {
           </CardContent>
         </Card>
 
-        {/* Radar */}
         <Card className="min-w-0 overflow-hidden">
           <CardHeader>
-            <CardTitle>Quiz Style Profile</CardTitle>
+            <CardTitle>{isLesson ? "Lesson Plan Profile" : "Quiz Style Profile"}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col min-h-[350px] overflow-visible">
-            {charts?.radarProfile?.length ? (
+            {loading || chartsLoading ? (
+              <SkeletonLoading className="h-[320px] w-full" />
+            ) : charts?.radarProfile?.length ? (
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart cx="50%" cy="50%" outerRadius="70%" data={charts.radarProfile}>
                   <PolarGrid />
                   <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12 }} />
                   <PolarRadiusAxis
-                    domain={[
-                      0,
-                      Math.max(...charts.radarProfile.map((r: any) => r.score)) || 1,
-                    ]}
+                    domain={[0, Math.max(...charts.radarProfile.map((r: any) => r.score)) || 1]}
                   />
-                  <Radar
-                    dataKey="score"
-                    stroke={COLORS[0]}
-                    fill={COLORS[0]}
-                    fillOpacity={0.3}
-                  />
+                  <Radar dataKey="score" stroke={COLORS[0]} fill={COLORS[0]} fillOpacity={0.3} />
                 </RadarChart>
               </ResponsiveContainer>
             ) : (
@@ -274,20 +292,25 @@ export default function AnalyticsPageClient() {
         </Card>
       </div>
 
-      {/* Top Quizzes & AI Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        {/* Top Quizzes Table */}
         <Card className="lg:col-span-2 min-w-0 overflow-hidden">
           <CardHeader>
-            <CardTitle>Top Quizzes</CardTitle>
+            <CardTitle>{isLesson ? "Top Lesson Plans" : "Top Quizzes"}</CardTitle>
           </CardHeader>
           <CardContent className="overflow-auto max-h-[400px]">
-            {charts?.topQuizzes?.length ? (
+            {loading || chartsLoading ? (
+              <div className="space-y-3">
+                <SkeletonLoading className="h-6 w-full" />
+                <SkeletonLoading className="h-6 w-full" />
+                <SkeletonLoading className="h-6 w-full" />
+                <SkeletonLoading className="h-6 w-full" />
+              </div>
+            ) : charts?.topQuizzes?.length ? (
               <Table className="min-w-full">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Title</TableHead>
-                    <TableHead>Questions</TableHead>
+                    <TableHead>{isLesson ? "Days" : "Questions"}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -305,32 +328,36 @@ export default function AnalyticsPageClient() {
           </CardContent>
         </Card>
 
-        {/* AI Insights */}
-     <Card className="min-w-0 overflow-hidden">
-  <CardHeader>
-    <CardTitle>AI Insights</CardTitle>
-  </CardHeader>
-  <CardContent className="overflow-auto max-h-[400px] space-y-4">
-    {charts?.insights ? (
-      charts.insights
-        .replace(/\*\*/g, "") // remove bold markdown
-        .split(/\n{2,}/) // split by double line breaks into paragraphs
-        .map((paragraph: string, i: number) => {
-          const trimmed = paragraph.trim();
-          if (!trimmed) return null;
-          return (
-            <p key={i} className="text-sm text-gray-700">
-              {trimmed}
-            </p>
-          );
-        })
-    ) : (
-      <div className="text-center text-gray-500">No insights available</div>
-    )}
-  </CardContent>
-</Card>
-
-
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader>
+            <CardTitle>AI Insights</CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-auto max-h-[400px] space-y-4">
+            {loading || chartsLoading ? (
+              <div className="space-y-3">
+                <SkeletonLoading className="h-4 w-full" />
+                <SkeletonLoading className="h-4 w-full" />
+                <SkeletonLoading className="h-4 w-[90%]" />
+                <SkeletonLoading className="h-4 w-full" />
+              </div>
+            ) : charts?.insights ? (
+              charts.insights
+                .replace(/\*\*/g, "")
+                .split(/\n{2,}/)
+                .map((paragraph: string, i: number) => {
+                  const trimmed = paragraph.trim();
+                  if (!trimmed) return null;
+                  return (
+                    <p key={i} className="text-sm text-gray-700">
+                      {trimmed}
+                    </p>
+                  );
+                })
+            ) : (
+              <div className="text-center text-gray-500">No insights available</div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

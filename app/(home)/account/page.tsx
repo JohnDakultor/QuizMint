@@ -31,7 +31,6 @@ export default function Account() {
   const [user, setUser] = useState<UserSubscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [difficulty, setDifficulty] =
@@ -64,24 +63,6 @@ export default function Account() {
   const isPro = user?.subscriptionPlan === "pro";
   const isPremium = user?.subscriptionPlan === "premium";
   const isActive = user?.subscriptionStatus === "active";
-
-  const cancelSubscription = async () => {
-    if (!confirm("Are you sure you want to cancel your subscription?")) return;
-    setCanceling(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/account", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok)
-        throw new Error(data.error || "Failed to cancel subscription");
-      await fetchAccount();
-      alert("Subscription canceled successfully");
-    } catch (err: any) {
-      setError(err.message || "Failed to cancel subscription");
-    } finally {
-      setCanceling(false);
-    }
-  };
 
   const saveSettings = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -315,15 +296,9 @@ export default function Account() {
               </Button>
             </div>
 
-            {isActive && (
-              <Button
-                onClick={cancelSubscription}
-                className="w-full bg-rose-600 hover:bg-rose-700 text-white"
-                disabled={canceling}
-              >
-                {canceling ? "Canceling..." : "Cancel Subscription"}
-              </Button>
-            )}
+            <div className="w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/50 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300">
+              Plan changes are managed in Billing. Use <span className="font-medium">Manage Billing</span> to update or change your subscription.
+            </div>
           </div>
         </motion.div>
 
@@ -481,6 +456,39 @@ export default function Account() {
           </div>
         </motion.form>
       </div>
+
+      <section className="mt-10">
+        <div className="flex items-center gap-2 mb-4">
+          <Settings2 className="w-5 h-5 text-sky-600" />
+          <h2 className="text-xl font-semibold">Teacher Toolkit</h2>
+        </div>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-5">
+          Recommended workflow for educators: plan lessons, generate quizzes, and track learning results in one place.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-white/60 dark:bg-zinc-900/60">
+            <h3 className="font-medium mb-2">1) Build Lesson Plans</h3>
+            <p className="text-sm text-zinc-500 mb-3">
+              Create structured, classroom-ready lesson plans with export options for docs, PDF, and slides.
+            </p>
+            <Button size="sm" variant="outline" onClick={() => router.push("/lessonPlan")}>
+              Open Lesson Plan Generator
+            </Button>
+          </div>
+
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-white/60 dark:bg-zinc-900/60">
+            <h3 className="font-medium mb-2">2) Generate Assessments</h3>
+            <p className="text-sm text-zinc-500 mb-3">
+              Produce quiz items quickly by topic, file upload, or source links for formative and summative checks.
+            </p>
+            <Button size="sm" variant="outline" onClick={() => router.push("/generate-quiz")}>
+              Open Quiz Generator
+            </Button>
+          </div>
+
+        </div>
+      </section>
     </div>
   );
 }

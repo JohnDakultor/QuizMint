@@ -14,6 +14,8 @@ model User {
   password            String?  // optional for OAuth users
   username            String?  @unique
   authProvider        String   @default("credentials") // "google" | "credentials"
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   name                String?
   image               String?

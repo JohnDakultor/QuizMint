@@ -732,7 +732,7 @@ export async function POST(req: NextRequest) {
 
     ensureNotAborted();
 
-    const { enhancedPrompt, cachedResponse, sources, ragMeta, hasContext } =
+    const { enhancedPrompt, cachedResponse, sources, ragMeta, hasContext, sourceMode } =
       await enhancePromptWithRAG({
         finalPrompt: content,
         namespace,
@@ -808,6 +808,11 @@ export async function POST(req: NextRequest) {
       quiz: savedQuiz,
       sources: sources ?? [],
       webDebug,
+      sourceTrace: {
+        mode: sourceMode ?? "none",
+        fromCache: Boolean(cachedResponse),
+        sourceCount: (sources ?? []).length,
+      },
       quizUsage: isFree ? user.quizUsage + 1 : null,
       remaining: isFree ? FREE_QUIZ_LIMIT - (user.quizUsage + 1) : null,
       cache: {
