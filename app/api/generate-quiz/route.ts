@@ -828,6 +828,21 @@ export async function POST(req: NextRequest) {
         { status: 499 }
       );
     }
+
+    const message = String(err?.message || "");
+    const isProviderQuotaIssue =
+      message.includes("AI response failed:") &&
+      (message.includes("Quota exceeded") ||
+        message.includes('"code":402') ||
+        message.includes("Provider returned error"));
+
+    if (isProviderQuotaIssue) {
+      return NextResponse.json(
+        { error: "Server issue - we're fixing it. Please try again in a few minutes." },
+        { status: 503 }
+      );
+    }
+
     console.error("Server error:", err);
     return NextResponse.json(
       { error: err.message || "Internal server error" },
