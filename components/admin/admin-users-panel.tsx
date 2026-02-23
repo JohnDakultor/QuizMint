@@ -35,6 +35,7 @@ type LatestActivityUser = {
   subscriptionPlan: string | null;
   lastQuizAt?: string | null;
   lastLessonPlanAt?: string | null;
+  createdAt?: string | null;
 };
 
 export default function AdminUsersPanel() {
@@ -45,6 +46,7 @@ export default function AdminUsersPanel() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [latestQuizUsers, setLatestQuizUsers] = useState<LatestActivityUser[]>([]);
   const [latestLessonUsers, setLatestLessonUsers] = useState<LatestActivityUser[]>([]);
+  const [latestSignups, setLatestSignups] = useState<LatestActivityUser[]>([]);
   const [email, setEmail] = useState("");
   const [plan, setPlan] = useState<"free" | "pro" | "premium">("pro");
   const [updating, setUpdating] = useState(false);
@@ -66,6 +68,7 @@ export default function AdminUsersPanel() {
       setUsers(data.users || []);
       setLatestQuizUsers(data?.latestActivity?.quiz || []);
       setLatestLessonUsers(data?.latestActivity?.lessonPlan || []);
+      setLatestSignups(data?.latestSignups || []);
     } catch (err: any) {
       setError(err.message || "Failed to load data");
     } finally {
@@ -210,6 +213,25 @@ export default function AdminUsersPanel() {
                 </div>
               ))}
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Latest User Signups</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 text-sm">
+            {latestSignups.length === 0 && <div className="text-zinc-500">No signups yet.</div>}
+            {latestSignups.map((u) => (
+              <div key={u.id} className="flex items-center justify-between border rounded-md px-3 py-2">
+                <div className="truncate pr-3">{u.email}</div>
+                <div className="text-zinc-500 whitespace-nowrap">
+                  {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
+                </div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

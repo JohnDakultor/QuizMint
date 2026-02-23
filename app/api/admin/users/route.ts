@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [totalUsers, freeUsers, proUsers, premiumUsers, newUsers, users, latestQuizUsers, latestLessonUsers] = await Promise.all([
+  const [totalUsers, freeUsers, proUsers, premiumUsers, newUsers, users, latestQuizUsers, latestLessonUsers, latestSignups] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { OR: [{ subscriptionPlan: null }, { subscriptionPlan: "free" }] } }),
     prisma.user.count({ where: { subscriptionPlan: "pro" } }),
@@ -64,6 +64,16 @@ export async function GET(req: Request) {
         lastLessonPlanAt: true,
       },
     }),
+    prisma.user.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        email: true,
+        subscriptionPlan: true,
+        createdAt: true,
+      },
+    }),
   ]);
 
   return NextResponse.json({
@@ -80,5 +90,6 @@ export async function GET(req: Request) {
       quiz: latestQuizUsers,
       lessonPlan: latestLessonUsers,
     },
+    latestSignups,
   });
 }
