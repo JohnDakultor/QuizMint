@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "crypto";
 
 const ADMIN_SESSION_COOKIE = "admin_session";
-const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 8; // 8 hours
+const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 2; // 2 hours
 
 function parseAdminEmails() {
   return (process.env.ADMIN_EMAILS || "")
