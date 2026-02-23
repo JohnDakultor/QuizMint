@@ -24,7 +24,17 @@ type AdminUser = {
   subscriptionStatus: string | null;
   quizUsage: number;
   lessonPlanUsage: number;
+  lastQuizAt: string | null;
+  lastLessonPlanAt: string | null;
   createdAt: string;
+};
+
+type LatestActivityUser = {
+  id: string;
+  email: string;
+  subscriptionPlan: string | null;
+  lastQuizAt?: string | null;
+  lastLessonPlanAt?: string | null;
 };
 
 export default function AdminUsersPanel() {
@@ -33,6 +43,8 @@ export default function AdminUsersPanel() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [latestQuizUsers, setLatestQuizUsers] = useState<LatestActivityUser[]>([]);
+  const [latestLessonUsers, setLatestLessonUsers] = useState<LatestActivityUser[]>([]);
   const [email, setEmail] = useState("");
   const [plan, setPlan] = useState<"free" | "pro" | "premium">("pro");
   const [updating, setUpdating] = useState(false);
@@ -52,6 +64,8 @@ export default function AdminUsersPanel() {
       if (!res.ok) throw new Error(data?.error || "Failed to fetch admin data");
       setSummary(data.summary);
       setUsers(data.users || []);
+      setLatestQuizUsers(data?.latestActivity?.quiz || []);
+      setLatestLessonUsers(data?.latestActivity?.lessonPlan || []);
     } catch (err: any) {
       setError(err.message || "Failed to load data");
     } finally {
@@ -164,6 +178,44 @@ export default function AdminUsersPanel() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Latest Usage Activity</CardTitle>
+        </CardHeader>
+        <CardContent className="grid md:grid-cols-2 gap-6">
+          <div>
+            <h3 className="font-semibold mb-3">Latest Quiz Generation</h3>
+            <div className="space-y-2 text-sm">
+              {latestQuizUsers.length === 0 && <div className="text-zinc-500">No quiz activity yet.</div>}
+              {latestQuizUsers.map((u) => (
+                <div key={u.id} className="flex items-center justify-between border rounded-md px-3 py-2">
+                  <div className="truncate pr-3">{u.email}</div>
+                  <div className="text-zinc-500 whitespace-nowrap">
+                    {u.lastQuizAt ? new Date(u.lastQuizAt).toLocaleString() : "-"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h3 className="font-semibold mb-3">Latest Lesson Plan Generation</h3>
+            <div className="space-y-2 text-sm">
+              {latestLessonUsers.length === 0 && (
+                <div className="text-zinc-500">No lesson plan activity yet.</div>
+              )}
+              {latestLessonUsers.map((u) => (
+                <div key={u.id} className="flex items-center justify-between border rounded-md px-3 py-2">
+                  <div className="truncate pr-3">{u.email}</div>
+                  <div className="text-zinc-500 whitespace-nowrap">
+                    {u.lastLessonPlanAt ? new Date(u.lastLessonPlanAt).toLocaleString() : "-"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Users</CardTitle>
         </CardHeader>
         <CardContent className="overflow-auto">
@@ -175,6 +227,8 @@ export default function AdminUsersPanel() {
                 <th className="py-2 text-left">Status</th>
                 <th className="py-2 text-left">Quiz Usage</th>
                 <th className="py-2 text-left">Lesson Usage</th>
+                <th className="py-2 text-left">Last Quiz</th>
+                <th className="py-2 text-left">Last Lesson</th>
                 <th className="py-2 text-left">Created</th>
               </tr>
             </thead>
@@ -186,6 +240,10 @@ export default function AdminUsersPanel() {
                   <td className="py-2">{u.subscriptionStatus || "-"}</td>
                   <td className="py-2">{u.quizUsage}</td>
                   <td className="py-2">{u.lessonPlanUsage}</td>
+                  <td className="py-2">{u.lastQuizAt ? new Date(u.lastQuizAt).toLocaleString() : "-"}</td>
+                  <td className="py-2">
+                    {u.lastLessonPlanAt ? new Date(u.lastLessonPlanAt).toLocaleString() : "-"}
+                  </td>
                   <td className="py-2">{new Date(u.createdAt).toLocaleString()}</td>
                 </tr>
               ))}
