@@ -74,6 +74,7 @@ export default function Footer() {
               <li><Link href="/blog" className="hover:text-blue-600 transition-colors">Blog</Link></li>
               <li><Link href="/ai-quiz-generator" className="hover:text-blue-600 transition-colors">AI Quiz + Lesson Plans</Link></li>
               <li><Link href="/quiz-generator-for-teachers" className="hover:text-blue-600 transition-colors">For Teachers</Link></li>
+              <li><Link href="/disclaimer" className="hover:text-blue-600 transition-colors">Disclaimer</Link></li>
             </ul>
           </div>
 
@@ -82,8 +83,8 @@ export default function Footer() {
             <ul className="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
               <li><Link href="/about" className="hover:text-blue-600 transition-colors">About</Link></li>
               <li><Link href="/contact" className="hover:text-blue-600 transition-colors">Contact</Link></li>
-              <li><a href="https://quizmintai.com/terms" className="hover:text-blue-600 transition-colors">Terms of Service</a></li>
-              <li><a href="https://quizmintai.com/privacy" className="hover:text-blue-600 transition-colors">Privacy Policy</a></li>
+              <li><Link href="/terms" className="hover:text-blue-600 transition-colors">Terms of Service</Link></li>
+              <li><Link href="/privacy" className="hover:text-blue-600 transition-colors">Privacy Policy</Link></li>
             </ul>
           </div>
         </div>

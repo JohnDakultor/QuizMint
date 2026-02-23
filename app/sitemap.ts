@@ -10,6 +10,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/contact",
     "/privacy",
     "/terms",
+    "/disclaimer",
     "/ai-quiz-generator",
     "/quiz-generator-for-teachers",
     "/quiz-generator-for-students",

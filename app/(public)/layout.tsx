@@ -32,6 +32,12 @@ export default function PublicLayout({
 
           <div className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-600">
             <Link
+              href="/blog"
+              className="hover:text-zinc-900 dark:hover:text-zinc-50 transition"
+            >
+              Blog
+            </Link>
+            <Link
               href="/about"
               className="hover:text-zinc-900 dark:hover:text-zinc-50 transition"
             >

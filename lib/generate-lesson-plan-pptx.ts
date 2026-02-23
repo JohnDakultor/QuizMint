@@ -2,27 +2,103 @@
 import pptxgen from "pptxgenjs";
 import type { PptDeck } from "@/lib/lesson-plan-ppt-ai";
 
-const IMAGE_MODEL =
-  process.env.HF_IMAGE_MODEL ||
-  "stabilityai/stable-diffusion-xl-base-1.0";
+const OR_IMAGE_MODEL =
+  process.env.OPENROUTER_IMAGE_MODEL ||
+  "google/gemini-2.5-flash-image-preview";
+const HF_IMAGE_MODEL =
+  process.env.HF_IMAGE_MODEL || "stabilityai/stable-diffusion-xl-base-1.0";
 
 const imageCache = new Map<string, string>();
 
+async function toDataUrlFromRemoteUrl(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch generated image URL");
+  const arrayBuffer = await res.arrayBuffer();
+  const base64 = Buffer.from(arrayBuffer).toString("base64");
+  return `data:image/png;base64,${base64}`;
+}
+
+async function extractOpenRouterImageDataUrl(data: any): Promise<string | null> {
+  const message = data?.choices?.[0]?.message;
+  if (!message) return null;
+
+  const imageNode = message?.images?.[0];
+  const base64 =
+    imageNode?.image_base64 ||
+    imageNode?.b64_json ||
+    imageNode?.base64 ||
+    imageNode?.data;
+  const remoteUrl =
+    imageNode?.image_url?.url || imageNode?.image_url || imageNode?.url;
+  if (typeof base64 === "string" && base64.length > 0) {
+    return `data:image/png;base64,${base64}`;
+  }
+  if (typeof remoteUrl === "string" && remoteUrl.length > 0) {
+    return toDataUrlFromRemoteUrl(remoteUrl);
+  }
+
+  const content = message?.content;
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      const partBase64 =
+        part?.image_base64 || part?.b64_json || part?.base64 || part?.data;
+      if (typeof partBase64 === "string" && partBase64.length > 0) {
+        return `data:image/png;base64,${partBase64}`;
+      }
+      const partUrl =
+        part?.image_url?.url || part?.image_url || part?.url || part?.href;
+      if (typeof partUrl === "string" && partUrl.startsWith("data:image/")) {
+        return partUrl;
+      }
+      if (typeof partUrl === "string" && /^https?:\/\//.test(partUrl)) {
+        return toDataUrlFromRemoteUrl(partUrl);
+      }
+    }
+  }
+
+  if (typeof content === "string") {
+    const dataUrlMatch = content.match(
+      /data:image\/[a-zA-Z+.-]+;base64,[A-Za-z0-9+/=]+/
+    );
+    if (dataUrlMatch?.[0]) return dataUrlMatch[0];
+    const markdownUrlMatch = content.match(/\((https?:\/\/[^)\s]+)\)/);
+    if (markdownUrlMatch?.[1]) return toDataUrlFromRemoteUrl(markdownUrlMatch[1]);
+  }
+
+  return null;
+}
+
 async function generateSlideImage(prompt: string): Promise<string | null> {
-  const apiKey = process.env.HF_API_KEY;
-  if (!apiKey) return null;
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const hfKey = process.env.HF_API_KEY;
+  if (!openRouterKey && !hfKey) return null;
   const cached = imageCache.get(prompt);
   if (cached) return cached;
 
   const logPrefix = "[pptx-image]";
-  const endpoint = `https://router.huggingface.co/hf-inference/models/${IMAGE_MODEL}`;
-  const payload = {
-    inputs: prompt,
-    parameters: {
-      negative_prompt: "blurry, low quality, watermark, text, logo, distorted",
-    },
-    options: { wait_for_model: true },
-  };
+  const endpoint = openRouterKey
+    ? "https://openrouter.ai/api/v1/chat/completions"
+    : `https://router.huggingface.co/hf-inference/models/${HF_IMAGE_MODEL}`;
+  const payload = openRouterKey
+    ? {
+        model: OR_IMAGE_MODEL,
+        modalities: ["image", "text"],
+        messages: [
+          {
+            role: "user",
+            content:
+              `Generate exactly one educational image. No markdown. No explanation text.\n` +
+              `Topic prompt: ${prompt}`,
+          },
+        ],
+      }
+    : {
+        inputs: prompt,
+        parameters: {
+          negative_prompt: "blurry, low quality, watermark, text, logo, distorted",
+        },
+        options: { wait_for_model: true },
+      };
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const controller = new AbortController();
@@ -32,9 +108,15 @@ async function generateSlideImage(prompt: string): Promise<string | null> {
       res = await fetch(endpoint, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${openRouterKey || hfKey}`,
           "Content-Type": "application/json",
-          Accept: "image/png",
+          ...(openRouterKey
+            ? {
+                "HTTP-Referer":
+                  process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+                "X-Title": "QuizMintAI",
+              }
+            : { Accept: "image/png" }),
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
@@ -53,7 +135,9 @@ async function generateSlideImage(prompt: string): Promise<string | null> {
 
     const contentType = res.headers.get("content-type") || "";
     console.log(
-      `${logPrefix} status=${res.status} content-type=${contentType} model=${IMAGE_MODEL}`
+      `${logPrefix} status=${res.status} content-type=${contentType} model=${
+        openRouterKey ? OR_IMAGE_MODEL : HF_IMAGE_MODEL
+      }`
     );
 
     if (!res.ok) {
@@ -68,6 +152,30 @@ async function generateSlideImage(prompt: string): Promise<string | null> {
         // ignore
       }
       return null;
+    }
+
+    if (openRouterKey) {
+      try {
+        const data = await res.json();
+        const dataUrl = await extractOpenRouterImageDataUrl(data);
+        if (dataUrl) {
+          imageCache.set(prompt, dataUrl);
+          return dataUrl;
+        }
+        const contentPreview = JSON.stringify(
+          data?.choices?.[0]?.message?.content || ""
+        ).slice(0, 180);
+        const messageKeys = Object.keys(data?.choices?.[0]?.message || {});
+        console.warn(
+          `${logPrefix} openrouter returned no image field. keys=${JSON.stringify(
+            messageKeys
+          )} content preview=${contentPreview}`
+        );
+        return null;
+      } catch (err) {
+        console.warn(`${logPrefix} failed to parse openrouter image body:`, err);
+        return null;
+      }
     }
 
     if (!contentType.startsWith("image/")) {
