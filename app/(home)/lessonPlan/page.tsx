@@ -1757,10 +1757,16 @@ export default function LessonPlanPage() {
     setUsageInfo(null);
     setIsHistoryView(false);
 
+    let timedOut = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
       generationAbortRef.current?.abort();
       const controller = new AbortController();
       generationAbortRef.current = controller;
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 150000);
 
       const res = await fetch("/api/generate-lesson-plan", {
         method: "POST",
@@ -1787,14 +1793,21 @@ export default function LessonPlanPage() {
       setLessonPlan(data.lessonPlan);
       setUsageInfo(data.usage);
       setIsHistoryView(false);
+      setLessonProgress(100);
+      await new Promise((resolve) => setTimeout(resolve, 120));
       
     } catch (err: any) {
       if (err?.name === "AbortError") {
-        setError("Generation paused.");
+        setError(
+          timedOut
+            ? "Generation took too long. Please try again."
+            : "Generation paused."
+        );
         return;
       }
       setError(err.message || "Failed to generate lesson plan");
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       generationAbortRef.current = null;
       setLoading(false);
     }

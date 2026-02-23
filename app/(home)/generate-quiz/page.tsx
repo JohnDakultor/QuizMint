@@ -696,10 +696,16 @@ export default function Dashboard() {
     setSources([]);
     setAdUnlockInfo(null);
 
+    let timedOut = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
       generationAbortRef.current?.abort();
       const controller = new AbortController();
       generationAbortRef.current = controller;
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 120000);
 
       const difficulty = user?.aiDifficulty || "easy";
       const adaptiveLearning = user?.adaptiveLearning ?? false;
@@ -729,6 +735,8 @@ export default function Dashboard() {
           setSources(Array.isArray(data.sources) ? data.sources : []);
           setLastLoaded(false);
           setUploadedFile(null);
+          setQuizProgress(100);
+          await new Promise((resolve) => setTimeout(resolve, 120));
         }
       } else {
         const requestBody = {
@@ -793,17 +801,24 @@ export default function Dashboard() {
           setSources(Array.isArray(data.sources) ? data.sources : []);
           setLastLoaded(false);
           setAdUnlockInfo(null);
+          setQuizProgress(100);
+          await new Promise((resolve) => setTimeout(resolve, 120));
         }
       }
     }
   } catch (err: any) {
     if (err?.name === "AbortError") {
-      setError("Generation paused.");
+      setError(
+        timedOut
+          ? "Generation took too long. Please try again."
+          : "Generation paused."
+      );
       return;
     }
    
     setError(err.message || "Failed to generate quiz");
   } finally {
+    if (timeoutId) clearTimeout(timeoutId);
     generationAbortRef.current = null;
     setLoading(false);
   }
