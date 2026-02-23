@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertAdminSession } from "@/lib/admin-auth";
 
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return "***";
+  const visible = Math.min(2, local.length);
+  const maskedLocal = `${local.slice(0, visible)}${"*".repeat(Math.max(0, local.length - visible))}`;
+  return `${maskedLocal}@${domain}`;
+}
+
 export async function GET(req: Request) {
   const auth = await assertAdminSession();
   if (!auth.ok) {
@@ -16,6 +24,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const limit = Math.min(Math.max(Number(searchParams.get("limit") || 50), 1), 200);
+  const showSensitive = searchParams.get("showSensitive") === "true";
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -76,6 +85,28 @@ export async function GET(req: Request) {
     }),
   ]);
 
+  const sanitizeEmail = (email: string) => (showSensitive ? email : maskEmail(email));
+
+  const safeUsers = users.map((u) => ({
+    ...u,
+    email: sanitizeEmail(u.email),
+  }));
+
+  const safeLatestQuizUsers = latestQuizUsers.map((u) => ({
+    ...u,
+    email: sanitizeEmail(u.email),
+  }));
+
+  const safeLatestLessonUsers = latestLessonUsers.map((u) => ({
+    ...u,
+    email: sanitizeEmail(u.email),
+  }));
+
+  const safeLatestSignups = latestSignups.map((u) => ({
+    ...u,
+    email: sanitizeEmail(u.email),
+  }));
+
   return NextResponse.json({
     summary: {
       totalUsers,
@@ -85,11 +116,17 @@ export async function GET(req: Request) {
       premiumUsers,
       newUsersLast7Days: newUsers,
     },
-    users,
+    users: safeUsers,
     latestActivity: {
-      quiz: latestQuizUsers,
-      lessonPlan: latestLessonUsers,
+      quiz: safeLatestQuizUsers,
+      lessonPlan: safeLatestLessonUsers,
     },
-    latestSignups,
+    latestSignups: safeLatestSignups,
+  }, {
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate, private",
+      Pragma: "no-cache",
+      Expires: "0",
+    },
   });
 }
