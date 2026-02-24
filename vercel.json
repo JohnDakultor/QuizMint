@@ -1,4 +1,22 @@
 {
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.quizmintai.com"
+        }
+      ],
+      "destination": "https://quizmintai.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/sitemap.ts",
+      "destination": "/sitemap.xml",
+      "permanent": true
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/cleanup",

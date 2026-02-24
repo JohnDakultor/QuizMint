@@ -1,0 +1,231 @@
+QuizMintAI Feature Ticket Backlog (Next 12 Weeks)
+
+Format:
+- ID | Priority | Size | Owner | Title
+- Scope
+- Acceptance Criteria
+
+P0 = critical, P1 = high, P2 = medium
+Size: S (<=1 day), M (2-3 days), L (4-7 days)
+
+========================================
+PHASE 1: Retention + Reliability (Weeks 1-4)
+========================================
+
+QF-001 | P0 | M | BE | Event tracking for core generation flows
+Scope:
+- app/api/generate-quiz/route.ts
+- app/api/generate-lesson-plan/route.ts
+- app/api/lesson-plan-export/process/route.ts
+- app/api/generate-lesson-pptx/route.ts
+Acceptance Criteria:
+- Track events: quiz_generated, lesson_generated, pptx_generated, export_failed, pause_clicked
+- Event payload includes userId, plan, latencyMs, success/fail, timestamp
+- Events stored in DB table and queryable by date
+
+QF-002 | P0 | M | FE/BE | Request ID in error responses
+Scope:
+- Shared API error helper
+- Quiz + lesson + export APIs
+Acceptance Criteria:
+- Every 4xx/5xx includes requestId
+- requestId appears in server logs
+- Frontend error UI shows requestId
+
+QF-003 | P1 | M | FE | Continue where you left off widget
+Scope:
+- app/(home)/home/page.tsx
+- app/api/quizzes/latest/route.ts
+- app/api/lesson-plans/route.ts
+Acceptance Criteria:
+- Dashboard shows last quiz + last lesson with "Resume" actions
+- Works after refresh/navigation
+
+QF-004 | P1 | M | BE | Cohort retention summary API
+Scope:
+- app/api/admin/users/route.ts
+- new app/api/admin/cohorts/route.ts
+Acceptance Criteria:
+- Returns weekly cohorts + D1/D7 return rates
+- Admin page renders cohort table
+
+QF-005 | P0 | S | FE | Progress timeout and completion polish
+Scope:
+- app/(home)/generate-quiz/page.tsx
+- app/(home)/lessonPlan/page.tsx
+Acceptance Criteria:
+- Progress snaps to 100% on success
+- Timeout shows friendly message
+- Pause shows non-error paused state
+
+QF-006 | P1 | M | BE | Output guardrails before save
+Scope:
+- lib/ai.ts
+- lib/lesson-plan-ai.ts
+- route handlers
+Acceptance Criteria:
+- Min question count enforced
+- Invalid JSON/schema output rejected with retry
+- Empty outputs never saved
+
+========================================
+PHASE 2: Predictable Acquisition (Weeks 5-8)
+========================================
+
+QF-007 | P1 | L | FE/SEO | Public SEO pages expansion
+Scope:
+- app/(public)/*
+- app/sitemap.ts
+Acceptance Criteria:
+- Add 10 targeted landing pages for teacher/student intents
+- Canonical + metadata set per page
+- Included in sitemap.xml
+
+QF-008 | P1 | M | FE | Internal link blocks on public pages
+Scope:
+- app/(public)/page.tsx
+- components/ui/footer.tsx
+Acceptance Criteria:
+- Each public page links to 3+ relevant pages
+- No orphan public pages
+
+QF-009 | P2 | M | FE/BE | Referral tracking on signup
+Scope:
+- sign-up page + signup API
+- user table/referral table
+Acceptance Criteria:
+- referral query param captured
+- Admin can view referred signups
+
+QF-010 | P2 | M | FE | Share template CTA
+Scope:
+- generate quiz + lesson pages
+Acceptance Criteria:
+- User can copy/share template link with prefilled prompt
+- Shared link opens with input pre-populated
+
+QF-011 | P2 | M | FE | Public sample output library
+Scope:
+- app/(public)/ai-quiz-generator/page.tsx
+- app/blog/page.tsx
+Acceptance Criteria:
+- Show reviewed sample outputs by topic/grade
+- Indexable and linked from homepage
+
+========================================
+PHASE 3: Churn + Moat (Weeks 9-12)
+========================================
+
+QF-012 | P1 | M | FE/BE | Cancellation reason capture
+Scope:
+- account/subscription pages
+- new API endpoint for cancellation reasons
+Acceptance Criteria:
+- Reason required on cancel
+- Data visible in admin analytics
+
+QF-013 | P1 | M | BE | Win-back automation hooks
+Scope:
+- cron/email job pipeline
+- user activity timestamps
+Acceptance Criteria:
+- Inactive users get day 3/day 10/day 21 emails
+- Unsubscribe respected
+
+QF-014 | P1 | M | FE/BE | Saved prompt presets
+Scope:
+- generate quiz + lesson plan pages
+- preset CRUD API + table
+Acceptance Criteria:
+- Save, edit, delete, reuse preset
+- Per-user isolated data
+
+QF-015 | P2 | M | FE/BE | Quiz/Lesson version history
+Scope:
+- quiz + lesson plan data models
+- detail UI
+Acceptance Criteria:
+- User can view previous versions
+- User can restore selected version
+
+QF-016 | P2 | L | FE/BE | Class folders and packs
+Scope:
+- new folder/pack models
+- dashboard and lesson/quiz pages
+Acceptance Criteria:
+- Group assets by class/topic
+- Export selected folder pack
+
+QF-017 | P0 | M | BE | Unit economics telemetry
+Scope:
+- model provider wrapper
+- export pipeline
+Acceptance Criteria:
+- Cost per generation/export logged
+- Admin sees cost by plan and feature
+
+QF-018 | P0 | M | BE | Plan-based model routing
+Scope:
+- lib/ai.ts
+- lesson and image generation services
+Acceptance Criteria:
+- Free/Pro/Premium route to configured model tiers
+- Fallback chain documented and tested
+
+========================================
+SECURITY + OPERATIONS (Continuous)
+========================================
+
+QF-019 | P0 | S | BE | Admin MFA
+Scope:
+- admin login flow
+- OTP validation endpoint
+Acceptance Criteria:
+- Admin login requires second factor
+- Recovery flow documented
+
+QF-020 | P0 | S | BE | Session hardening
+Scope:
+- lib/auth-option.ts
+- lib/admin-auth.ts
+Acceptance Criteria:
+- Session maxAge + updateAge configured
+- Admin session shorter than user session
+- Logout clears all auth cookies
+
+QF-021 | P0 | S | BE | Sensitive data minimization
+Scope:
+- admin API responses
+Acceptance Criteria:
+- Emails masked by default
+- showSensitive flag explicit
+- no-store headers set
+
+QF-022 | P1 | M | BE | Export queue reliability
+Scope:
+- app/api/lesson-plan-export/*
+- queue processing service
+Acceptance Criteria:
+- Retry with backoff
+- Dead-letter status for repeated failures
+- Admin can retry failed job
+
+QF-023 | P1 | S | DEVOPS | Key rotation runbook
+Scope:
+- docs/runbooks
+Acceptance Criteria:
+- Steps documented for rotating API keys
+- Includes OpenRouter, HF, Tavily, NextAuth secrets
+
+========================================
+KPI Targets (Quarter)
+========================================
+
+- D7 retention: +20% from baseline
+- Export failure rate: <5%
+- Support tickets per active paid user: -20%
+- Organic traffic: +30%
+- Signup -> active: >25%
+- Paid conversion: >3%
+- Monthly churn: <6%
+- Gross margin: >60%

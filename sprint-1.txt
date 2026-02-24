@@ -1,0 +1,74 @@
+Sprint 1 (Next 2 Weeks) - Execution Plan
+
+Goal:
+- Improve reliability, retention loop, and observability quickly.
+
+Week 1
+
+1) QF-001 - Event tracking for core generation flows
+- Priority: P0
+- Size: M
+- Scope:
+  - app/api/generate-quiz/route.ts
+  - app/api/generate-lesson-plan/route.ts
+  - app/api/lesson-plan-export/process/route.ts
+  - app/api/generate-lesson-pptx/route.ts
+- Done when:
+  - Events saved for quiz_generated, lesson_generated, pptx_generated, export_failed, pause_clicked
+  - Includes userId, plan, latencyMs, success/fail, timestamp
+
+2) QF-002 - Request ID in API errors
+- Priority: P0
+- Size: M
+- Scope:
+  - Shared API error helper + major generation routes
+- Done when:
+  - Every 4xx/5xx returns requestId
+  - requestId logged server-side and visible in frontend error UI
+
+3) QF-005 - Progress timeout/completion polish
+- Priority: P0
+- Size: S
+- Scope:
+  - app/(home)/generate-quiz/page.tsx
+  - app/(home)/lessonPlan/page.tsx
+- Done when:
+  - Progress reaches 100% on success
+  - Timeout and pause states are clearly differentiated
+
+Week 2
+
+4) QF-003 - Continue where you left off widget
+- Priority: P1
+- Size: M
+- Scope:
+  - app/(home)/home/page.tsx
+  - app/api/quizzes/latest/route.ts
+  - app/api/lesson-plans/route.ts
+- Done when:
+  - Dashboard shows latest quiz and lesson with resume actions
+
+5) QF-004 - Admin cohort retention summary
+- Priority: P1
+- Size: M
+- Scope:
+  - app/api/admin/cohorts/route.ts
+  - app/(admin)/admin/page.tsx or admin panel component
+- Done when:
+  - Weekly cohorts and D1/D7 retention are visible in admin
+
+6) QF-006 - Output guardrails before save
+- Priority: P1
+- Size: M
+- Scope:
+  - lib/ai.ts
+  - lib/lesson-plan-ai.ts
+  - generation route handlers
+- Done when:
+  - Invalid/empty outputs fail fast and are not persisted
+  - Min question count enforced
+
+Sprint KPI Targets
+- Export failure rate < 5%
+- Error reports include requestId 100% of time
+- D7 retention baseline available in admin

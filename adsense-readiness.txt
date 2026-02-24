@@ -1,0 +1,61 @@
+AdSense Re-Review Must-Ship Checklist
+
+Objective:
+- Maximize approval probability by tightening policy, crawlability, and site quality signals.
+
+P0 (Must have before reapply)
+
+1) ads.txt reachable at root
+- Verify: https://quizmintai.com/ads.txt returns 200
+- Expected content includes:
+  - google.com, pub-8981480808378326, DIRECT, f08c47fec0942fa0
+
+2) Sitemap and robots are correct
+- Verify:
+  - https://quizmintai.com/sitemap.xml returns 200
+  - https://quizmintai.com/robots.txt returns 200
+  - robots points to sitemap.xml
+- Remove wrong Search Console entry:
+  - /sitemap.ts
+
+3) Policy pages are complete and linked
+- Required live pages:
+  - /privacy
+  - /terms
+  - /disclaimer
+  - /contact
+  - /about
+- Ensure each page has metadata title/description and footer links.
+
+4) No obvious "under construction" quality gaps
+- Public nav links work
+- No dead links/404 in footer/header
+- Blog page does not show empty state only
+
+P1 (Strongly recommended)
+
+5) Canonical domain consistency
+- Choose one canonical domain (www or non-www)
+- 301 redirect the alternate domain in Vercel/domain settings
+- Keep metadataBase/canonical/OG URLs consistent
+
+6) Add more crawlable educational content
+- Publish at least 10 quality public pages/posts
+- Focus pages:
+  - teacher workflows
+  - student study guides
+  - lesson plan examples
+  - quiz prompt examples
+
+7) Improve trust signals
+- Show support email on contact page
+- Include clear product purpose and non-misleading claims
+- Keep legal text aligned with actual product behavior
+
+Operational Reapply Steps
+
+1) Deploy latest code
+2) Verify all URLs above in production browser
+3) Request indexing in Search Console for updated key pages
+4) Re-submit site for AdSense review
+5) Wait for recrawl/review cycle before re-applying again
