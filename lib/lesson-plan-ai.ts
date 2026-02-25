@@ -11,7 +11,27 @@ interface LessonPlanInput {
   isProOrPremium: boolean;
 }
 
-export async function generateLessonPlanAI(input: LessonPlanInput) {
+export type LessonPlanAIMeta = {
+  retryCount: number;
+  fallbackUsed: boolean;
+  finalModel: string;
+  finalProvider: string | null;
+};
+
+export type LessonPlanAIResult = {
+  lessonPlan: any;
+  meta: LessonPlanAIMeta;
+};
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetryStatus(status: number) {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+export async function generateLessonPlanAIWithMeta(input: LessonPlanInput): Promise<LessonPlanAIResult> {
   console.log("Generating lesson plan for:", input);
   
   const systemPrompt = `You are Quizmints AI, a highly experienced DepEd-aligned lesson plan generator. You have 20+ years of teaching experience and create comprehensive, practical lesson plans that teachers can implement immediately.
@@ -160,46 +180,96 @@ Return ONLY valid JSON, no other text.`;
     : process.env.OPENROUTER_MODEL_FREE ||
       process.env.OPENROUTER_MODEL ||
       "tngtech/deepseek-r1t2-chimera";
+  const fallbackModel =
+    process.env.OPENROUTER_FALLBACK_MODEL_LESSON ||
+    process.env.OPENROUTER_FALLBACK_MODEL ||
+    "openai/gpt-4o-mini";
+
+  let retryCount = 0;
+  let fallbackUsed = false;
+  let finalModel = model;
+  let finalProvider: string | null = null;
+
+  const callOpenRouter = async (modelName: string) => {
+    let attempt = 0;
+    const maxRetries = 2;
+
+    while (true) {
+      console.log("Calling OpenRouter API with model:", modelName, "attempt:", attempt + 1);
+
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://quizmints.com",
+          "X-Title": "Quizmints Lesson Plan Generator"
+        },
+        body: JSON.stringify({
+          model: modelName,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: systemPrompt
+            },
+            {
+              role: "user",
+              content: userPrompt
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: Number(process.env.LESSON_PLAN_MAX_TOKENS || 8000),
+        }),
+      });
+
+      const responseText = await res.text();
+      if (!res.ok) {
+        if (attempt < maxRetries && shouldRetryStatus(res.status)) {
+          attempt += 1;
+          retryCount += 1;
+          await delay(500 * attempt);
+          continue;
+        }
+        console.error("OpenRouter API Error:", res.status, responseText);
+        throw new Error(`API request failed: ${res.status} ${responseText}`);
+      }
+
+      let data: any = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Invalid JSON response wrapper from provider: ${responseText.slice(0, 300)}`);
+      }
+
+      finalModel = modelName;
+      finalProvider =
+        typeof data?.provider === "string"
+          ? data.provider
+          : typeof data?.provider_name === "string"
+            ? data.provider_name
+            : typeof data?.error?.metadata?.provider_name === "string"
+              ? data.error.metadata.provider_name
+              : null;
+
+      return data?.choices?.[0]?.message?.content || "";
+    }
+  };
 
   try {
-    console.log("Calling OpenRouter API with model:", model);
-    
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://quizmints.com",
-        "X-Title": "Quizmints Lesson Plan Generator"
-      },
-      body: JSON.stringify({
-        model,
-        response_format: { type: "json_object" },
-        messages: [
-          { 
-            role: "system", 
-            content: systemPrompt 
-          },
-          { 
-            role: "user", 
-            content: userPrompt 
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: Number(process.env.LESSON_PLAN_MAX_TOKENS || 8000),
-      }),
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error("OpenRouter API Error:", res.status, errorText);
-      throw new Error(`API request failed: ${res.status} ${errorText}`);
+    let raw = "";
+    try {
+      raw = await callOpenRouter(model);
+    } catch (primaryErr) {
+      if (fallbackModel && fallbackModel !== model) {
+        console.warn("Primary lesson model failed, trying fallback:", fallbackModel);
+        fallbackUsed = true;
+        raw = await callOpenRouter(fallbackModel);
+      } else {
+        throw primaryErr;
+      }
     }
-
-    const data = await res.json();
     console.log("OpenRouter response received");
-    
-    const raw = data?.choices?.[0]?.message?.content || "";
     
     if (!raw) {
       console.error("Empty response from AI");
@@ -217,13 +287,34 @@ Return ONLY valid JSON, no other text.`;
       throw new Error("Generated lesson plan has invalid structure");
     }
     
-    return lessonPlan;
+    return {
+      lessonPlan,
+      meta: {
+        retryCount,
+        fallbackUsed,
+        finalModel,
+        finalProvider,
+      },
+    };
     
   } catch (error: any) {
     console.error("Error in generateLessonPlanAI:", error.message);
     // Return a minimal valid structure instead of falling back completely
-    return createMinimalValidLessonPlan(input);
+    return {
+      lessonPlan: createMinimalValidLessonPlan(input),
+      meta: {
+        retryCount,
+        fallbackUsed,
+        finalModel,
+        finalProvider,
+      },
+    };
   }
+}
+
+export async function generateLessonPlanAI(input: LessonPlanInput) {
+  const result = await generateLessonPlanAIWithMeta(input);
+  return result.lessonPlan;
 }
 
 function safeExtractJSON(raw: string) {

@@ -10,6 +10,18 @@ function maskEmail(email: string): string {
   return `${maskedLocal}@${domain}`;
 }
 
+function getProviderFromMetadata(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const meta = metadata as Record<string, unknown>;
+  const provider = meta.provider;
+  if (typeof provider === "string" && provider.trim().length > 0) {
+    return provider.trim();
+  }
+  return null;
+}
+
 export async function GET(req: Request) {
   const auth = await assertAdminSession();
   if (!auth.ok) {
@@ -29,7 +41,7 @@ export async function GET(req: Request) {
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [totalUsers, freeUsers, proUsers, premiumUsers, newUsers, users, latestQuizUsers, latestLessonUsers, latestSignups] = await Promise.all([
+  const [totalUsers, freeUsers, proUsers, premiumUsers, newUsers, users, latestQuizUsers, latestLessonUsers, latestSignups, activeUsersLast7DaysRows, generationEvents] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { OR: [{ subscriptionPlan: null }, { subscriptionPlan: "free" }] } }),
     prisma.user.count({ where: { subscriptionPlan: "pro" } }),
@@ -83,7 +95,29 @@ export async function GET(req: Request) {
         createdAt: true,
       },
     }),
+    prisma.$queryRaw<{ count: number }[]>`
+      SELECT COUNT(DISTINCT "userId")::int AS count
+      FROM "GenerationEvent"
+      WHERE "userId" IS NOT NULL
+        AND "createdAt" >= NOW() - INTERVAL '7 days'
+    `,
+    prisma.generationEvent.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      select: {
+        id: true,
+        userId: true,
+        eventType: true,
+        feature: true,
+        status: true,
+        plan: true,
+        latencyMs: true,
+        metadata: true,
+        createdAt: true,
+      },
+    }),
   ]);
+  const activeUsersLast7Days = activeUsersLast7DaysRows[0]?.count ?? 0;
 
   const sanitizeEmail = (email: string) => (showSensitive ? email : maskEmail(email));
 
@@ -107,6 +141,28 @@ export async function GET(req: Request) {
     email: sanitizeEmail(u.email),
   }));
 
+  const eventUserIds = Array.from(
+    new Set(generationEvents.map((event) => event.userId).filter((id): id is string => Boolean(id)))
+  );
+
+  const eventUsers = eventUserIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: eventUserIds } },
+        select: { id: true, email: true },
+      })
+    : [];
+  const emailByUserId = new Map(eventUsers.map((u) => [u.id, u.email]));
+
+  const safeGenerationEvents = generationEvents.map((event) => {
+    const rawEmail = event.userId ? emailByUserId.get(event.userId) : null;
+    const provider = getProviderFromMetadata(event.metadata);
+    return {
+      ...event,
+      email: rawEmail ? sanitizeEmail(rawEmail) : null,
+      provider,
+    };
+  });
+
   return NextResponse.json({
     summary: {
       totalUsers,
@@ -115,6 +171,7 @@ export async function GET(req: Request) {
       proUsers,
       premiumUsers,
       newUsersLast7Days: newUsers,
+      activeUsersLast7Days,
     },
     users: safeUsers,
     latestActivity: {
@@ -122,6 +179,7 @@ export async function GET(req: Request) {
       lessonPlan: safeLatestLessonUsers,
     },
     latestSignups: safeLatestSignups,
+    generationEvents: safeGenerationEvents,
   }, {
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate, private",

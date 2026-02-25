@@ -10,7 +10,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/admin", "/admin-login", "/api/"],
       },
     ],
-    host: "https://quizmintai.com",
-    sitemap: "https://quizmintai.com/sitemap.xml",
+    host: "https://www.quizmintai.com",
+    sitemap: "https://www.quizmintai.com/sitemap.xml",
   };
 }

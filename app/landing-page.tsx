@@ -832,6 +832,57 @@ export default function Home() {
         </motion.div>
       </section>
 
+      <section
+        className="max-w-7xl mx-auto px-6 py-20"
+        aria-labelledby="use-cases-heading"
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+        >
+          <h2
+            id="use-cases-heading"
+            className="text-3xl md:text-4xl font-bold text-center mb-4"
+          >
+            Explore By Subject and Intent
+          </h2>
+          <p className="text-center text-zinc-600 dark:text-zinc-400 mb-10">
+            Internal guides for teachers and students looking for topic-specific quiz and lesson workflows.
+          </p>
+        </motion.div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[
+            { href: "/science-quiz-generator", label: "Science Quiz Generator" },
+            { href: "/math-quiz-generator", label: "Math Quiz Generator" },
+            { href: "/history-quiz-generator", label: "History Quiz Generator" },
+            { href: "/english-quiz-generator", label: "English Quiz Generator" },
+            { href: "/biology-quiz-generator", label: "Biology Quiz Generator" },
+            { href: "/chemistry-quiz-generator", label: "Chemistry Quiz Generator" },
+            { href: "/physics-quiz-generator", label: "Physics Quiz Generator" },
+            { href: "/exam-prep-quiz-generator", label: "Exam Prep Quiz Generator" },
+            {
+              href: "/lesson-plan-generator-for-teachers",
+              label: "Lesson Plan Generator for Teachers",
+            },
+            {
+              href: "/interactive-quiz-maker-for-students",
+              label: "Interactive Quiz Maker for Students",
+            },
+          ].map((page) => (
+            <Link
+              key={page.href}
+              href={page.href}
+              className="rounded-xl border border-zinc-200/70 dark:border-zinc-700/60 bg-white/70 dark:bg-zinc-900/70 px-4 py-3 text-sm font-medium text-zinc-800 dark:text-zinc-100 transition hover:border-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+            >
+              {page.label}
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {/* ===== PRICING ===== */}
       <section id="pricing" className="max-w-7xl mx-auto px-6 py-32">
         <motion.div

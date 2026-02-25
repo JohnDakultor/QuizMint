@@ -431,7 +431,16 @@ import { useState, useRef, useEffect } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, Copy, FileDown, PauseCircle, X } from "lucide-react";
+import {
+  ArrowRight,
+  ClipboardList,
+  Copy,
+  FileDown,
+  PauseCircle,
+  Share2,
+  Sparkles,
+  X,
+} from "lucide-react";
 import FileUpload from "@/components/ui/file-upload";
 import { motion } from "framer-motion";
 import jsPDF from "jspdf";
@@ -440,8 +449,10 @@ import Tour from "@/components/ui/tour";
 import AdUnlockButton from "@/components/ad-unlock-button";
 import SkeletonLoading from "@/components/ui/skeleton-loading";
 import LoadingProgress from "@/components/ui/loading-progress";
+import { useSearchParams } from "next/navigation";
 
 export default function Dashboard() {
+  const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState("");
   const [quiz, setQuiz] = useState<any | null>(null);
   const [sources, setSources] = useState<SourceIcon[]>([]);
@@ -449,6 +460,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [quizProgress, setQuizProgress] = useState(0);
   const [error, setError] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
   const [adUnlockInfo, setAdUnlockInfo] = useState<{
     available: boolean;
     nextAdResetAt?: string | null;
@@ -460,6 +472,8 @@ export default function Dashboard() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const quizRef = useRef<HTMLDivElement>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
+  const attachRequestId = (message: string, data: any) =>
+    data?.requestId ? `${message} (Ref: ${data.requestId})` : message;
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -499,6 +513,22 @@ export default function Dashboard() {
       },
     },
     {
+      element: "#quiz-copy-template-link",
+      popover: {
+        title: "Copy template link",
+        description:
+          "Copy a shareable link with your current prompt prefilled for another user.",
+      },
+    },
+    {
+      element: "#quiz-share-template-link",
+      popover: {
+        title: "Share template",
+        description:
+          "Share the same prefilled prompt quickly via your device share menu.",
+      },
+    },
+    {
       element: "#quiz-output",
       popover: {
         title: "Your quiz",
@@ -526,6 +556,12 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    const prefilledPrompt = searchParams.get("prompt");
+    if (!prefilledPrompt) return;
+    setPrompt(prefilledPrompt);
+  }, [searchParams]);
+
+  useEffect(() => {
     return () => {
       generationAbortRef.current?.abort();
       generationAbortRef.current = null;
@@ -538,7 +574,53 @@ export default function Dashboard() {
     generationAbortRef.current = null;
     setLoading(false);
     setQuizProgress(0);
-    setError("Generation paused.");
+    setError("");
+    setInfoMessage("Generation paused.");
+  };
+
+  const buildQuizTemplateUrl = () => {
+    if (typeof window === "undefined") return "";
+    const currentPrompt = prompt.trim();
+    if (!currentPrompt) return "";
+    const url = new URL("/generate-quiz", window.location.origin);
+    url.searchParams.set("prompt", currentPrompt);
+    return url.toString();
+  };
+
+  const copyQuizTemplateLink = async () => {
+    const url = buildQuizTemplateUrl();
+    if (!url) {
+      setError("");
+      setInfoMessage("Add a prompt first to create a shareable template link.");
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    setError("");
+    setInfoMessage("Template link copied.");
+  };
+
+  const shareQuizTemplateLink = async () => {
+    const url = buildQuizTemplateUrl();
+    if (!url) {
+      setError("");
+      setInfoMessage("Add a prompt first to create a shareable template link.");
+      return;
+    }
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Quiz Template",
+          text: "Use this prefilled quiz template:",
+          url,
+        });
+        return;
+      } catch {
+        // no-op, fallback to copy
+      }
+    }
+    await navigator.clipboard.writeText(url);
+    setError("");
+    setInfoMessage("Template link copied.");
   };
 
   useEffect(() => {
@@ -693,6 +775,7 @@ export default function Dashboard() {
     setLoading(true);
     setQuiz(null);
     setError("");
+    setInfoMessage("");
     setSources([]);
     setAdUnlockInfo(null);
 
@@ -728,7 +811,10 @@ export default function Dashboard() {
         if (!res.ok) {
           // Backend sent 400 or other error
           setError(
-            data.message || data.error || "Failed to generate quiz from file",
+            attachRequestId(
+              data.message || data.error || "Failed to generate quiz from file",
+              data
+            )
           );
         } else {
           setQuiz(data.quiz);
@@ -780,7 +866,10 @@ export default function Dashboard() {
           });
         }
         setError(
-          data.error || data.message || `Failed to generate quiz (${res.status})`
+          attachRequestId(
+            data.error || data.message || `Failed to generate quiz (${res.status})`,
+            data
+          )
         );
       } else {
         
@@ -808,11 +897,12 @@ export default function Dashboard() {
     }
   } catch (err: any) {
     if (err?.name === "AbortError") {
-      setError(
-        timedOut
-          ? "Generation took too long. Please try again."
-          : "Generation paused."
-      );
+      if (timedOut) {
+        setError("Generation took too long. Please try again.");
+      } else {
+        setError("");
+        setInfoMessage("Generation paused.");
+      }
       return;
     }
    
@@ -820,33 +910,49 @@ export default function Dashboard() {
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
     generationAbortRef.current = null;
-    setLoading(false);
-  }
-};
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!infoMessage) return;
+    const timer = setTimeout(() => setInfoMessage(""), 4500);
+    return () => clearTimeout(timer);
+  }, [infoMessage]);
+
   return (
-    <div className="flex flex-col items-center justify-center w-full px-6 min-h-screen">
+    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
       <Tour steps={tourSteps} tourId="home-quiz" />
-      <section className="flex flex-col lg:flex-row gap-8 justify-center w-full max-w-7xl">
+      <div className="text-center">
+        <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+          Quiz Generator
+        </h1>
+        <p className="text-gray-600 text-lg max-w-3xl mx-auto">
+          Generate structured quizzes from prompt, links, or uploaded content with shareable templates.
+        </p>
+      </div>
+
+      <section className="flex flex-col lg:flex-row gap-6 justify-center w-full">
         {/* ================= INPUT CARD ================= */}
-        <Card className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-120 h-137.5">
-          <CardHeader>
-            <CardTitle className="text-xl font-semibold">
-              {" "}
+        <Card className="shadow-xl border-2 border-gray-200 overflow-hidden w-full lg:w-120 h-137.5">
+          <div className="bg-linear-to-r from-blue-600 to-purple-600 p-4">
+            <h2 className="text-xl font-bold text-white text-center inline-flex items-center justify-center gap-2 w-full">
+              <Sparkles className="h-5 w-5" />
               Create Quiz Input
-            </CardTitle>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            </h2>
+            <p className="text-sm text-blue-100 text-center mt-1">
               Paste text or youtube link, write instructions, or upload a document.
             </p>
-          </CardHeader>
+          </div>
 
-          <CardContent className="space-y-4 flex flex-col h-full">
+          <CardContent className="space-y-4 flex flex-col h-full p-6">
             <div className="relative flex-1">
               <textarea
                 id="quiz-input"
                 placeholder="Paste text, youtube link, or instructions here..."
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="h-full w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="premium-scrollbar h-full w-full rounded-lg border-2 border-zinc-300 bg-white p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
               <div className="absolute bottom-3 right-3 flex gap-2">
                 <Button size="sm" variant="outline" onClick={handlePaste}>
@@ -877,7 +983,7 @@ export default function Dashboard() {
             <div className="mt-2 flex gap-2">
               <Button
                 id="quiz-generate"
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className="flex-1 bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                 onClick={generateQuizFromPrompt}
                 disabled={loading}
               >
@@ -896,11 +1002,39 @@ export default function Dashboard() {
                 </Button>
               )}
             </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                id="quiz-copy-template-link"
+                type="button"
+                variant="outline"
+                onClick={copyQuizTemplateLink}
+                className="text-xs"
+              >
+                <Copy className="mr-1 h-3.5 w-3.5" />
+                Copy Template Link
+              </Button>
+              <Button
+                id="quiz-share-template-link"
+                type="button"
+                variant="outline"
+                onClick={shareQuizTemplateLink}
+                className="text-xs"
+              >
+                <Share2 className="mr-1 h-3.5 w-3.5" />
+                Share Template
+              </Button>
+            </div>
             {loading && (
               <LoadingProgress
                 label="Generating quiz..."
                 percent={quizProgress}
               />
+            )}
+
+            {infoMessage && (
+              <Alert className="border-blue-300 bg-blue-50 text-blue-900">
+                <AlertDescription>{infoMessage}</AlertDescription>
+              </Alert>
             )}
 
             {error && (
@@ -929,7 +1063,8 @@ export default function Dashboard() {
                 cooldownUntil={adUnlockInfo.nextAdResetAt || undefined}
                 remaining={adUnlockInfo.remaining}
                 onUnlocked={() => {
-                  setError("Usage reset. You can generate again.");
+                  setError("");
+                  setInfoMessage("Usage reset. You can generate again.");
                   setAdUnlockInfo(null);
                 }}
               />
@@ -953,16 +1088,16 @@ export default function Dashboard() {
         {/* ================= OUTPUT CARD (ALWAYS VISIBLE) ================= */}
         <Card
           id="quiz-output"
-          className="border-zinc-200 dark:border-zinc-800 shadow-md w-full lg:w-130 h-137.5 flex flex-col"
+          className="shadow-xl border-2 border-gray-200 overflow-hidden w-full lg:w-130 h-137.5 flex flex-col"
         >
-          <CardHeader className="relative">
-            <CardTitle className="text-xl font-semibold">
-              {" "}
+          <div className="bg-linear-to-r from-blue-600 to-purple-600 p-4 relative">
+            <h2 className="w-full text-xl font-bold text-white inline-flex items-center justify-center gap-2 text-center">
+              <ClipboardList className="h-5 w-5" />
               Generated Quiz
-            </CardTitle>
+            </h2>
 
             {lastLoaded && (
-              <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+              <div className="mt-1 text-xs text-emerald-100">
                 Showing last generated quiz
               </div>
             )}
@@ -973,12 +1108,14 @@ export default function Dashboard() {
                   setQuiz(null);
                   setLastLoaded(false);
                 }}
-                className="absolute right-4 top-4 text-zinc-400 hover:text-red-500"
+                className="absolute right-4 top-4 text-white/80 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
             )}
+          </div>
 
+          <CardHeader className="relative pb-3">
             <div className="flex flex-wrap gap-2 mt-3">
               <Button size="sm" variant="outline" onClick={handleCopy}>
                 <Copy className="w-4 h-4 mr-1" /> Copy
@@ -1001,7 +1138,7 @@ export default function Dashboard() {
             ) : null}
           </CardHeader>
 
-          <CardContent className="flex-1 max-h-112.5 overflow-y-auto space-y-4 pr-2">
+          <CardContent className="premium-scrollbar flex-1 max-h-112.5 overflow-y-auto space-y-4 pr-2">
             {loading ? (
               <div className="space-y-3 pt-2">
                 <SkeletonLoading className="h-24 w-full" />

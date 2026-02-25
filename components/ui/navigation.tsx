@@ -27,10 +27,12 @@ export default function Navigation() {
   const tourId =
     pathname === "/account"
       ? "account"
+      : pathname === "/home"
+      ? "home-dashboard"
       : pathname === "/generate-quiz"
       ? "home-quiz"
       : pathname === "/lessonPlan"
-      ? "lesson-plan"
+      ? "lessonplan-generator"
       : null;
 
   /* Persist sidebar state */

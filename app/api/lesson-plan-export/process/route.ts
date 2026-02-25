@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 import { processLessonPlanExportJob } from "@/lib/lesson-plan-export";
+import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
+import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 
 export const runtime = "nodejs";
 const PROVIDER_ISSUE_MESSAGE =
@@ -19,10 +21,14 @@ function isProviderIssueError(err: unknown): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
+  let eventUserId: string | null = null;
+  let eventPlan: string | null = null;
+  const requestId = createRequestId();
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiError(401, "Unauthorized", requestId);
     }
 
     const user = await prisma.user.findUnique({
@@ -30,10 +36,12 @@ export async function POST(req: NextRequest) {
       select: { id: true, subscriptionPlan: true },
     });
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return apiError(404, "User not found", requestId);
     }
+    eventUserId = user.id;
+    eventPlan = user.subscriptionPlan || "free";
     if (user.subscriptionPlan !== "premium") {
-      return NextResponse.json({ error: "Premium required" }, { status: 403 });
+      return apiError(403, "Premium required", requestId);
     }
 
     const body = await req.json().catch(() => ({}));
@@ -46,28 +54,68 @@ export async function POST(req: NextRequest) {
         select: { id: true },
       });
       if (!nextQueued) {
-        return NextResponse.json({ error: "No queued job" }, { status: 404 });
+        return apiError(404, "No queued job", requestId);
       }
       jobId = nextQueued.id;
     }
 
     const job = await processLessonPlanExportJob(jobId, user.id);
     if (!job) {
-      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      return apiError(404, "Job not found", requestId);
+    }
+
+    if (job.status === "failed") {
+      await trackGenerationEvent({
+        userId: user.id,
+        eventType: "export_failed",
+        feature: "lesson_plan_export",
+        status: "failed",
+        plan: eventPlan,
+        latencyMs: Date.now() - startedAt,
+        metadata: {
+          jobId: job.id,
+          format: job.format,
+          error: job.error || null,
+        },
+      });
     }
 
     return NextResponse.json({
       jobId: job.id,
       status: job.status,
       error: job.error || null,
+      requestId,
+    }, {
+      headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
     });
   } catch (err: any) {
     if (isProviderIssueError(err)) {
-      return NextResponse.json({ error: PROVIDER_ISSUE_MESSAGE }, { status: 503 });
+      const providerError = extractProviderErrorDetails(err);
+      await trackGenerationEvent({
+        userId: eventUserId,
+        eventType: "export_failed",
+        feature: "lesson_plan_export",
+        status: "failed",
+        plan: eventPlan,
+        latencyMs: Date.now() - startedAt,
+        metadata: {
+          providerIssue: true,
+          provider: providerError.provider ?? "unknown",
+          providerCode: providerError.code,
+        },
+      });
+      return apiError(503, PROVIDER_ISSUE_MESSAGE, requestId);
     }
-    return NextResponse.json(
-      { error: err?.message || "Failed to process job" },
-      { status: 500 }
-    );
+    await trackGenerationEvent({
+      userId: eventUserId,
+      eventType: "export_failed",
+      feature: "lesson_plan_export",
+      status: "failed",
+      plan: eventPlan,
+      latencyMs: Date.now() - startedAt,
+      metadata: { message: err?.message || "Failed to process job" },
+    });
+    logApiError(requestId, "lesson-plan-export/process", err);
+    return apiError(500, err?.message || "Failed to process job", requestId);
   }
 }

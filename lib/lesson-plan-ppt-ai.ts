@@ -22,6 +22,26 @@ export interface PptDeck {
   slides: PptSlide[];
 }
 
+export type LessonPlanPptAIMeta = {
+  retryCount: number;
+  fallbackUsed: boolean;
+  finalModel: string;
+  finalProvider: string | null;
+};
+
+export type LessonPlanPptAIResult = {
+  deck: PptDeck;
+  meta: LessonPlanPptAIMeta;
+};
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetryStatus(status: number) {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
 function trimText(text: string, max: number) {
   const t = (text || "").trim();
   if (t.length <= max) return t;
@@ -154,7 +174,7 @@ function extractRichContentFromLessonPlan(lessonPlan: any) {
   });
 }
 
-export async function generateLessonPlanPptAI(input: LessonPlanPptInput): Promise<PptDeck> {
+export async function generateLessonPlanPptAIWithMeta(input: LessonPlanPptInput): Promise<LessonPlanPptAIResult> {
   const extractedContent = extractRichContentFromLessonPlan(input.lessonPlan);
   
   // Build comprehensive outline from ALL available data
@@ -243,40 +263,93 @@ IMPORTANT: DO NOT make generic slides. Use the specific content provided above t
     : process.env.OPENROUTER_MODEL_FREE ||
       process.env.OPENROUTER_MODEL ||
       "tngtech/deepseek-r1t2-chimera";
+  const fallbackModel =
+    process.env.OPENROUTER_FALLBACK_MODEL_PPT ||
+    process.env.OPENROUTER_FALLBACK_MODEL ||
+    "openai/gpt-4o-mini";
+
+  let retryCount = 0;
+  let fallbackUsed = false;
+  let finalModel = model;
+  let finalProvider: string | null = null;
+
+  const callOpenRouter = async (modelName: string) => {
+    let attempt = 0;
+    const maxRetries = 2;
+
+    while (true) {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://quizmints.com",
+          "X-Title": "Quizmints PPT Generator",
+        },
+        body: JSON.stringify({
+          model: modelName,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: Number(process.env.LESSON_PLAN_PPT_MAX_TOKENS || 8000),
+        }),
+      });
+
+      const responseText = await res.text();
+      if (!res.ok) {
+        if (attempt < maxRetries && shouldRetryStatus(res.status)) {
+          attempt += 1;
+          retryCount += 1;
+          await delay(500 * attempt);
+          continue;
+        }
+        throw new Error(`PPT AI request failed: ${res.status} ${responseText}`);
+      }
+
+      let data: any = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(`PPT AI invalid response wrapper: ${responseText.slice(0, 300)}`);
+      }
+      finalModel = modelName;
+      finalProvider =
+        typeof data?.provider === "string"
+          ? data.provider
+          : typeof data?.provider_name === "string"
+            ? data.provider_name
+            : typeof data?.error?.metadata?.provider_name === "string"
+              ? data.error.metadata.provider_name
+              : null;
+      return data?.choices?.[0]?.message?.content || "";
+    }
+  };
 
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://quizmints.com",
-        "X-Title": "Quizmints PPT Generator",
-      },
-      body: JSON.stringify({
-        model,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens: Number(process.env.LESSON_PLAN_PPT_MAX_TOKENS || 8000),
-      }),
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`PPT AI request failed: ${res.status} ${errorText}`);
+    let raw = "";
+    try {
+      raw = await callOpenRouter(model);
+    } catch (primaryErr) {
+      if (fallbackModel && fallbackModel !== model) {
+        console.warn("Primary PPT model failed, trying fallback:", fallbackModel);
+        fallbackUsed = true;
+        raw = await callOpenRouter(fallbackModel);
+      } else {
+        throw primaryErr;
+      }
     }
 
-    const data = await res.json();
-    const raw = data?.choices?.[0]?.message?.content || "";
     const parsed = safeExtractJSON(raw);
     
     if (!parsed?.slides || !Array.isArray(parsed.slides)) {
       console.warn("Invalid PPT AI response, using content-rich fallback");
-      return buildContentRichFallbackDeck(input, outline);
+      return {
+        deck: buildContentRichFallbackDeck(input, outline),
+        meta: { retryCount, fallbackUsed, finalModel, finalProvider },
+      };
     }
     
     const deck = parsed as PptDeck;
@@ -297,17 +370,31 @@ IMPORTANT: DO NOT make generic slides. Use the specific content provided above t
     
     if (totalContent < 500 || deck.slides.length < 6) {
       console.warn("AI generated insufficient content, using fallback");
-      return buildContentRichFallbackDeck(input, outline);
+      return {
+        deck: buildContentRichFallbackDeck(input, outline),
+        meta: { retryCount, fallbackUsed, finalModel, finalProvider },
+      };
     }
 
     deck.title = deck.title || outline.title;
     deck.subtitle = deck.subtitle || `${input.subject} • ${input.grade}`;
     
-    return deck;
+    return {
+      deck,
+      meta: { retryCount, fallbackUsed, finalModel, finalProvider },
+    };
   } catch (err) {
     console.error("PPT AI generation failed:", err);
-    return buildContentRichFallbackDeck(input, outline);
+    return {
+      deck: buildContentRichFallbackDeck(input, outline),
+      meta: { retryCount, fallbackUsed, finalModel, finalProvider },
+    };
   }
+}
+
+export async function generateLessonPlanPptAI(input: LessonPlanPptInput): Promise<PptDeck> {
+  const result = await generateLessonPlanPptAIWithMeta(input);
+  return result.deck;
 }
 
 function buildContentRichFallbackDeck(input: LessonPlanPptInput, outline: any): PptDeck {

@@ -24,5 +24,14 @@ export async function GET() {
     take: 10,
   });
 
-  return NextResponse.json({ plans });
+  const latest = plans.length
+    ? {
+        id: plans[0].id,
+        title: plans[0].title,
+        subject: plans[0].subject,
+        createdAt: plans[0].createdAt,
+      }
+    : null;
+
+  return NextResponse.json({ plans, latest });
 }

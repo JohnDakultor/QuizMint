@@ -1052,10 +1052,11 @@ import {
   Target, Search, BookOpen, Zap, CheckSquare, 
   ListChecks, ListOrdered, Hash, Users, Lightbulb,
   Brain, ClipboardCheck, BookCheck, CheckCircle2,
-  ArrowRight, ArrowLeftRight, FileQuestion, SquareCheck,
+  ArrowRight, ArrowLeftRight, FileQuestion, SquareCheck, Share2,
   FileText, PauseCircle
 } from "lucide-react";
 import { X } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import PptxEditor from "@/components/lesson-plan/pptx-editor";
 import {
   Dialog,
@@ -1608,9 +1609,11 @@ function SpecificActivityCard({ phase, activity }: { phase: string, activity: an
 
 // Main Component
 export default function LessonPlanPage() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [lessonPlan, setLessonPlan] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [downloadingPptx, setDownloadingPptx] = useState(false);
@@ -1628,7 +1631,19 @@ export default function LessonPlanPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [isHistoryView, setIsHistoryView] = useState(false);
   const lessonPlanRef = useRef<HTMLDivElement | null>(null);
+  const lessonFormRef = useRef<HTMLFormElement | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
+  const withRequestId = (message: string, payload: any) =>
+    payload?.requestId ? `${message} (Ref: ${payload.requestId})` : message;
+  const withRequestIdFromText = (fallback: string, text: string) => {
+    try {
+      const parsed = JSON.parse(text);
+      const message = parsed?.error || parsed?.message || fallback;
+      return parsed?.requestId ? `${message} (Ref: ${parsed.requestId})` : message;
+    } catch {
+      return fallback;
+    }
+  };
   const isPremium = subscriptionPlan === "premium";
   const isFree = subscriptionPlan === "free" || !subscriptionPlan;
   const dedupedHistoryPlans = useMemo(() => {
@@ -1650,6 +1665,20 @@ export default function LessonPlanPage() {
     }
     return unique;
   }, [historyPlans]);
+
+  const lessonTemplateDefaults = useMemo(
+    () => ({
+      topic: searchParams.get("topic") || "",
+      subject: searchParams.get("subject") || "",
+      grade: searchParams.get("grade") || "",
+      days: searchParams.get("days") || "",
+      minutesPerDay: searchParams.get("minutesPerDay") || "40",
+      objectives: searchParams.get("objectives") || "",
+      constraints: searchParams.get("constraints") || "",
+    }),
+    [searchParams]
+  );
+  const lessonTemplateKey = searchParams.toString();
 
   useEffect(() => {
     let cancelled = false;
@@ -1701,6 +1730,73 @@ export default function LessonPlanPage() {
     setLessonProgress(0);
     setError("Generation paused.");
   }
+
+  const getLessonTemplateValues = () => {
+    const formData = lessonFormRef.current
+      ? Object.fromEntries(new FormData(lessonFormRef.current).entries())
+      : {};
+    const merged = {
+      ...lessonTemplateDefaults,
+      ...(formDataObject || {}),
+      ...formData,
+    } as Record<string, any>;
+    return {
+      topic: String(merged.topic || "").trim(),
+      subject: String(merged.subject || "").trim(),
+      grade: String(merged.grade || "").trim(),
+      days: String(merged.days || "").trim(),
+      minutesPerDay: String(merged.minutesPerDay || "").trim(),
+      objectives: String(merged.objectives || "").trim(),
+      constraints: String(merged.constraints || "").trim(),
+    };
+  };
+
+  const buildLessonTemplateUrl = () => {
+    if (typeof window === "undefined") return "";
+    const values = getLessonTemplateValues();
+    if (!values.topic) return "";
+    const url = new URL("/lessonPlan", window.location.origin);
+    Object.entries(values).forEach(([key, value]) => {
+      if (value) url.searchParams.set(key, value);
+    });
+    return url.toString();
+  };
+
+  const copyLessonTemplateLink = async () => {
+    const url = buildLessonTemplateUrl();
+    if (!url) {
+      setError(null);
+      setInfoMessage("Add at least a topic first to create a shareable template link.");
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    setError(null);
+    setInfoMessage("Template link copied.");
+  };
+
+  const shareLessonTemplateLink = async () => {
+    const url = buildLessonTemplateUrl();
+    if (!url) {
+      setError(null);
+      setInfoMessage("Add at least a topic first to create a shareable template link.");
+      return;
+    }
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Lesson Plan Template",
+          text: "Use this prefilled lesson plan template:",
+          url,
+        });
+        return;
+      } catch {
+        // fallback to copy
+      }
+    }
+    await navigator.clipboard.writeText(url);
+    setError(null);
+    setInfoMessage("Template link copied.");
+  };
 
   useEffect(() => {
     if (!loading) {
@@ -1780,14 +1876,21 @@ export default function LessonPlanPage() {
       if (!res.ok) {
         if (res.status === 403 && data.error === "Free limit reached") {
           throw new Error(
-            `${data.message || `You've reached your limit of ${FREE_PLAN_LIMIT} lesson plans.`}\n` +
+            `${withRequestId(data.message || `You've reached your limit of ${FREE_PLAN_LIMIT} lesson plans.`, data)}\n` +
             (data.resetTime ? `Limit resets at: ${new Date(data.resetTime).toLocaleTimeString()}` : "")
           );
         }
         if (res.status === 403 && data.error === "Premium required") {
-          throw new Error(data.message || "Premium is required for downloads and PPTX generation.");
+          throw new Error(
+            withRequestId(
+              data.message || "Premium is required for downloads and PPTX generation.",
+              data
+            )
+          );
         }
-        throw new Error(data.error || data.message || "Failed to generate lesson plan");
+        throw new Error(
+          withRequestId(data.error || data.message || "Failed to generate lesson plan", data)
+        );
       }
       
       setLessonPlan(data.lessonPlan);
@@ -1847,7 +1950,9 @@ export default function LessonPlanPage() {
 
       const queueData = await queueRes.json().catch(() => ({}));
       if (!queueRes.ok || !queueData?.jobId) {
-        throw new Error(queueData?.error || "Failed to queue export job");
+        throw new Error(
+          withRequestId(queueData?.error || "Failed to queue export job", queueData)
+        );
       }
 
       const jobId = queueData.jobId as string;
@@ -1870,7 +1975,9 @@ export default function LessonPlanPage() {
         const statusData = await statusRes.json().catch(() => ({}));
 
         if (!statusRes.ok) {
-          throw new Error(statusData?.error || "Failed to fetch export status");
+          throw new Error(
+            withRequestId(statusData?.error || "Failed to fetch export status", statusData)
+          );
         }
 
         lastStatus = String(statusData?.status || "queued");
@@ -1898,7 +2005,7 @@ export default function LessonPlanPage() {
         }
 
         if (lastStatus === "failed") {
-          throw new Error(statusData?.error || "Export job failed");
+          throw new Error(withRequestId(statusData?.error || "Export job failed", statusData));
         }
 
         if (lastStatus === "queued") {
@@ -2052,7 +2159,7 @@ export default function LessonPlanPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to generate slides.");
+        throw new Error(withRequestId(data.error || "Failed to generate slides.", data));
       }
       setPptxDeck(data.deck);
       setShowPptxEditor(true);
@@ -2074,7 +2181,7 @@ export default function LessonPlanPage() {
       });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || "Failed to generate PPTX");
+        throw new Error(withRequestIdFromText("Failed to generate PPTX", text));
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -2123,6 +2230,15 @@ export default function LessonPlanPage() {
       return () => clearTimeout(timer);
     }
   }, [error]);
+
+  useEffect(() => {
+    if (infoMessage) {
+      const timer = setTimeout(() => {
+        setInfoMessage(null);
+      }, 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [infoMessage]);
 
   const isPausedMessage = error?.trim().toLowerCase() === "generation paused.";
   const lessonPlanTourSteps = [
@@ -2183,6 +2299,22 @@ export default function LessonPlanPage() {
         title: "Generate plan",
         description:
           "Click to generate. Use Pause anytime to stop an in-flight request.",
+      },
+    },
+    {
+      element: "#lessonplan-copy-template-link",
+      popover: {
+        title: "Copy template link",
+        description:
+          "Copy a shareable URL with current lesson inputs prefilled.",
+      },
+    },
+    {
+      element: "#lessonplan-share-template-link",
+      popover: {
+        title: "Share template",
+        description:
+          "Share your current lesson input template using the device share menu.",
       },
     },
     {
@@ -2247,6 +2379,8 @@ export default function LessonPlanPage() {
         </div>
         <CardContent className="p-6">
           <form
+            key={lessonTemplateKey}
+            ref={lessonFormRef}
             onSubmit={(e) => {
               e.preventDefault();
               generateLessonPlan(new FormData(e.currentTarget));
@@ -2263,6 +2397,7 @@ export default function LessonPlanPage() {
                   id="lessonplan-topic"
                   name="topic" 
                   placeholder="e.g., Photosynthesis, World War II, Quadratic Equations" 
+                  defaultValue={lessonTemplateDefaults.topic}
                   required 
                   className="h-12 border-2 focus:border-blue-500"
                 />
@@ -2276,6 +2411,7 @@ export default function LessonPlanPage() {
                   id="lessonplan-subject"
                   name="subject" 
                   placeholder="e.g., Science, History, Mathematics" 
+                  defaultValue={lessonTemplateDefaults.subject}
                   required 
                   className="h-12 border-2 focus:border-purple-500"
                 />
@@ -2292,6 +2428,7 @@ export default function LessonPlanPage() {
                   id="lessonplan-grade"
                   name="grade" 
                   placeholder="e.g., Grade 7, Senior High School" 
+                  defaultValue={lessonTemplateDefaults.grade}
                   required 
                   className="h-12 border-2 focus:border-green-500"
                 />
@@ -2308,6 +2445,7 @@ export default function LessonPlanPage() {
                   min="1" 
                   max="7" 
                   placeholder="Days" 
+                  defaultValue={lessonTemplateDefaults.days}
                   required 
                   className="h-12 border-2 focus:border-amber-500"
                 />
@@ -2323,7 +2461,7 @@ export default function LessonPlanPage() {
                   type="number"
                   min="10"
                   max="120"
-                  defaultValue="40"
+                  defaultValue={lessonTemplateDefaults.minutesPerDay}
                   required
                   className="h-12 border-2 focus:border-red-500"
                 />
@@ -2339,6 +2477,7 @@ export default function LessonPlanPage() {
                 id="lessonplan-objectives"
                 name="objectives" 
                 placeholder="Enter specific learning objectives, one per line..."
+                defaultValue={lessonTemplateDefaults.objectives}
                 className="min-h-30 border-2 focus:border-indigo-500"
               />
             </div>
@@ -2352,8 +2491,32 @@ export default function LessonPlanPage() {
                 id="lessonplan-constraints"
                 name="constraints" 
                 placeholder="Any specific requirements or constraints..."
+                defaultValue={lessonTemplateDefaults.constraints}
                 className="min-h-25 border-2 focus:border-gray-500"
               />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                id="lessonplan-copy-template-link"
+                type="button"
+                variant="outline"
+                onClick={copyLessonTemplateLink}
+                className="text-xs"
+              >
+                <FileText className="mr-1 h-3.5 w-3.5" />
+                Copy Template Link
+              </Button>
+              <Button
+                id="lessonplan-share-template-link"
+                type="button"
+                variant="outline"
+                onClick={shareLessonTemplateLink}
+                className="text-xs"
+              >
+                <Share2 className="mr-1 h-3.5 w-3.5" />
+                Share Template
+              </Button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-stretch">
@@ -2394,16 +2557,48 @@ export default function LessonPlanPage() {
               />
             )}
           </form>
-          
-          {error && (
-            <div className="mt-6 p-4 bg-linear-to-r from-red-50 to-rose-50 rounded-xl border-2 border-red-200">
+
+          {infoMessage && (
+            <div className="mt-6 p-4 rounded-xl border-2 bg-linear-to-r from-blue-50 to-cyan-50 border-blue-200">
               <div className="flex items-start gap-3">
-                <AlertCircle className="h-6 w-6 text-red-600 mt-0.5" />
+                <CheckCircle2 className="h-6 w-6 mt-0.5 text-blue-700" />
                 <div>
-                  <p className="font-bold text-red-800 text-lg">
+                  <p className="font-bold text-lg text-blue-900">Info</p>
+                  <p className="whitespace-pre-line mt-1 text-blue-800">{infoMessage}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div
+              className={`mt-6 p-4 rounded-xl border-2 ${
+                isPausedMessage
+                  ? "bg-linear-to-r from-amber-50 to-yellow-50 border-amber-200"
+                  : "bg-linear-to-r from-red-50 to-rose-50 border-red-200"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <AlertCircle
+                  className={`h-6 w-6 mt-0.5 ${
+                    isPausedMessage ? "text-amber-700" : "text-red-600"
+                  }`}
+                />
+                <div>
+                  <p
+                    className={`font-bold text-lg ${
+                      isPausedMessage ? "text-amber-900" : "text-red-800"
+                    }`}
+                  >
                     {isPausedMessage ? "Paused" : "Error"}
                   </p>
-                  <p className="text-red-700 whitespace-pre-line mt-1">{error}</p>
+                  <p
+                    className={`whitespace-pre-line mt-1 ${
+                      isPausedMessage ? "text-amber-800" : "text-red-700"
+                    }`}
+                  >
+                    {error}
+                  </p>
                 </div>
               </div>
             </div>

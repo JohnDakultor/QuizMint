@@ -1,83 +1,45 @@
-// app/quiz-generator-for-students/page.tsx
-import { Metadata } from "next";
+import LandingTemplate, {
+  createLandingMetadata,
+} from "../_components/landing-template";
 
-export const metadata: Metadata = {
-  title: "AI Quiz and Lesson Plan Generator for Students | QuizMint AI",
-  description: "QuizMint AI helps students create practice quizzes and lesson plans using AI. Upload study material, generate outputs, and export them easily.",
-  openGraph: {
-    title: "AI Quiz and Lesson Plan Generator for Students | QuizMint AI",
-    description: "Generate study quizzes and lesson plans instantly with AI. Upload notes, customize outputs, and use free or premium tiers.",
-    url: "https://quizmintai.com/quiz-generator-for-students",
-  },
-  alternates: {
-    canonical: "https://quizmintai.com/quiz-generator-for-students",
-  },
-};
+export const metadata = createLandingMetadata({
+  title: "AI Quiz Generator for Students | QuizMint AI",
+  description:
+    "Students can generate instant practice quizzes by topic, chapter, and difficulty to review smarter before exams.",
+  path: "/quiz-generator-for-students",
+});
 
 export default function QuizGeneratorForStudentsPage() {
   return (
-    <main className="max-w-4xl mx-auto px-4 py-12">
-      {/* Hero Section */}
-      <section className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-4">
-          AI Quiz Generator for Students
-        </h1>
-        <p className="text-lg text-gray-700">
-          Practice smarter with AI-generated quizzes and lesson plans. Upload your notes, generate customized outputs, and export them instantly.
-        </p>
-      </section>
-
-      {/* Features Section */}
-      <section className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4">Why Students Use QuizMint AI</h2>
-        <ul className="list-disc list-inside text-gray-700 space-y-2">
-          <li>Generate quizzes quickly from your notes or study materials.</li>
-          <li>Free tier available for basic quizzes, small paid plan for advanced features.</li>
-          <li>Download quizzes for offline practice or sharing with classmates.</li>
-          <li>Customizable question types and difficulty levels.</li>
-        </ul>
-      </section>
-
-      {/* How It Works */}
-      <section className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4">How Students Can Use It</h2>
-        <ol className="list-decimal list-inside text-gray-700 space-y-2">
-          <li>Upload your study notes or enter a topic.</li>
-          <li>Choose the number of questions and difficulty.</li>
-          <li>Click "Generate Quiz" and AI will create it instantly.</li>
-          <li>Download or review the quiz for practice.</li>
-        </ol>
-      </section>
-
-      {/* FAQ Section */}
-      <section className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4">FAQ</h2>
-        <div className="space-y-4 text-gray-700">
-          <div>
-            <strong>Is this tool free for students?</strong>
-            <p>Yes, the free tier allows generating quizzes without payment. Premium features are optional.</p>
-          </div>
-          <div>
-            <strong>Can I upload my study notes?</strong>
-            <p>Yes, AI will use your uploaded files to generate quizzes based on your content.</p>
-          </div>
-          <div>
-            <strong>Do I need an account?</strong>
-            <p>An account is optional. Free tier works without signing up.</p>
-          </div>
-        </div>
-      </section>
-
-      {/* Call to Action */}
-      <section className="text-center mb-12">
-        <h2 className="text-2xl font-semibold mb-4">Start Practicing Smarter</h2>
-        <a
-          href="/"
-            className="inline-block px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition"
-        >
-          Generate Quizzes for Students
-        </a>
-      </section>
-    </main>
+    <LandingTemplate
+      title="AI Quiz Generator for Students"
+      subtitle="Create self-review quizzes from your topics and study plan, then iterate fast on weak areas."
+      featureTitle="Student learning advantages"
+      features={[
+        "Fast quiz generation from simple prompts.",
+        "Practice with mixed question formats.",
+        "Repeat generation for better retention.",
+        "Use topic-focused review before exams.",
+      ]}
+      useCasesTitle="Student use cases"
+      useCases={[
+        "Night-before exam reviews",
+        "Chapter mastery checks",
+        "Group study sessions",
+        "Self-paced revision",
+      ]}
+      faq={[
+        {
+          question: "Can I choose question formats?",
+          answer: "Yes, specify multiple choice, true/false, or a mixed set.",
+        },
+        {
+          question: "Can I generate quizzes for one topic only?",
+          answer: "Yes, provide a specific topic and desired question count.",
+        },
+      ]}
+      ctaText="Generate Student Quiz"
+      ctaHref="/generate-quiz"
+    />
   );
 }

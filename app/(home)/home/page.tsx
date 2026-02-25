@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { BookOpen, Brain, Clock3, FileText, Sparkles } from "lucide-react";
+import Tour from "@/components/ui/tour";
+import SkeletonLoading from "@/components/ui/skeleton-loading";
 
 type DashboardSummary = {
   subscriptionPlan: string;
@@ -20,6 +22,20 @@ type DashboardSummary = {
   todayLessonPlanCount: number;
   recentQuizzes: { id: number; title: string; createdAt: string }[];
   recentPlans: { id: string; title: string; subject: string; createdAt: string }[];
+};
+
+type LastQuiz = {
+  id: number;
+  title: string;
+  createdAt: string;
+  questionCount: number;
+};
+
+type LastPlan = {
+  id: string;
+  title: string;
+  subject: string;
+  createdAt: string;
 };
 
 const FREE_QUIZ_LIMIT = 3;
@@ -148,7 +164,53 @@ export default function HomeDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [copiedTemplate, setCopiedTemplate] = useState<string | null>(null);
+  const [lastQuiz, setLastQuiz] = useState<LastQuiz | null>(null);
+  const [lastPlan, setLastPlan] = useState<LastPlan | null>(null);
   const [, setTick] = useState(0);
+  const dashboardTourSteps = [
+    {
+      element: "#dashboard-hero",
+      popover: {
+        title: "Dashboard overview",
+        description: "This page summarizes your quiz and lesson-plan activity.",
+      },
+    },
+    {
+      element: "#dashboard-stats",
+      popover: {
+        title: "Usage metrics",
+        description: "Track quiz count, lesson count, and free-plan reset status.",
+      },
+    },
+    {
+      element: "#dashboard-quick-actions",
+      popover: {
+        title: "Quick actions",
+        description: "Jump directly to quiz generation, lesson planning, or account settings.",
+      },
+    },
+    {
+      element: "#dashboard-recent-quizzes",
+      popover: {
+        title: "Recent quizzes",
+        description: "Review your latest generated quizzes and continue quickly.",
+      },
+    },
+    {
+      element: "#dashboard-recent-lessons",
+      popover: {
+        title: "Recent lesson plans",
+        description: "Open your latest lesson plans and continue your workflow.",
+      },
+    },
+    {
+      element: "#dashboard-templates",
+      popover: {
+        title: "Quick templates",
+        description: "Copy ready-made prompts for quiz and lesson workflows.",
+      },
+    },
+  ];
 
   useEffect(() => {
     const interval = setInterval(() => setTick((v) => v + 1), 1000);
@@ -174,6 +236,31 @@ export default function HomeDashboardPage() {
     }
 
     load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadContinueState() {
+      try {
+        const [quizRes, lessonRes] = await Promise.all([
+          fetch("/api/quizzes/latest", { cache: "no-store" }),
+          fetch("/api/lesson-plans", { cache: "no-store" }),
+        ]);
+        const quizData = await quizRes.json().catch(() => ({}));
+        const lessonData = await lessonRes.json().catch(() => ({}));
+        if (!mounted) return;
+        setLastQuiz((quizData?.latest as LastQuiz) || null);
+        setLastPlan((lessonData?.latest as LastPlan) || null);
+      } catch {
+        if (!mounted) return;
+        setLastQuiz(null);
+        setLastPlan(null);
+      }
+    }
+    loadContinueState();
     return () => {
       mounted = false;
     };
@@ -208,7 +295,11 @@ export default function HomeDashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-      <div className="rounded-2xl border border-indigo-200/40 bg-linear-to-r from-indigo-900 via-blue-900 to-cyan-800 text-white p-6 shadow-lg">
+      <Tour steps={dashboardTourSteps} tourId="home-dashboard" />
+      <div
+        id="dashboard-hero"
+        className="rounded-2xl border border-indigo-200/40 bg-linear-to-r from-indigo-900 via-blue-900 to-cyan-800 text-white p-6 shadow-lg"
+      >
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
@@ -231,7 +322,7 @@ export default function HomeDashboardPage() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div id="dashboard-stats" className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="border-indigo-200 bg-linear-to-brrom-indigo-50 to-blue-50 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
@@ -239,7 +330,11 @@ export default function HomeDashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-zinc-900">{loading ? "-" : data?.quizCount ?? 0}</div>
+            {loading ? (
+              <SkeletonLoading className="h-9 w-24" />
+            ) : (
+              <div className="text-3xl font-bold text-zinc-900">{data?.quizCount ?? 0}</div>
+            )}
           </CardContent>
         </Card>
 
@@ -250,7 +345,11 @@ export default function HomeDashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-zinc-900">{loading ? "-" : data?.lessonPlanCount ?? 0}</div>
+            {loading ? (
+              <SkeletonLoading className="h-9 w-24" />
+            ) : (
+              <div className="text-3xl font-bold text-zinc-900">{data?.lessonPlanCount ?? 0}</div>
+            )}
           </CardContent>
         </Card>
 
@@ -261,7 +360,11 @@ export default function HomeDashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-lg font-semibold text-zinc-900">{loading ? "-" : usageStatus}</div>
+            {loading ? (
+              <SkeletonLoading className="h-6 w-40" />
+            ) : (
+              <div className="text-lg font-semibold text-zinc-900">{usageStatus}</div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -273,15 +376,22 @@ export default function HomeDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-zinc-500">Activity today</p>
-            <p className="text-xl font-semibold">{loading ? "-" : todaySummary}</p>
-            <p className="text-xs text-zinc-500">
-              Last activity:{" "}
-              {loading
-                ? "-"
-                : data?.lastActivityAt
-                  ? new Date(data.lastActivityAt).toLocaleString()
-                  : "No activity yet"}
-            </p>
+            {loading ? (
+              <>
+                <SkeletonLoading className="h-6 w-56" />
+                <SkeletonLoading className="h-4 w-48" />
+              </>
+            ) : (
+              <>
+                <p className="text-xl font-semibold">{todaySummary}</p>
+                <p className="text-xs text-zinc-500">
+                  Last activity:{" "}
+                  {data?.lastActivityAt
+                    ? new Date(data.lastActivityAt).toLocaleString()
+                    : "No activity yet"}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -291,16 +401,23 @@ export default function HomeDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-zinc-500">Free-tier ad unlock remaining</p>
-            <p className="text-xl font-semibold">
-              {loading ? "-" : (data?.subscriptionPlan || "free") === "free" ? `${data?.adResetRemaining ?? 0} / 5` : "Not applicable"}
-            </p>
-            <p className="text-xs text-zinc-500">
-              {loading
-                ? "-"
-                : (data?.subscriptionPlan || "free") === "free"
-                  ? "Watches available in current window"
-                  : "Premium/Pro does not use ad reset"}
-            </p>
+            {loading ? (
+              <>
+                <SkeletonLoading className="h-6 w-28" />
+                <SkeletonLoading className="h-4 w-52" />
+              </>
+            ) : (
+              <>
+                <p className="text-xl font-semibold">
+                  {(data?.subscriptionPlan || "free") === "free" ? `${data?.adResetRemaining ?? 0} / 5` : "Not applicable"}
+                </p>
+                <p className="text-xs text-zinc-500">
+                  {(data?.subscriptionPlan || "free") === "free"
+                    ? "Watches available in current window"
+                    : "Premium/Pro does not use ad reset"}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -310,9 +427,49 @@ export default function HomeDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-zinc-500">Continue where you left off</p>
+            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Last Quiz</p>
+              {loading ? (
+                <>
+                  <SkeletonLoading className="mt-1 h-4 w-44" />
+                  <SkeletonLoading className="mt-1 h-3 w-56" />
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium truncate">
+                    {lastQuiz ? lastQuiz.title : "No quiz yet"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {lastQuiz
+                      ? `${lastQuiz.questionCount} questions - ${new Date(lastQuiz.createdAt).toLocaleString()}`
+                      : "Generate your first quiz"}
+                  </p>
+                </>
+              )}
+            </div>
             <Button asChild variant="outline" className="w-full">
               <Link href="/generate-quiz">Resume Quiz Workflow</Link>
             </Button>
+            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Last Lesson Plan</p>
+              {loading ? (
+                <>
+                  <SkeletonLoading className="mt-1 h-4 w-44" />
+                  <SkeletonLoading className="mt-1 h-3 w-56" />
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium truncate">
+                    {lastPlan ? lastPlan.title : "No lesson plan yet"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {lastPlan
+                      ? `${lastPlan.subject} - ${new Date(lastPlan.createdAt).toLocaleString()}`
+                      : "Generate your first lesson plan"}
+                  </p>
+                </>
+              )}
+            </div>
             <Button asChild variant="outline" className="w-full">
               <Link href="/lessonPlan">Resume Lesson Workflow</Link>
             </Button>
@@ -321,12 +478,19 @@ export default function HomeDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-blue-200 bg-linear-to-br from-white to-blue-50 shadow-sm">
+        <Card id="dashboard-recent-quizzes" className="border-blue-200 bg-linear-to-br from-white to-blue-50 shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">Recent Quizzes</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!data?.recentQuizzes?.length ? (
+            {loading ? (
+              Array.from({ length: 3 }).map((_, idx) => (
+                <div key={idx} className="rounded-lg border border-blue-100 bg-white/90 px-3 py-2">
+                  <SkeletonLoading className="h-4 w-48" />
+                  <SkeletonLoading className="mt-1 h-3 w-36" />
+                </div>
+              ))
+            ) : !data?.recentQuizzes?.length ? (
               <p className="text-sm text-zinc-500">No quizzes yet.</p>
             ) : (
               data.recentQuizzes.map((quiz) => (
@@ -345,12 +509,19 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-violet-200 bg-linear-to-br from-white to-violet-50 shadow-sm">
+        <Card id="dashboard-recent-lessons" className="border-violet-200 bg-linear-to-br from-white to-violet-50 shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">Recent Lesson Plans</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!data?.recentPlans?.length ? (
+            {loading ? (
+              Array.from({ length: 3 }).map((_, idx) => (
+                <div key={idx} className="rounded-lg border border-violet-100 bg-white/90 px-3 py-2">
+                  <SkeletonLoading className="h-4 w-48" />
+                  <SkeletonLoading className="mt-1 h-3 w-36" />
+                </div>
+              ))
+            ) : !data?.recentPlans?.length ? (
               <p className="text-sm text-zinc-500">No lesson plans yet.</p>
             ) : (
               data.recentPlans.map((plan) => (
@@ -370,7 +541,7 @@ export default function HomeDashboardPage() {
         </Card>
       </div>
 
-      <Card className="border-indigo-200 bg-linear-to-r from-indigo-50 to-cyan-50 shadow-sm">
+      <Card id="dashboard-quick-actions" className="border-indigo-200 bg-linear-to-r from-indigo-50 to-cyan-50 shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Dashboard Quick Actions</CardTitle>
         </CardHeader>
@@ -387,7 +558,7 @@ export default function HomeDashboardPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-fuchsia-200 bg-linear-to-r from-fuchsia-50 to-pink-50 shadow-sm">
+      <Card id="dashboard-templates" className="border-fuchsia-200 bg-linear-to-r from-fuchsia-50 to-pink-50 shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Quick Templates</CardTitle>
         </CardHeader>

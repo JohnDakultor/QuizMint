@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { Facebook, Linkedin, XIcon } from "lucide-react";
 import Link from "next/link";
 import icon from "@/public/icon.png";
@@ -71,9 +71,9 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4">Resources</h3>
             <ul className="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+              <li><Link href="/resources" className="hover:text-blue-600 transition-colors">All Guides</Link></li>
               <li><Link href="/blog" className="hover:text-blue-600 transition-colors">Blog</Link></li>
               <li><Link href="/ai-quiz-generator" className="hover:text-blue-600 transition-colors">AI Quiz + Lesson Plans</Link></li>
-              <li><Link href="/quiz-generator-for-teachers" className="hover:text-blue-600 transition-colors">For Teachers</Link></li>
               <li><Link href="/disclaimer" className="hover:text-blue-600 transition-colors">Disclaimer</Link></li>
             </ul>
           </div>

@@ -1,13 +1,15 @@
 // app/api/generate-lesson-plan/route.ts
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-import { generateLessonPlanAI } from "@/lib/lesson-plan-ai";
+import { generateLessonPlanAIWithMeta } from "@/lib/lesson-plan-ai";
 import { generateLessonPlanPDF } from "@/lib/lessonPlan-gen-pdf-dl";
 import { generateLessonPlanDocx } from "@/lib/generate-lesson-plan-docx";
-import { generateLessonPlanPptAI } from "@/lib/lesson-plan-ppt-ai";
+import { generateLessonPlanPptAIWithMeta } from "@/lib/lesson-plan-ppt-ai";
 import { generateLessonPlanPptx } from "@/lib/generate-lesson-plan-pptx";
+import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
+import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 
 const FREE_PLAN_LIMIT = 3;
 const RESET_HOURS = 3;
@@ -248,6 +250,10 @@ function enhanceLessonPlanWithContext(lessonPlan: any, topic: string, subject: s
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
+  let eventUserId: string | null = null;
+  let eventPlan: string | null = null;
+  const requestId = createRequestId();
   try {
     const ensureNotAborted = () => {
       if (req.signal.aborted) {
@@ -258,10 +264,12 @@ export async function POST(req: NextRequest) {
     };
 
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email) return new Response("Unauthorized", { status: 401 });
+    if (!session?.user?.email) return apiError(401, "Unauthorized", requestId);
 
     const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-    if (!user) return new Response("User not found", { status: 404 });
+    if (!user) return apiError(404, "User not found", requestId);
+    eventUserId = user.id;
+    eventPlan = user.subscriptionPlan || "free";
 
     const plan = user.subscriptionPlan || "free";
     const isFree = plan === "free";
@@ -289,14 +297,22 @@ export async function POST(req: NextRequest) {
 
     // Check if user has reached the limit
     if (isFree && user.lessonPlanUsage >= FREE_PLAN_LIMIT) {
-      return new Response(JSON.stringify({ 
-        error: "Free limit reached",
-        message: `You've reached your limit of ${FREE_PLAN_LIMIT} lesson plans. Please wait 3 hours for your limit to reset or upgrade to premium.`,
-        resetTime: user.lastLessonPlanAt ? new Date(user.lastLessonPlanAt.getTime() + (RESET_HOURS * 60 * 60 * 1000)).toISOString() : null
-      }), { 
-        status: 403,
-        headers: { "Content-Type": "application/json" }
-      });
+      return NextResponse.json(
+        {
+          error: "Free limit reached",
+          message: `You've reached your limit of ${FREE_PLAN_LIMIT} lesson plans. Please wait 3 hours for your limit to reset or upgrade to premium.`,
+          resetTime: user.lastLessonPlanAt
+            ? new Date(
+                user.lastLessonPlanAt.getTime() + RESET_HOURS * 60 * 60 * 1000
+              ).toISOString()
+            : null,
+          requestId,
+        },
+        {
+          status: 403,
+          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+        }
+      );
     }
 
     const body = await req.json();
@@ -311,17 +327,21 @@ export async function POST(req: NextRequest) {
     const format = typeof body.format === "string" ? body.format.toLowerCase().trim() : "json";
 
     if (!topic || !subject || !grade || !days || !minutesPerDay) {
-      return new Response("Missing required fields", { status: 400 });
+      return apiError(400, "Missing required fields", requestId);
     }
 
     if ((format === "docx" || format === "pdf" || format === "pptx") && !isPremium) {
-      return new Response(JSON.stringify({ 
-        error: "Premium required",
-        message: "Downloads and PPTX generation are available on the Premium plan.",
-      }), { 
-        status: 403,
-        headers: { "Content-Type": "application/json" }
-      });
+      return NextResponse.json(
+        {
+          error: "Premium required",
+          message: "Downloads and PPTX generation are available on the Premium plan.",
+          requestId,
+        },
+        {
+          status: 403,
+          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+        }
+      );
     }
 
     const duration = `${days} day(s), ${minutesPerDay} minutes per day`;
@@ -330,6 +350,12 @@ export async function POST(req: NextRequest) {
     const cacheKey = `${session.user.email}:${topic}:${subject}:${grade}:${days}`;
 
     let lessonPlan: any;
+    let lessonAiMeta: {
+      retryCount: number;
+      fallbackUsed: boolean;
+      finalModel: string;
+      finalProvider: string | null;
+    } | null = null;
     const useProvidedPlan = Boolean(providedLessonPlan);
 
     if (useProvidedPlan) {
@@ -342,7 +368,7 @@ export async function POST(req: NextRequest) {
       try {
         // Generate lesson plan using 4A's format with separate sections
         console.log("Calling AI to generate lesson plan...");
-        lessonPlan = await generateLessonPlanAI({
+        const lessonAIResult = await generateLessonPlanAIWithMeta({
           topic,
           subject,
           grade,
@@ -353,6 +379,8 @@ export async function POST(req: NextRequest) {
           minutesPerDay,
           isProOrPremium: !isFree,
         });
+        lessonPlan = lessonAIResult.lessonPlan;
+        lessonAiMeta = lessonAIResult.meta;
 
         console.log("AI generated lesson plan with days:", lessonPlan.days?.length || 0);
 
@@ -796,6 +824,14 @@ export async function POST(req: NextRequest) {
     if (format === "docx") {
       try {
         const docxBuffer = await generateLessonPlanDocx(lessonPlan);
+        await trackGenerationEvent({
+          userId: user.id,
+          eventType: "lesson_generated",
+          feature: "lesson_plan_docx",
+          status: "success",
+          plan: eventPlan,
+          latencyMs: Date.now() - startedAt,
+        });
         return new Response(new Uint8Array(docxBuffer), {
           headers: {
             "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -805,15 +841,15 @@ export async function POST(req: NextRequest) {
       } catch (docxError: any) {
         console.error("DOCX Generation Error:", docxError);
         if (isProviderIssueError(docxError)) {
-          return new Response(PROVIDER_ISSUE_MESSAGE, { status: 503 });
+          return apiError(503, PROVIDER_ISSUE_MESSAGE, requestId);
         }
-        return new Response(`Failed to generate DOCX: ${docxError.message}`, { status: 500 });
+        return apiError(500, `Failed to generate DOCX: ${docxError.message}`, requestId);
       }
     }
 
     if (format === "pptx") {
       try {
-        const pptDeck = await generateLessonPlanPptAI({
+        const pptAIResult = await generateLessonPlanPptAIWithMeta({
           lessonPlan,
           topic,
           subject,
@@ -821,7 +857,23 @@ export async function POST(req: NextRequest) {
           duration,
           isProOrPremium: !isFree,
         });
+        const pptDeck = pptAIResult.deck;
         const pptxBuffer = await generateLessonPlanPptx(pptDeck);
+        await trackGenerationEvent({
+          userId: user.id,
+          eventType: "pptx_generated",
+          feature: "lesson_plan_pptx",
+          status: "success",
+          plan: eventPlan,
+          latencyMs: Date.now() - startedAt,
+          metadata: {
+            retryCount: pptAIResult.meta.retryCount,
+            fallbackUsed: pptAIResult.meta.fallbackUsed,
+            finalModel: pptAIResult.meta.finalModel,
+            finalProvider: pptAIResult.meta.finalProvider,
+            slideCount: Array.isArray(pptDeck?.slides) ? pptDeck.slides.length : 0,
+          },
+        });
         return new Response(new Uint8Array(pptxBuffer), {
           headers: {
             "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -831,9 +883,9 @@ export async function POST(req: NextRequest) {
       } catch (pptError: any) {
         console.error("PPTX Generation Error:", pptError);
         if (isProviderIssueError(pptError)) {
-          return new Response(PROVIDER_ISSUE_MESSAGE, { status: 503 });
+          return apiError(503, PROVIDER_ISSUE_MESSAGE, requestId);
         }
-        return new Response(`Failed to generate PPTX: ${pptError.message}`, { status: 500 });
+        return apiError(500, `Failed to generate PPTX: ${pptError.message}`, requestId);
       }
     }
 
@@ -842,6 +894,14 @@ export async function POST(req: NextRequest) {
       try {
         // Generate PDF
         const pdfBuffer = await generateLessonPlanPDF(lessonPlan, topic);
+        await trackGenerationEvent({
+          userId: user.id,
+          eventType: "lesson_generated",
+          feature: "lesson_plan_pdf",
+          status: "success",
+          plan: eventPlan,
+          latencyMs: Date.now() - startedAt,
+        });
         
         // Return PDF response
         return new Response(new Uint8Array(pdfBuffer), {
@@ -853,9 +913,9 @@ export async function POST(req: NextRequest) {
       } catch (pdfError: any) {
         console.error("PDF Generation Error:", pdfError);
         if (isProviderIssueError(pdfError)) {
-          return new Response(PROVIDER_ISSUE_MESSAGE, { status: 503 });
+          return apiError(503, PROVIDER_ISSUE_MESSAGE, requestId);
         }
-        return new Response(`Failed to generate PDF: ${pdfError.message}`, { status: 500 });
+        return apiError(500, `Failed to generate PDF: ${pdfError.message}`, requestId);
       }
     }
 
@@ -884,6 +944,23 @@ export async function POST(req: NextRequest) {
     ensureNotAborted();
 
     // Return JSON response with usage info
+    await trackGenerationEvent({
+      userId: user.id,
+      eventType: "lesson_generated",
+      feature: "lesson_plan",
+      status: "success",
+      plan: eventPlan,
+      latencyMs: Date.now() - startedAt,
+      metadata: {
+        days,
+        minutesPerDay,
+        fromProvidedPlan: useProvidedPlan,
+        retryCount: lessonAiMeta?.retryCount ?? 0,
+        fallbackUsed: lessonAiMeta?.fallbackUsed ?? false,
+        finalModel: lessonAiMeta?.finalModel ?? null,
+        finalProvider: lessonAiMeta?.finalProvider ?? null,
+      },
+    });
     return new Response(JSON.stringify({ 
       lessonPlan,
       usage: isFree ? {
@@ -897,12 +974,49 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     if (err?.name === "AbortError" || err?.message === "REQUEST_ABORTED") {
-      return new Response(null, { status: 499 });
+      await trackGenerationEvent({
+        userId: eventUserId,
+        eventType: "pause_clicked",
+        feature: "lesson_plan",
+        status: "aborted",
+        plan: eventPlan,
+        latencyMs: Date.now() - startedAt,
+      });
+      return NextResponse.json(
+        { error: "Generation paused by user", requestId },
+        {
+          status: 499,
+          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+        }
+      );
     }
-    console.error("Lesson Plan API Error:", err);
+    logApiError(requestId, "generate-lesson-plan", err);
     if (isProviderIssueError(err)) {
-      return new Response(PROVIDER_ISSUE_MESSAGE, { status: 503 });
+      const providerError = extractProviderErrorDetails(err);
+      await trackGenerationEvent({
+        userId: eventUserId,
+        eventType: "lesson_generated",
+        feature: "lesson_plan",
+        status: "failed",
+        plan: eventPlan,
+        latencyMs: Date.now() - startedAt,
+        metadata: {
+          providerIssue: true,
+          provider: providerError.provider ?? "unknown",
+          providerCode: providerError.code,
+        },
+      });
+      return apiError(503, PROVIDER_ISSUE_MESSAGE, requestId);
     }
-    return new Response(`Internal server error: ${err.message}`, { status: 500 });
+    await trackGenerationEvent({
+      userId: eventUserId,
+      eventType: "lesson_generated",
+      feature: "lesson_plan",
+      status: "failed",
+      plan: eventPlan,
+      latencyMs: Date.now() - startedAt,
+      metadata: { message: String(err?.message || "unknown_error") },
+    });
+    return apiError(500, `Internal server error: ${err.message}`, requestId);
   }
 }

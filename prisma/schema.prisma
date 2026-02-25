@@ -197,3 +197,18 @@ model SemanticCache {
 
   @@index([namespace])
 }
+
+model GenerationEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  eventType String
+  feature   String?
+  status    String
+  plan      String?
+  latencyMs Int?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([userId, createdAt])
+}

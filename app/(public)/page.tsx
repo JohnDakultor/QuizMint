@@ -604,6 +604,7 @@
 import LandingClient from "../landing-page";
 import Script from "next/script";
 import GoogleOneTap from "@/components/ui/google-oneTap";
+import Link from "next/link";
 
 export const metadata = {
   title: "AI Quiz & Lesson Plan Generator | QuizMintAI",
@@ -688,6 +689,48 @@ export default function HomePage() {
       />
 
       <LandingClient />
+
+      <section className="mx-auto w-full max-w-7xl px-6 pb-20">
+        <div className="rounded-3xl border border-blue-200/80 bg-linear-to-r from-blue-50 to-cyan-50 p-6 dark:border-zinc-700 dark:from-zinc-900 dark:to-zinc-800">
+          <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+            Explore More QuizMintAI Guides
+          </h2>
+          <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
+            Browse subject and audience-specific pages for teachers, students, and training teams.
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { href: "/resources", label: "All Guides (10)" },
+              { href: "/science-quiz-generator", label: "Science Quiz Generator" },
+              { href: "/math-quiz-generator", label: "Math Quiz Generator" },
+              { href: "/history-quiz-generator", label: "History Quiz Generator" },
+              { href: "/english-quiz-generator", label: "English Quiz Generator" },
+              { href: "/biology-quiz-generator", label: "Biology Quiz Generator" },
+              { href: "/chemistry-quiz-generator", label: "Chemistry Quiz Generator" },
+              { href: "/physics-quiz-generator", label: "Physics Quiz Generator" },
+              { href: "/exam-prep-quiz-generator", label: "Exam Prep Quiz Generator" },
+              {
+                href: "/lesson-plan-generator-for-teachers",
+                label: "Lesson Plan Generator",
+              },
+              {
+                href: "/interactive-quiz-maker-for-students",
+                label: "Interactive Quiz Maker",
+              },
+              { href: "/ai-quiz-generator", label: "AI Quiz + Lesson Plans" },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-800 transition hover:border-blue-400 hover:text-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:text-blue-300"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <GoogleOneTap />
     </>
   );

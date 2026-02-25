@@ -14,6 +14,7 @@ type AdminSummary = {
   proUsers: number;
   premiumUsers: number;
   newUsersLast7Days: number;
+  activeUsersLast7Days?: number;
 };
 
 type AdminUser = {
@@ -38,6 +39,103 @@ type LatestActivityUser = {
   createdAt?: string | null;
 };
 
+type CohortSummaryRow = {
+  cohortWeek: string;
+  newUsers: number;
+  returnedD1: number;
+  returnedD7: number;
+  d1Rate: number;
+  d7Rate: number;
+};
+
+type AdminGenerationEvent = {
+  id: string;
+  userId: string | null;
+  email: string | null;
+  eventType: string;
+  feature: string | null;
+  status: string;
+  plan: string | null;
+  latencyMs: number | null;
+  provider: string | null;
+  metadata: unknown;
+  createdAt: string;
+};
+
+function getGenerationEventCause(event: AdminGenerationEvent): string {
+  if (!event.metadata || typeof event.metadata !== "object" || Array.isArray(event.metadata)) {
+    return "-";
+  }
+  const meta = event.metadata as Record<string, unknown>;
+
+  const directMessage = meta.message;
+  if (typeof directMessage === "string" && directMessage.trim().length > 0) {
+    return directMessage;
+  }
+
+  const provider = typeof meta.provider === "string" ? meta.provider : null;
+  const providerCode =
+    typeof meta.providerCode === "number" || typeof meta.providerCode === "string"
+      ? String(meta.providerCode)
+      : null;
+  const providerIssue = meta.providerIssue === true;
+
+  if (providerIssue || provider || providerCode) {
+    const providerLabel = provider ?? "unknown_provider";
+    const codeLabel = providerCode ? ` (${providerCode})` : "";
+    return `Provider issue: ${providerLabel}${codeLabel}`;
+  }
+
+  return "-";
+}
+
+function getGenerationEventTimings(event: AdminGenerationEvent): string {
+  if (!event.metadata || typeof event.metadata !== "object" || Array.isArray(event.metadata)) {
+    return "-";
+  }
+  const meta = event.metadata as Record<string, unknown>;
+  const stageRaw =
+    meta.stageMs && typeof meta.stageMs === "object" && !Array.isArray(meta.stageMs)
+      ? (meta.stageMs as Record<string, unknown>)
+      : null;
+  if (!stageRaw) return "-";
+
+  const keys = ["contentPrep", "ingest", "rag", "ai", "cacheWrite", "dbWrite"] as const;
+  const parts: string[] = [];
+  for (const key of keys) {
+    const value = stageRaw[key];
+    if (typeof value === "number" && value > 0) {
+      parts.push(`${key}:${value}ms`);
+    }
+  }
+  return parts.length > 0 ? parts.join(" | ") : "-";
+}
+
+function getGenerationEventRouting(event: AdminGenerationEvent): string {
+  if (!event.metadata || typeof event.metadata !== "object" || Array.isArray(event.metadata)) {
+    return "-";
+  }
+  const meta = event.metadata as Record<string, unknown>;
+  const retryCount = typeof meta.retryCount === "number" ? meta.retryCount : 0;
+  const fallbackUsed = meta.fallbackUsed === true;
+  const finalModel = typeof meta.finalModel === "string" ? meta.finalModel : null;
+  const finalProvider = typeof meta.finalProvider === "string" ? meta.finalProvider : null;
+
+  const parts: string[] = [`retries:${retryCount}`];
+  if (fallbackUsed) parts.push("fallback:yes");
+  if (finalModel) parts.push(`model:${finalModel}`);
+  if (finalProvider) parts.push(`provider:${finalProvider}`);
+  return parts.join(" | ");
+}
+
+function splitPipeLines(value: string): string[] {
+  if (!value || value === "-") return ["-"];
+  return value
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 export default function AdminUsersPanel() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -47,6 +145,8 @@ export default function AdminUsersPanel() {
   const [latestQuizUsers, setLatestQuizUsers] = useState<LatestActivityUser[]>([]);
   const [latestLessonUsers, setLatestLessonUsers] = useState<LatestActivityUser[]>([]);
   const [latestSignups, setLatestSignups] = useState<LatestActivityUser[]>([]);
+  const [cohorts, setCohorts] = useState<CohortSummaryRow[]>([]);
+  const [generationEvents, setGenerationEvents] = useState<AdminGenerationEvent[]>([]);
   const [email, setEmail] = useState("");
   const [plan, setPlan] = useState<"free" | "pro" | "premium">("pro");
   const [updating, setUpdating] = useState(false);
@@ -56,19 +156,25 @@ export default function AdminUsersPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/users?limit=100", { cache: "no-store" });
-      const data = await res.json();
-      if (res.status === 428 || data?.error === "challenge") {
+      const [usersRes, cohortsRes] = await Promise.all([
+        fetch("/api/admin/users?limit=100", { cache: "no-store" }),
+        fetch("/api/admin/cohorts?weeks=12", { cache: "no-store" }),
+      ]);
+      const data = await usersRes.json();
+      const cohortsData = await cohortsRes.json().catch(() => ({ cohorts: [] }));
+      if (usersRes.status === 428 || data?.error === "challenge") {
         router.push("/admin");
         setLoading(false);
         return;
       }
-      if (!res.ok) throw new Error(data?.error || "Failed to fetch admin data");
+      if (!usersRes.ok) throw new Error(data?.error || "Failed to fetch admin data");
       setSummary(data.summary);
       setUsers(data.users || []);
       setLatestQuizUsers(data?.latestActivity?.quiz || []);
       setLatestLessonUsers(data?.latestActivity?.lessonPlan || []);
       setLatestSignups(data?.latestSignups || []);
+      setGenerationEvents(data?.generationEvents || []);
+      setCohorts(Array.isArray(cohortsData?.cohorts) ? cohortsData.cohorts : []);
     } catch (err: any) {
       setError(err.message || "Failed to load data");
     } finally {
@@ -88,6 +194,7 @@ export default function AdminUsersPanel() {
       { label: "Pro Users", value: summary?.proUsers ?? 0 },
       { label: "Premium Users", value: summary?.premiumUsers ?? 0 },
       { label: "New (7d)", value: summary?.newUsersLast7Days ?? 0 },
+      { label: "Active (7d)", value: summary?.activeUsersLast7Days ?? 0 },
     ],
     [summary]
   );
@@ -128,9 +235,9 @@ export default function AdminUsersPanel() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {stats.map((s) => (
-          <Card key={s.label}>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
+      {stats.map((s) => (
+        <Card key={s.label}>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">{s.label}</CardTitle>
             </CardHeader>
@@ -219,6 +326,46 @@ export default function AdminUsersPanel() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Weekly Cohort Retention (D1 / D7)</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="py-2 text-left">Cohort Week</th>
+                <th className="py-2 text-left">New Users</th>
+                <th className="py-2 text-left">D1 Returned</th>
+                <th className="py-2 text-left">D1 Rate</th>
+                <th className="py-2 text-left">D7 Returned</th>
+                <th className="py-2 text-left">D7 Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cohorts.length === 0 ? (
+                <tr>
+                  <td className="py-3 text-zinc-500" colSpan={6}>
+                    No cohort data yet.
+                  </td>
+                </tr>
+              ) : (
+                cohorts.map((row) => (
+                  <tr key={row.cohortWeek} className="border-b">
+                    <td className="py-2">{new Date(row.cohortWeek).toLocaleDateString()}</td>
+                    <td className="py-2">{row.newUsers}</td>
+                    <td className="py-2">{row.returnedD1}</td>
+                    <td className="py-2">{row.d1Rate}%</td>
+                    <td className="py-2">{row.returnedD7}</td>
+                    <td className="py-2">{row.d7Rate}%</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Latest User Signups</CardTitle>
         </CardHeader>
         <CardContent>
@@ -233,6 +380,95 @@ export default function AdminUsersPanel() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Generation Event Log (Latest 30)</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-auto rounded-md border">
+          <table className="w-full min-w-[1320px] table-fixed text-xs md:text-sm">
+            <colgroup>
+              <col className="w-[170px]" />
+              <col className="w-[220px]" />
+              <col className="w-[130px]" />
+              <col className="w-[130px]" />
+              <col className="w-[90px]" />
+              <col className="w-[110px]" />
+              <col className="w-[230px]" />
+              <col className="w-[230px]" />
+              <col className="w-[260px]" />
+              <col className="w-[90px]" />
+              <col className="w-[100px]" />
+            </colgroup>
+            <thead className="sticky top-0 z-10 bg-white dark:bg-zinc-950">
+              <tr className="border-b">
+                <th className="py-2 pr-2 text-left">Time</th>
+                <th className="py-2 pr-2 text-left">User</th>
+                <th className="py-2 pr-2 text-left">Event</th>
+                <th className="py-2 pr-2 text-left">Feature</th>
+                <th className="py-2 pr-2 text-left">Status</th>
+                <th className="py-2 pr-2 text-left">Provider</th>
+                <th className="py-2 pr-2 text-left">Cause</th>
+                <th className="py-2 pr-2 text-left">Routing</th>
+                <th className="py-2 pr-2 text-left">Stage Timings</th>
+                <th className="py-2 pr-2 text-left">Plan</th>
+                <th className="py-2 pr-2 text-left">Latency</th>
+              </tr>
+            </thead>
+            <tbody>
+              {generationEvents.length === 0 ? (
+                <tr>
+                  <td className="py-3 text-zinc-500" colSpan={11}>
+                    No generation events yet.
+                  </td>
+                </tr>
+              ) : (
+                generationEvents.map((event) => (
+                  <tr key={event.id} className="border-b align-top hover:bg-zinc-50 dark:hover:bg-zinc-900/60">
+                    <td className="py-2 pr-2 align-top whitespace-nowrap text-[11px] md:text-xs">{new Date(event.createdAt).toLocaleString()}</td>
+                    <td className="py-2 pr-2 align-top">
+                      <div className="truncate" title={event.email || "-"}>
+                        {event.email || "-"}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-2 align-top whitespace-nowrap font-medium">{event.eventType}</td>
+                    <td className="py-2 pr-2 align-top break-words">{event.feature || "-"}</td>
+                    <td className="py-2 pr-2 align-top whitespace-nowrap">
+                      <span className="rounded border px-2 py-0.5 text-[11px] md:text-xs">
+                        {event.status}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-2 align-top break-words">{event.provider || "-"}</td>
+                    <td className="py-2 pr-2 align-top whitespace-normal break-words leading-snug" title={getGenerationEventCause(event)}>
+                      <div className="space-y-0.5">
+                        {splitPipeLines(getGenerationEventCause(event)).map((line, idx) => (
+                          <div key={idx}>{line}</div>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-2 align-top whitespace-normal break-words leading-snug" title={getGenerationEventRouting(event)}>
+                      <div className="space-y-0.5 text-zinc-600 dark:text-zinc-300">
+                        {splitPipeLines(getGenerationEventRouting(event)).map((line, idx) => (
+                          <div key={idx}>{line}</div>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-2 align-top whitespace-normal break-words leading-snug" title={getGenerationEventTimings(event)}>
+                      <div className="space-y-0.5 font-mono text-[11px] md:text-xs">
+                        {splitPipeLines(getGenerationEventTimings(event)).map((line, idx) => (
+                          <div key={idx}>{line}</div>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-2 align-top whitespace-nowrap">{event.plan || "free"}</td>
+                    <td className="py-2 pr-2 align-top whitespace-nowrap">{typeof event.latencyMs === "number" ? `${event.latencyMs}ms` : "-"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </CardContent>
       </Card>
 

@@ -22,7 +22,17 @@ export async function GET() {
       include: { questions: true },
     });
 
-    return NextResponse.json({ quiz: quiz ?? null });
+    return NextResponse.json({
+      quiz: quiz ?? null,
+      latest: quiz
+        ? {
+            id: quiz.id,
+            title: quiz.title,
+            createdAt: quiz.createdAt,
+            questionCount: quiz.questions.length,
+          }
+        : null,
+    });
   } catch (err: any) {
     console.error("Latest quiz error:", err);
     return NextResponse.json(

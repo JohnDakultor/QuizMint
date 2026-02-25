@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import AdminLoginForm from "@/components/admin/admin-login-form";
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default async function AdminLoginWithSlugPage({
   params,
@@ -15,4 +23,3 @@ export default async function AdminLoginWithSlugPage({
 
   return <AdminLoginForm />;
 }
-

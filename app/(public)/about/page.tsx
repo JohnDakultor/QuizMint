@@ -1,4 +1,5 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Brain, Sparkles, ShieldCheck, Users } from "lucide-react";
 
@@ -20,13 +21,13 @@ export const metadata: Metadata = {
 
 export default function AboutUsPage() {
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 px-6 py-16">
+    <div className="min-h-screen px-6 py-16">
       <div className="mx-auto max-w-5xl space-y-12">
-        <div className="text-center space-y-4">
+        <div className="space-y-4 text-center">
           <h1 className="text-4xl font-bold text-zinc-900 dark:text-zinc-50">
             About QuizMintAI
           </h1>
-          <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto">
+          <p className="mx-auto max-w-2xl text-lg text-zinc-600 dark:text-zinc-400">
             Smarter quizzes and lesson plans. Faster learning. Powered by AI.
           </p>
         </div>
@@ -35,7 +36,7 @@ export default function AboutUsPage() {
           <CardHeader>
             <CardTitle className="text-2xl">Our Mission</CardTitle>
           </CardHeader>
-          <CardContent className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
+          <CardContent className="leading-relaxed text-zinc-600 dark:text-zinc-400">
             QuizMintAI was built to make learning more effective and accessible.
             Our mission is to help students, professionals, and educators turn
             content into meaningful quizzes and structured lesson plans using AI,
@@ -43,7 +44,7 @@ export default function AboutUsPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <Card className="border-zinc-200 dark:border-zinc-800">
             <CardHeader className="flex flex-row items-center gap-3">
               <Brain className="h-6 w-6 text-blue-600" />
@@ -74,7 +75,7 @@ export default function AboutUsPage() {
             <ShieldCheck className="h-6 w-6 text-blue-600" />
             <CardTitle>Trust & Privacy</CardTitle>
           </CardHeader>
-          <CardContent className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
+          <CardContent className="leading-relaxed text-zinc-600 dark:text-zinc-400">
             Your data matters to us. We are committed to protecting your
             information and being transparent about how it is used. QuizMintAI
             follows industry best practices for security and privacy.
@@ -87,12 +88,32 @@ export default function AboutUsPage() {
             <CardTitle>Who QuizMintAI Is For</CardTitle>
           </CardHeader>
           <CardContent className="text-zinc-600 dark:text-zinc-400">
-            <ul className="list-disc list-inside space-y-2">
+            <ul className="list-inside list-disc space-y-2">
               <li>Students preparing for exams</li>
               <li>Professionals learning new skills</li>
               <li>Educators creating engaging quizzes and lesson plans</li>
               <li>Anyone who wants to learn smarter, not harder</li>
             </ul>
+          </CardContent>
+        </Card>
+
+        <Card className="border-zinc-200 dark:border-zinc-800">
+          <CardHeader>
+            <CardTitle className="text-2xl">Explore QuizMintAI Guides</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
+            <Link href="/science-quiz-generator" className="text-blue-600 hover:underline">
+              Science Quiz Generator
+            </Link>
+            <Link href="/math-quiz-generator" className="text-blue-600 hover:underline">
+              Math Quiz Generator
+            </Link>
+            <Link href="/exam-prep-quiz-generator" className="text-blue-600 hover:underline">
+              Exam Prep Quiz Generator
+            </Link>
+            <Link href="/lesson-plan-generator-for-teachers" className="text-blue-600 hover:underline">
+              Lesson Plan Generator for Teachers
+            </Link>
           </CardContent>
         </Card>
       </div>

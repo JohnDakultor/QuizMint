@@ -1,83 +1,45 @@
-// app/quiz-generator-for-corporate/page.tsx
-import { Metadata } from "next";
+import LandingTemplate, {
+  createLandingMetadata,
+} from "../_components/landing-template";
 
-export const metadata: Metadata = {
-  title: "AI Quiz and Lesson Plan Generator for Corporate Training | QuizMint AI",
-  description: "QuizMint AI helps professionals and corporate trainers generate quizzes and lesson plans for workshops, training, and skill assessments using AI.",
-  openGraph: {
-    title: "AI Quiz and Lesson Plan Generator for Corporate Training | QuizMint AI",
-    description: "Create training quizzes, lesson plans, assessments, and workshop materials with AI. Free and paid tiers available for professional use.",
-    url: "https://quizmintai.com/quiz-generator-for-corporate",
-  },
-  alternates: {
-    canonical: "https://quizmintai.com/quiz-generator-for-corporate",
-  },
-};
+export const metadata = createLandingMetadata({
+  title: "AI Quiz Generator for Corporate Training | QuizMint AI",
+  description:
+    "Create professional training quizzes for onboarding, compliance, and workshops with AI-powered generation.",
+  path: "/quiz-generator-for-corporate",
+});
 
 export default function QuizGeneratorForCorporatePage() {
   return (
-    <main className="max-w-4xl mx-auto px-4 py-12">
-      {/* Hero Section */}
-      <section className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-4">
-          AI Quiz Generator for Corporate Training
-        </h1>
-        <p className="text-lg text-gray-700">
-          Create professional training quizzes and lesson plans instantly using AI. Upload materials, generate assessments, and export files for workshops.
-        </p>
-      </section>
-
-      {/* Features Section */}
-      <section className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4">Why Use QuizMint AI for Corporate Training</h2>
-        <ul className="list-disc list-inside text-gray-700 space-y-2">
-          <li>Generate training quizzes from uploaded materials instantly.</li>
-          <li>Free tier available for small-scale use; premium plan for advanced features.</li>
-          <li>Download quizzes for workshops or online courses.</li>
-          <li>Customizable questions and difficulty levels for professional assessments.</li>
-        </ul>
-      </section>
-
-      {/* How It Works */}
-      <section className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4">How Corporate Users Can Use It</h2>
-        <ol className="list-decimal list-inside text-gray-700 space-y-2">
-          <li>Upload training material or enter a topic.</li>
-          <li>Select the number of questions and difficulty level.</li>
-          <li>Click "Generate Quiz" to create professional quizzes instantly.</li>
-          <li>Download or share quizzes with employees and trainees.</li>
-        </ol>
-      </section>
-
-      {/* FAQ Section */}
-      <section className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4">FAQ</h2>
-        <div className="space-y-4 text-gray-700">
-          <div>
-            <strong>Can I use this for corporate training?</strong>
-            <p>Yes, it’s ideal for workshops, professional courses, and skill assessments.</p>
-          </div>
-          <div>
-            <strong>Does it support file uploads?</strong>
-            <p>Yes, upload training materials and AI will generate quizzes based on them.</p>
-          </div>
-          <div>
-            <strong>Is there a free version?</strong>
-            <p>The free tier works for basic quizzes, while the premium plan offers advanced features.</p>
-          </div>
-        </div>
-      </section>
-
-      {/* Call to Action */}
-      <section className="text-center mb-12">
-        <h2 className="text-2xl font-semibold mb-4">Start Generating Training Quizzes</h2>
-        <a
-          href="/"
-          className="inline-block px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition"
-        >
-          Generate Corporate Quizzes
-        </a>
-      </section>
-    </main>
+    <LandingTemplate
+      title="AI Quiz Generator for Corporate Training"
+      subtitle="Generate fast assessments for workforce learning, onboarding modules, and professional development."
+      featureTitle="Corporate training benefits"
+      features={[
+        "Create assessments from internal training topics.",
+        "Generate repeatable quiz sets per module.",
+        "Support mixed-format checks for engagement.",
+        "Reduce manual quiz authoring time.",
+      ]}
+      useCasesTitle="Best for teams running"
+      useCases={[
+        "Onboarding assessments",
+        "Compliance refreshers",
+        "Workshop knowledge checks",
+        "L&D program evaluations",
+      ]}
+      faq={[
+        {
+          question: "Can this be used for workshop quizzes?",
+          answer: "Yes, it works for short workshop checks and recurring programs.",
+        },
+        {
+          question: "Can I request different difficulty levels?",
+          answer: "Yes, include target difficulty in the generation prompt.",
+        },
+      ]}
+      ctaText="Generate Corporate Quiz"
+      ctaHref="/generate-quiz"
+    />
   );
 }

@@ -327,11 +327,13 @@ import { getSubtitles } from "youtube-captions-scraper";
 import ytdl from "ytdl-core";
 import axios from "axios";
 import { XMLParser } from "fast-xml-parser";
-import { generateQuizAI } from "@/lib/ai";
+import { generateQuizAIWithMeta } from "@/lib/ai";
 import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
 import { semanticCacheStore } from "@/lib/rag/semanticCache";
 import { ingestWebSourcesForQuery } from "@/lib/rag/web";
 import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
+import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
+import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 
 import { fetchTranscript } from "@/lib/youtube-transcript";
 
@@ -449,6 +451,18 @@ async function fetchYouTubeMetadata(videoId: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
+  let eventUserId: string | null = null;
+  let eventPlan: string | null = null;
+  const requestId = createRequestId();
+  const stageMs = {
+    contentPrep: 0,
+    ingest: 0,
+    rag: 0,
+    ai: 0,
+    cacheWrite: 0,
+    dbWrite: 0,
+  };
   try {
     const ensureNotAborted = () => {
       if (req.signal.aborted) {
@@ -460,13 +474,15 @@ export async function POST(req: NextRequest) {
 
     const session = await getServerSession(authOptions);
     if (!session?.user?.email)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiError(401, "Unauthorized", requestId);
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
     if (!user)
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return apiError(404, "User not found", requestId);
+    eventUserId = user.id;
+    eventPlan = user.subscriptionPlan || "free";
 
 
     console.log("User found:", {
@@ -518,8 +534,12 @@ export async function POST(req: NextRequest) {
               adResetAvailable,
               nextAdResetAt,
               adResetsRemaining: remainingResets,
+              requestId,
             },
-            { status: 403 }
+            {
+              status: 403,
+              headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+            }
           );
         }
 
@@ -548,20 +568,18 @@ export async function POST(req: NextRequest) {
     
     let text = body.text?.trim();
     if (!text)
-      return NextResponse.json({ error: "No input provided" }, { status: 400 });
+      return apiError(400, "No input provided", requestId);
 
     // Determine content source
     let content = text;
     let sourceTitle = "";
 
+    const contentPrepStartedAt = Date.now();
     if (isURL(content)) {
       if (content.includes("youtube.com") || content.includes("youtu.be")) {
         // Premium check
         if (isFree) {
-          return NextResponse.json(
-            { error: "YouTube link generation is premium only" },
-            { status: 403 }
-          );
+          return apiError(403, "YouTube link generation is premium only", requestId);
         }
 
         // Extract video ID correctly
@@ -574,17 +592,11 @@ export async function POST(req: NextRequest) {
             videoId = urlObj.searchParams.get("v") || undefined;
           }
         } catch (err) {
-          return NextResponse.json(
-            { error: "Invalid YouTube URL" },
-            { status: 400 }
-          );
+          return apiError(400, "Invalid YouTube URL", requestId);
         }
 
         if (!videoId) {
-          return NextResponse.json(
-            { error: "Could not extract video ID" },
-            { status: 400 }
-          );
+          return apiError(400, "Could not extract video ID", requestId);
         }
 
         // Try fetching transcript
@@ -615,11 +627,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    stageMs.contentPrep = Date.now() - contentPrepStartedAt;
+
     if (!content?.trim())
-      return NextResponse.json(
-        { error: "Content Not Available" },
-        { status: 400 }
-      );
+      return apiError(400, "Content Not Available", requestId);
 
     if (content.length > 8000) content = content.slice(0, 8000);
 
@@ -693,12 +704,14 @@ export async function POST(req: NextRequest) {
 
       if (!hasDocs) {
         try {
+          const ingestStartedAt = Date.now();
           ensureNotAborted();
           const webResult = await ingestWebSourcesForQuery({
             query: text,
             namespace,
           });
           ensureNotAborted();
+          stageMs.ingest = Date.now() - ingestStartedAt;
           webDebug = webResult.debug;
         } catch (webErr) {
           console.warn("Web RAG ingestion failed:", webErr);
@@ -711,6 +724,7 @@ export async function POST(req: NextRequest) {
       const hasDocs = (docCountRows[0]?.count ?? 0) > 0;
 
       if (!hasDocs) {
+        const ingestStartedAt = Date.now();
         const chunks = chunkText(content);
         for (let i = 0; i < chunks.length; i++) {
           ensureNotAborted();
@@ -727,34 +741,43 @@ export async function POST(req: NextRequest) {
             )
           `;
         }
+        stageMs.ingest = Date.now() - ingestStartedAt;
       }
     }
 
     ensureNotAborted();
 
+    const ragStartedAt = Date.now();
     const { enhancedPrompt, cachedResponse, sources, ragMeta, hasContext, sourceMode } =
       await enhancePromptWithRAG({
         finalPrompt: content,
         namespace,
         topK: isPromptOnly ? 5 : 5,
       });
+    stageMs.rag = Date.now() - ragStartedAt;
 
     // Generate quiz with safe parameters
     ensureNotAborted();
 
-    const quiz = cachedResponse
-      ? JSON.parse(cachedResponse)
-      : await generateQuizAI(
+    const aiStartedAt = Date.now();
+    const aiResult = cachedResponse
+      ? null
+      : await generateQuizAIWithMeta(
           isPromptOnly && !hasContext ? text : enhancedPrompt,
           safeDifficulty,
           safeAdaptive,
           isProOrPremium,
           text
         );
+    const quiz = cachedResponse ? JSON.parse(cachedResponse) : aiResult!.quiz;
+    if (!cachedResponse) {
+      stageMs.ai = Date.now() - aiStartedAt;
+    }
 
     let cacheStored = false;
     if (ragMeta && !cachedResponse) {
       try {
+        const cacheStoreStartedAt = Date.now();
         ensureNotAborted();
         await semanticCacheStore(
           ragMeta.promptForCache,
@@ -762,6 +785,7 @@ export async function POST(req: NextRequest) {
           JSON.stringify(quiz),
           ragMeta.namespace
         );
+        stageMs.cacheWrite = Date.now() - cacheStoreStartedAt;
         cacheStored = true;
       } catch (cacheErr: any) {
         if (
@@ -785,6 +809,7 @@ export async function POST(req: NextRequest) {
 
     ensureNotAborted();
 
+    const dbWriteStartedAt = Date.now();
     const savedQuiz = await prisma.quiz.create({
       data: {
         title: quiz.title,
@@ -802,6 +827,26 @@ export async function POST(req: NextRequest) {
         data: { quizUsage: user.quizUsage + 1, lastQuizAt: now },
       });
     }
+    stageMs.dbWrite = Date.now() - dbWriteStartedAt;
+
+    await trackGenerationEvent({
+      userId: user.id,
+      eventType: "quiz_generated",
+      feature: "quiz",
+      status: "success",
+      plan: eventPlan,
+      latencyMs: Date.now() - startedAt,
+      metadata: {
+        sourceMode: sourceMode ?? "none",
+        sourceCount: (sources ?? []).length,
+        cacheHit: Boolean(cachedResponse),
+        retryCount: aiResult?.meta.retryCount ?? 0,
+        fallbackUsed: aiResult?.meta.fallbackUsed ?? false,
+        finalModel: aiResult?.meta.finalModel ?? null,
+        finalProvider: aiResult?.meta.finalProvider ?? null,
+        stageMs,
+      },
+    });
 
     return NextResponse.json({
       message: "Quiz generated successfully",
@@ -823,9 +868,21 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     if (err?.name === "AbortError" || err?.message === "REQUEST_ABORTED") {
+      await trackGenerationEvent({
+        userId: eventUserId,
+        eventType: "pause_clicked",
+        feature: "quiz",
+        status: "aborted",
+        plan: eventPlan,
+        latencyMs: Date.now() - startedAt,
+        metadata: { stageMs },
+      });
       return NextResponse.json(
-        { error: "Generation paused by user" },
-        { status: 499 }
+        { error: "Generation paused by user", requestId },
+        {
+          status: 499,
+          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+        }
       );
     }
 
@@ -837,17 +894,41 @@ export async function POST(req: NextRequest) {
         message.includes("Provider returned error"));
 
     if (isProviderQuotaIssue) {
+      const providerError = extractProviderErrorDetails(err);
+      await trackGenerationEvent({
+        userId: eventUserId,
+        eventType: "quiz_generated",
+        feature: "quiz",
+        status: "failed",
+        plan: eventPlan,
+        latencyMs: Date.now() - startedAt,
+        metadata: {
+          providerIssue: true,
+          provider: providerError.provider ?? "unknown",
+          providerCode: providerError.code,
+          stageMs,
+        },
+      });
       return NextResponse.json(
-        { error: "Server issue - we're fixing it. Please try again in a few minutes." },
-        { status: 503 }
+        { error: "Server issue - we're fixing it. Please try again in a few minutes.", requestId },
+        {
+          status: 503,
+          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+        }
       );
     }
 
-    console.error("Server error:", err);
-    return NextResponse.json(
-      { error: err.message || "Internal server error" },
-      { status: 500 }
-    );
+    await trackGenerationEvent({
+      userId: eventUserId,
+      eventType: "quiz_generated",
+      feature: "quiz",
+      status: "failed",
+      plan: eventPlan,
+      latencyMs: Date.now() - startedAt,
+      metadata: { message: String(err?.message || "unknown_error"), stageMs },
+    });
+    logApiError(requestId, "generate-quiz", err);
+    return apiError(500, err.message || "Internal server error", requestId);
   }
 }
   

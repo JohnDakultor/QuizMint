@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://quizmintai.com"),
+  metadataBase: new URL("https://www.quizmintai.com"),
   title: "QuizMint | AI Quiz and Lesson Plan Generator",
   icons: "/favicon.ico",
   description:
