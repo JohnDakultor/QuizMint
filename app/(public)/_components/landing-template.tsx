@@ -13,6 +13,9 @@ type LandingTemplateProps = {
   features: string[];
   useCasesTitle: string;
   useCases: string[];
+  lessonPlanUseCases?: string[];
+  quizSamplePrompt?: string;
+  lessonPlanSamplePrompt?: string;
   faq: FaqItem[];
   ctaText: string;
   ctaHref?: string;
@@ -47,6 +50,13 @@ export default function LandingTemplate({
   features,
   useCasesTitle,
   useCases,
+  lessonPlanUseCases = [
+    "Generate a standards-aligned daily lesson sequence with clear objectives and time allocations.",
+    "Get ready-to-edit classroom materials, then export to PDF, DOCX, or PPTX.",
+    "Reuse the same topic in both quiz and lesson outputs so assessments match instruction.",
+  ],
+  quizSamplePrompt = `Create a 10-item multiple-choice quiz about ${title} for Grade 8 with an answer key.`,
+  lessonPlanSamplePrompt = `Create a 3-day lesson plan about ${title} for Grade 8 with 40 minutes per day, objectives, activities, and assessment.`,
   faq,
   ctaText,
   ctaHref = "/sign-up",
@@ -80,6 +90,25 @@ export default function LandingTemplate({
             <li key={item}>{item}</li>
           ))}
         </ul>
+      </section>
+
+      <section className="mb-10 rounded-xl border border-zinc-200 bg-white p-6">
+        <h2 className="mb-4 text-2xl font-semibold text-zinc-900">Lesson Plan Generation Workflows</h2>
+        <ul className="list-disc space-y-2 pl-6 text-zinc-700">
+          {lessonPlanUseCases.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">Quiz Prompt Example</p>
+            <p className="font-mono text-sm text-zinc-800">{quizSamplePrompt}</p>
+          </div>
+          <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-cyan-700">Lesson Plan Prompt Example</p>
+            <p className="font-mono text-sm text-zinc-800">{lessonPlanSamplePrompt}</p>
+          </div>
+        </div>
       </section>
 
       <section className="mb-10 rounded-xl border border-zinc-200 bg-white p-6">

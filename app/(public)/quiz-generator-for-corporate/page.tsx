@@ -28,6 +28,13 @@ export default function QuizGeneratorForCorporatePage() {
         "Workshop knowledge checks",
         "L&D program evaluations",
       ]}
+      lessonPlanUseCases={[
+        "Generate training lesson plans for onboarding, compliance, and upskilling sessions.",
+        "Build facilitator-ready session plans with time blocks, activities, and evaluation.",
+        "Create lesson + quiz bundles for consistent corporate learning delivery.",
+      ]}
+      quizSamplePrompt="Create a 20-item corporate onboarding quiz about data privacy policy with mixed formats and answer key."
+      lessonPlanSamplePrompt="Create a 3-session corporate training lesson plan on data privacy policy, 60 minutes per session, with objectives and assessment."
       faq={[
         {
           question: "Can this be used for workshop quizzes?",

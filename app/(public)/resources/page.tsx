@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Teacher and Student Quiz Guides | QuizMintAI",
+  title: "Teacher and Student Quiz + Lesson Plan Guides | QuizMintAI",
   description:
     "Explore subject-specific quiz and lesson plan guides for teachers and students, including science, math, history, and exam prep.",
   alternates: {
     canonical: "https://www.quizmintai.com/resources",
   },
   openGraph: {
-    title: "Teacher and Student Quiz Guides | QuizMintAI",
+    title: "Teacher and Student Quiz + Lesson Plan Guides | QuizMintAI",
     description:
       "Access all QuizMintAI subject and audience guides in one place.",
     url: "https://www.quizmintai.com/resources",

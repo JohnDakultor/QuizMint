@@ -28,6 +28,13 @@ export default function ScienceQuizGeneratorPage() {
         "Science review sessions",
         "Homework quiz generation",
       ]}
+      lessonPlanUseCases={[
+        "Generate a 5E/4A-style science lesson sequence from the same topic used in your quiz.",
+        "Plan lab-day and lecture-day activities with per-day time blocks and objectives.",
+        "Export science lesson plans to PDF/DOCX/PPTX for classroom delivery.",
+      ]}
+      quizSamplePrompt="Create a 15-item Grade 8 science quiz about ecosystems with 8 MCQ, 4 true/false, and 3 fill-in-the-blank items."
+      lessonPlanSamplePrompt="Create a 3-day Grade 8 science lesson plan about ecosystems, 45 minutes per day, with objectives, activities, assessment, and homework."
       faq={[
         {
           question: "Can I request Grade 7 or Grade 10 difficulty?",

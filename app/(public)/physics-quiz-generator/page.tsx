@@ -28,6 +28,13 @@ export default function PhysicsQuizGeneratorPage() {
         "Energy and work assessments",
         "Wave behavior concept quizzes",
       ]}
+      lessonPlanUseCases={[
+        "Generate physics lesson plans with demonstrations, guided problem-solving, and recap activities.",
+        "Build day-by-day learning flow for motion, force, energy, and waves topics.",
+        "Prepare physics teaching materials with export-ready lesson plan formats.",
+      ]}
+      quizSamplePrompt="Create an 18-item Grade 10 physics quiz on Newton's Laws with MCQ, true/false, and fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 3-day Grade 10 physics lesson plan on Newton's Laws, 45 minutes per day, with examples, activities, and assessment."
       faq={[
         {
           question: "Can I make higher-difficulty physics quizzes?",

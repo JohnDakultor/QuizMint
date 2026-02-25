@@ -28,6 +28,13 @@ export default function EnglishQuizGeneratorPage() {
         "Reading comprehension tasks",
         "Remedial and enrichment practice",
       ]}
+      lessonPlanUseCases={[
+        "Build complete English lesson plans with grammar focus, reading passage tasks, and writing outputs.",
+        "Plan language activities per day with explicit objectives and scaffolding.",
+        "Generate exportable lesson plans for grammar, vocabulary, and reading units.",
+      ]}
+      quizSamplePrompt="Create a 15-item Grade 8 English quiz on subject-verb agreement: 8 MCQ, 4 true/false, and 3 fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 2-day Grade 8 English lesson plan on subject-verb agreement, 45 minutes per day, with warm-up, guided practice, and assessment."
       faq={[
         {
           question: "Can I generate from a custom passage?",

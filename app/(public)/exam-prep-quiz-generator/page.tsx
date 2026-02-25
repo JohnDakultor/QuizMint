@@ -28,6 +28,13 @@ export default function ExamPrepQuizGeneratorPage() {
         "Group study sessions",
         "Independent learner practice",
       ]}
+      lessonPlanUseCases={[
+        "Generate compressed review lesson plans for exam week with focused objectives per day.",
+        "Align quiz outputs and lesson activities for high-retention exam preparation.",
+        "Export review lesson plans for classroom, tutoring, or self-study schedules.",
+      ]}
+      quizSamplePrompt="Create a 25-item exam prep quiz for Grade 10 science with mixed formats and answer key."
+      lessonPlanSamplePrompt="Create a 5-day Grade 10 science exam review lesson plan, 40 minutes per day, covering key competencies and quick checks."
       faq={[
         {
           question: "Can I request difficult questions only?",

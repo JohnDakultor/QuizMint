@@ -28,6 +28,13 @@ export default function LessonPlanGeneratorForTeachersPage() {
         "Substitute-ready lesson drafts",
         "Curriculum pacing support",
       ]}
+      lessonPlanUseCases={[
+        "Generate complete lesson plans with daily objectives, activities, assessment, and closure.",
+        "Rebuild and iterate previous plans quickly based on class performance.",
+        "Export polished lesson plans to PDF, DOCX, and PPTX for immediate classroom use.",
+      ]}
+      quizSamplePrompt="Create a 10-item quiz aligned with a Grade 8 lesson on ecosystems using 6 MCQ and 4 true/false questions."
+      lessonPlanSamplePrompt="Create a 5-day Grade 8 lesson plan on ecosystems, 40 minutes per day, with 4A phases and differentiated activities."
       faq={[
         {
           question: "Can I edit the lesson before export?",

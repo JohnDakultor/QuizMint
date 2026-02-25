@@ -28,6 +28,13 @@ export default function ChemistryQuizGeneratorPage() {
         "Stoichiometry concept checks",
         "Exam prep quizzes",
       ]}
+      lessonPlanUseCases={[
+        "Create chemistry lesson plans with concept development and practice problems per session.",
+        "Plan chemistry classes by day with clear objectives, activities, and closure.",
+        "Generate lesson outputs you can export to PDF, DOCX, or PPTX for teaching.",
+      ]}
+      quizSamplePrompt="Create a 16-item Grade 10 chemistry quiz on chemical reactions with 8 MCQ, 4 true/false, and 4 fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 3-day Grade 10 chemistry lesson plan on chemical reactions, 50 minutes per day, including assessment criteria."
       faq={[
         {
           question: "Can I make quick 5-item quizzes?",

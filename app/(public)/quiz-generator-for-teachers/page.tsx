@@ -28,6 +28,13 @@ export default function QuizGeneratorForTeachersPage() {
         "Exam review worksheets",
         "Remediation and enrichment tasks",
       ]}
+      lessonPlanUseCases={[
+        "Build weekly teacher lesson plans with clear objectives, activities, and closure.",
+        "Align generated quizzes with your lesson plan outcomes for consistent assessment.",
+        "Export teacher-ready lesson plans to PDF, DOCX, or PPTX for class delivery.",
+      ]}
+      quizSamplePrompt="Create a 15-item Grade 8 history quiz on the industrial revolution with mixed MCQ, true/false, and fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 4-day Grade 8 history lesson plan on the industrial revolution, 40 minutes per day, with assessments and differentiation."
       faq={[
         {
           question: "Can I generate by exact item count?",

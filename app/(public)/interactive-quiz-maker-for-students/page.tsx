@@ -28,6 +28,13 @@ export default function InteractiveQuizMakerForStudentsPage() {
         "Practice between classes",
         "Independent progress checks",
       ]}
+      lessonPlanUseCases={[
+        "Turn weak topics into structured study lesson plans with daily checkpoints.",
+        "Generate short review plans before quizzes, long tests, or oral recitations.",
+        "Create a lesson + quiz loop so study sessions and practice tests stay aligned.",
+      ]}
+      quizSamplePrompt="Create a 12-item student practice quiz on photosynthesis with 6 MCQ, 3 true/false, and 3 fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 2-day student review lesson plan on photosynthesis, 35 minutes per day, with key points, activities, and quick assessment."
       faq={[
         {
           question: "Can I choose how many items to generate?",

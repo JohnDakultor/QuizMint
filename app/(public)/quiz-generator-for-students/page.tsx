@@ -28,6 +28,13 @@ export default function QuizGeneratorForStudentsPage() {
         "Group study sessions",
         "Self-paced revision",
       ]}
+      lessonPlanUseCases={[
+        "Generate student-friendly lesson plans for structured self-study by topic.",
+        "Create short review plans before quizzes and long tests with daily goals.",
+        "Pair lesson plan checkpoints with quizzes to track progress on weak chapters.",
+      ]}
+      quizSamplePrompt="Create a 12-item Grade 10 math quiz on linear equations with 6 MCQ, 3 true/false, and 3 fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 2-day Grade 10 math self-review lesson plan on linear equations, 35 minutes per day, with practice and quick checks."
       faq={[
         {
           question: "Can I choose question formats?",

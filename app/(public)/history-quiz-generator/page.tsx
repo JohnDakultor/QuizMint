@@ -28,6 +28,13 @@ export default function HistoryQuizGeneratorPage() {
         "Review before unit exams",
         "Independent study packets",
       ]}
+      lessonPlanUseCases={[
+        "Create history lesson plans with source analysis, discussion prompts, and reflection tasks.",
+        "Map each day to key events, people, and chronology targets for stronger retention.",
+        "Generate export-ready lesson guides for world history and local history units.",
+      ]}
+      quizSamplePrompt="Create a 12-item Grade 10 history quiz on World War II with 6 MCQ, 3 true/false, and 3 fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 3-day Grade 10 history lesson plan on World War II, 50 minutes per day, with objectives, primary source tasks, and assessment."
       faq={[
         {
           question: "Can I focus on one event only?",

@@ -28,6 +28,13 @@ export default function AIQuizGeneratorPage() {
         "Tutors and review centers",
         "Corporate trainers and facilitators",
       ]}
+      lessonPlanUseCases={[
+        "Generate complete lesson plans with day-by-day structure, activities, and assessments.",
+        "Convert lesson plans into editable/exportable outputs for classroom and remote teaching.",
+        "Use one topic pipeline to create both lesson flow and matching quizzes for mastery checks.",
+      ]}
+      quizSamplePrompt="Create a 20-item Grade 9 science quiz on ecosystems with 10 MCQ, 5 true/false, and 5 fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 3-day Grade 9 science lesson plan on ecosystems, 45 minutes per day, with objectives, activities, and assessment rubric."
       faq={[
         {
           question: "Can I generate both quizzes and lesson plans?",

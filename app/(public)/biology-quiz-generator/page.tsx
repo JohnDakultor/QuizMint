@@ -28,6 +28,13 @@ export default function BiologyQuizGeneratorPage() {
         "Ecology review tasks",
         "Unit-end summative assessments",
       ]}
+      lessonPlanUseCases={[
+        "Generate biology lesson plans with inquiry activities and concept checks for each day.",
+        "Align daily biology objectives with lab-friendly or no-lab classroom strategies.",
+        "Export biology lesson plans to editable formats for fast classroom prep.",
+      ]}
+      quizSamplePrompt="Create a 14-item Grade 9 biology quiz about cell structure and function with mixed MCQ, true/false, and fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 3-day Grade 9 biology lesson plan on cell structure and function, 45 minutes per day, with activities and formative assessment."
       faq={[
         {
           question: "Does it support grade-level prompts?",

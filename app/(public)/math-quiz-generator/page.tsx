@@ -28,6 +28,13 @@ export default function MathQuizGeneratorPage() {
         "Exit tickets",
         "Exam preparation sets",
       ]}
+      lessonPlanUseCases={[
+        "Build multi-day math lesson plans that align directly with your quiz objectives.",
+        "Create differentiated activities for remediation and enrichment in one plan.",
+        "Generate printable/exportable lesson materials for algebra, geometry, and arithmetic topics.",
+      ]}
+      quizSamplePrompt="Create a 20-item Grade 9 math quiz on linear equations: 12 MCQ, 4 true/false, and 4 fill-in-the-blank."
+      lessonPlanSamplePrompt="Create a 4-day Grade 9 math lesson plan on linear equations, 40 minutes per day, with guided practice and assessment rubric."
       faq={[
         {
           question: "Can I generate quizzes for one specific lesson?",
