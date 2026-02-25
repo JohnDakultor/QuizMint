@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description:
     "Privacy Policy for QuizMintAI. Learn what data we collect, how we use it, and your rights.",
   alternates: {
-    canonical: "https://quizmintai.com/privacy",
+    canonical: "https://www.quizmintai.com/privacy",
   },
 };
 

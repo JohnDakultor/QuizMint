@@ -625,12 +625,12 @@ export const metadata = {
     title: "AI Quiz & Lesson Plan Generator | QuizMintAI",
     description:
       "Generate quizzes and lesson plans instantly with QuizMintAI. Built for teachers, students, and trainers.",
-    url: "https://quizmintai.com",
+    url: "https://www.quizmintai.com",
     siteName: "QuizMintAI",
     type: "website",
   },
   alternates: {
-    canonical: "https://quizmintai.com",
+    canonical: "https://www.quizmintai.com",
   },
   twitter: {
     card: "summary_large_image",
@@ -649,7 +649,7 @@ const structuredData = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   name: "QuizMintAI",
-  url: "https://quizmintai.com",
+  url: "https://www.quizmintai.com",
   description:
     "AI-powered platform to generate quizzes and lesson plans from text, files, and prompts.",
   applicationCategory: "Education",
@@ -660,21 +660,21 @@ const structuredData = {
       name: "Free Plan",
       price: "0.00",
       priceCurrency: "USD",
-      url: "https://quizmintai.com/sign-up",
+      url: "https://www.quizmintai.com/sign-up",
     },
     {
       "@type": "Offer",
       name: "Pro Plan",
       price: "5.00",
       priceCurrency: "USD",
-      url: "https://quizmintai.com/sign-up",
+      url: "https://www.quizmintai.com/sign-up",
     },
     {
       "@type": "Offer",
       name: "Premium Plan",
       price: "15.00",
       priceCurrency: "USD",
-      url: "https://quizmintai.com/sign-up",
+      url: "https://www.quizmintai.com/sign-up",
     },
   ],
 };

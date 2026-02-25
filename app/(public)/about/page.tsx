@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     "education AI platform",
   ],
   alternates: {
-    canonical: "https://quizmintai.com/about",
+    canonical: "https://www.quizmintai.com/about",
   },
 };
 

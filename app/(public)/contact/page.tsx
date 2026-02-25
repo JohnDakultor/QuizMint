@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description:
     "Contact QuizMintAI for support, product feedback, policy requests, and business inquiries.",
   alternates: {
-    canonical: "https://quizmintai.com/contact",
+    canonical: "https://www.quizmintai.com/contact",
   },
 };
 

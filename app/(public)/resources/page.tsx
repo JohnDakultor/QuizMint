@@ -6,13 +6,13 @@ export const metadata: Metadata = {
   description:
     "Explore subject-specific quiz and lesson plan guides for teachers and students, including science, math, history, and exam prep.",
   alternates: {
-    canonical: "https://quizmintai.com/resources",
+    canonical: "https://www.quizmintai.com/resources",
   },
   openGraph: {
     title: "Teacher and Student Quiz Guides | QuizMintAI",
     description:
       "Access all QuizMintAI subject and audience guides in one place.",
-    url: "https://quizmintai.com/resources",
+    url: "https://www.quizmintai.com/resources",
     type: "website",
   },
 };

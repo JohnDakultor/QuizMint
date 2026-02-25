@@ -24,7 +24,7 @@ export function createLandingMetadata(params: {
   description: string;
   path: string;
 }): Metadata {
-  const url = `https://quizmintai.com${params.path}`;
+  const url = `https://www.quizmintai.com${params.path}`;
   return {
     title: params.title,
     description: params.description,

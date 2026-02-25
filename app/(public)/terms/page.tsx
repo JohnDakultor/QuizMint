@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   description:
     "Terms of Service for using QuizMintAI, including acceptable use, AI content limitations, and account responsibilities.",
   alternates: {
-    canonical: "https://quizmintai.com/terms",
+    canonical: "https://www.quizmintai.com/terms",
   },
 };
 

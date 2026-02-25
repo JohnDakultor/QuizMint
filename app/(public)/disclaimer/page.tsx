@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description:
     "Important disclaimers for QuizMintAI, including AI-generated content accuracy, advertising disclosure, and educational-use guidance.",
   alternates: {
-    canonical: "https://quizmintai.com/disclaimer",
+    canonical: "https://www.quizmintai.com/disclaimer",
   },
 };
 
