@@ -824,7 +824,13 @@ export async function POST(req: NextRequest) {
       ensureNotAborted();
       await prisma.user.update({
         where: { id: user.id },
-        data: { quizUsage: user.quizUsage + 1, lastQuizAt: now },
+        data: { quizUsage: user.quizUsage + 1, lastQuizAt: now, lastActiveAt: now },
+      });
+    } else {
+      ensureNotAborted();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastQuizAt: now, lastActiveAt: now },
       });
     }
     stageMs.dbWrite = Date.now() - dbWriteStartedAt;
