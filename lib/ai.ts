@@ -379,7 +379,10 @@ JSON SCHEMA (MUST MATCH EXACTLY):
       if (!response.ok) {
         const payloadCodeMatch = responseText.match(/"code"\s*:\s*(\d{3})/);
         const payloadCode = payloadCodeMatch ? Number(payloadCodeMatch[1]) : null;
-        const shouldRetry = response.status === 429 || payloadCode === 429;
+        const retryableStatus = new Set([429, 500, 502, 503, 504]);
+        const shouldRetry =
+          retryableStatus.has(response.status) ||
+          (payloadCode !== null && retryableStatus.has(payloadCode));
 
         if (shouldRetry && attempt < maxRetries) {
           attempt += 1;
@@ -413,7 +416,17 @@ JSON SCHEMA (MUST MATCH EXACTLY):
     }
   };
 
-  let raw = await callOpenRouter(modelToUse);
+  let raw = "";
+  try {
+    raw = await callOpenRouter(modelToUse);
+  } catch (primaryErr) {
+    if (fallbackModel && fallbackModel !== modelToUse) {
+      fallbackUsed = true;
+      raw = await callOpenRouter(fallbackModel);
+    } else {
+      throw primaryErr;
+    }
+  }
 
   console.log("🤖 AI Raw Response:", raw.substring(0, 500)); // Add logging
 
@@ -439,10 +452,16 @@ JSON SCHEMA (MUST MATCH EXACTLY):
 - Fill in the Blank must include "____" in the question, use options [], and provide the missing term as answer.
 - Return JSON only.`;
 
-    raw = await callOpenRouter(modelToUse, strictMixInstruction);
-    parsed = safeExtractJSON(raw);
+    try {
+      raw = await callOpenRouter(modelToUse, strictMixInstruction);
+      parsed = safeExtractJSON(raw);
+    } catch {
+      fallbackUsed = true;
+      raw = await callOpenRouter(fallbackModel, strictMixInstruction);
+      parsed = safeExtractJSON(raw);
+    }
 
-  if (!parsed || !meetsQuestionTypePlan(parsed, typePlan)) {
+    if (!parsed || !meetsQuestionTypePlan(parsed, typePlan)) {
       fallbackUsed = true;
       raw = await callOpenRouter(fallbackModel, strictMixInstruction);
       parsed = safeExtractJSON(raw);
