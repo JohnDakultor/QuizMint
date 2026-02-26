@@ -117,7 +117,7 @@ async function sendWinbackEmail(params: {
   const baseUrl = getBaseUrl();
   const token = createWinbackUnsubscribeToken(params.userId);
   const unsubscribeUrl = `${baseUrl}/api/winback/unsubscribe?token=${encodeURIComponent(token)}`;
-  const appUrl = `${baseUrl}/generate-quiz`;
+  const appUrl = `${baseUrl}/home`;
   const from = process.env.RESEND_FROM_EMAIL || "QuizMintAI <no-reply@quizmintai.com>";
   const logoUrl = `${baseUrl}/favicon.ico`;
 
