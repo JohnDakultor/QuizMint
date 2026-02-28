@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { generateLessonPlanDocx } from "@/lib/generate-lesson-plan-docx";
 import { generateLessonPlanPDF } from "@/lib/lessonPlan-gen-pdf-dl";
-import { generateLessonPlanPptAI } from "@/lib/lesson-plan-ppt-ai";
+import { generateLessonPlanPptAIWithMeta } from "@/lib/lesson-plan-ppt-ai";
 import { generateLessonPlanPptx } from "@/lib/generate-lesson-plan-pptx";
 
 export type LessonPlanExportFormat = "docx" | "pdf" | "pptx";
@@ -42,28 +42,53 @@ export function getFileName(topic: string, format: LessonPlanExportFormat) {
 
 export async function generateExportBuffer(
   format: LessonPlanExportFormat,
-  input: LessonPlanExportInput
+  input: LessonPlanExportInput,
+  options?: { liteMode?: boolean }
 ) {
   if (format === "docx") {
     const docx = await generateLessonPlanDocx(input.lessonPlan);
-    return Buffer.from(docx);
+    return {
+      buffer: Buffer.from(docx),
+      telemetry: {
+        costUsd: 0,
+      },
+    };
   }
 
   if (format === "pdf") {
     const pdf = await generateLessonPlanPDF(input.lessonPlan, input.topic);
-    return Buffer.from(pdf);
+    return {
+      buffer: Buffer.from(pdf),
+      telemetry: {
+        costUsd: 0,
+      },
+    };
   }
 
-  const deck = await generateLessonPlanPptAI({
+  const pptAIResult = await generateLessonPlanPptAIWithMeta({
     lessonPlan: input.lessonPlan,
     topic: input.topic,
     subject: input.subject,
     grade: input.grade,
     duration: `${input.days} day(s), ${input.minutesPerDay} minutes per day`,
     isProOrPremium: true,
+  }, { liteMode: Boolean(options?.liteMode) });
+  const pptx = await generateLessonPlanPptx(pptAIResult.deck, {
+    liteMode: Boolean(options?.liteMode),
   });
-  const pptx = await generateLessonPlanPptx(deck);
-  return Buffer.from(pptx);
+  return {
+    buffer: Buffer.from(pptx),
+    telemetry: {
+      costUsd: pptAIResult.meta.estimatedCostUsd ?? 0,
+      retryCount: pptAIResult.meta.retryCount,
+      fallbackUsed: pptAIResult.meta.fallbackUsed,
+      finalModel: pptAIResult.meta.finalModel,
+      finalProvider: pptAIResult.meta.finalProvider,
+      promptTokens: pptAIResult.meta.promptTokens,
+      completionTokens: pptAIResult.meta.completionTokens,
+      totalTokens: pptAIResult.meta.totalTokens,
+    },
+  };
 }
 
 export async function processLessonPlanExportJob(jobId: string, userId: string) {
@@ -81,9 +106,16 @@ export async function processLessonPlanExportJob(jobId: string, userId: string) 
   });
 
   if (updated.count === 0) {
-    return prisma.lessonPlanExport.findFirst({
+    const existingJob = await prisma.lessonPlanExport.findFirst({
       where: { id: jobId, userId },
     });
+    if (!existingJob) return null;
+    return {
+      job: existingJob,
+      telemetry: {
+        costUsd: 0,
+      },
+    };
   }
 
   const job = await prisma.lessonPlanExport.findFirst({
@@ -94,22 +126,32 @@ export async function processLessonPlanExportJob(jobId: string, userId: string) 
   try {
     const input = job.input as unknown as LessonPlanExportInput;
     const format = job.format as LessonPlanExportFormat;
-    const buffer = await generateExportBuffer(format, input);
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { liteMode: true },
+    });
+    const generated = await generateExportBuffer(format, input, {
+      liteMode: Boolean(user?.liteMode),
+    });
     const mimeType = getMimeType(format);
     const fileName = getFileName(input.topic, format);
 
-    return await prisma.lessonPlanExport.update({
+    const completedJob = await prisma.lessonPlanExport.update({
       where: { id: jobId },
       data: {
         status: "completed",
-        resultData: buffer,
+        resultData: generated.buffer,
         mimeType,
         fileName,
         completedAt: new Date(),
       },
     });
+    return {
+      job: completedJob,
+      telemetry: generated.telemetry,
+    };
   } catch (err: any) {
-    return await prisma.lessonPlanExport.update({
+    const failedJob = await prisma.lessonPlanExport.update({
       where: { id: jobId },
       data: {
         status: "failed",
@@ -117,6 +159,11 @@ export async function processLessonPlanExportJob(jobId: string, userId: string) 
         completedAt: new Date(),
       },
     });
+    return {
+      job: failedJob,
+      telemetry: {
+        costUsd: 0,
+      },
+    };
   }
 }
-

@@ -170,3 +170,21 @@ html {
 .premium-scrollbar::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #7c3aed 0%, #4338ca 100%);
 }
+
+/* Lite mode: optimized for low bandwidth / weak devices */
+html[data-lite-mode="true"] {
+  scroll-behavior: auto;
+}
+
+html[data-lite-mode="true"] *,
+html[data-lite-mode="true"] *::before,
+html[data-lite-mode="true"] *::after {
+  animation-duration: 0ms !important;
+  animation-delay: 0ms !important;
+  transition-duration: 0ms !important;
+  transition-delay: 0ms !important;
+}
+
+html[data-lite-mode="true"] .premium-scrollbar {
+  scrollbar-color: #94a3b8 #f8fafc;
+}

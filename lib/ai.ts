@@ -150,11 +150,19 @@
 //   }
 // }
 
+import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
 
 interface OpenRouterResponse {
   choices: { message: { content: string } }[];
   provider?: string;
   model?: string;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+  };
 }
 
 type QuestionTypePlan = {
@@ -172,6 +180,10 @@ export type QuizAIGenerationMeta = {
   fallbackUsed: boolean;
   finalModel: string;
   finalProvider: string | null;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
 };
 
 export type QuizAIGenerationResult = {
@@ -205,7 +217,8 @@ export async function generateQuizAIWithMeta(
   difficulty: string,
   adaptiveLearning: boolean,
   isProOrPremium: boolean,
-  userPrompt: string = "" 
+  userPrompt: string = "",
+  options?: { liteMode?: boolean }
 ): Promise<QuizAIGenerationResult> {
   const difficultyPrompt =
     difficulty === "easy"
@@ -341,6 +354,14 @@ JSON SCHEMA (MUST MATCH EXACTLY):
   let fallbackUsed = false;
   let finalModel = modelToUse;
   let finalProvider: string | null = null;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let estimatedCostUsd = 0;
+
+  const maxTokens = options?.liteMode
+    ? Number(process.env.QUIZ_MAX_TOKENS_LITE || 2200)
+    : 4000;
 
   const callOpenRouter = async (model: string, extraUserInstruction = "") => {
     const maxRetries = 2;
@@ -370,7 +391,7 @@ JSON SCHEMA (MUST MATCH EXACTLY):
               },
             ],
             temperature: 0.2,
-            max_tokens: 4000,
+            max_tokens: maxTokens,
           }),
         }
       );
@@ -412,17 +433,41 @@ JSON SCHEMA (MUST MATCH EXACTLY):
           "AI returned empty content: " + responseText.slice(0, 300)
         );
       }
-      return raw;
+      const usage = extractOpenRouterUsage(data);
+      const cost = usage ? estimateOpenRouterCost(model, usage) : null;
+      return {
+        raw,
+        usage,
+        cost,
+      };
     }
   };
 
   let raw = "";
   try {
-    raw = await callOpenRouter(modelToUse);
+    const aiCall = await callOpenRouter(modelToUse);
+    raw = aiCall.raw;
+    if (aiCall.usage) {
+      promptTokens += aiCall.usage.promptTokens;
+      completionTokens += aiCall.usage.completionTokens;
+      totalTokens += aiCall.usage.totalTokens;
+    }
+    if (aiCall.cost) {
+      estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+    }
   } catch (primaryErr) {
     if (fallbackModel && fallbackModel !== modelToUse) {
       fallbackUsed = true;
-      raw = await callOpenRouter(fallbackModel);
+      const aiCall = await callOpenRouter(fallbackModel);
+      raw = aiCall.raw;
+      if (aiCall.usage) {
+        promptTokens += aiCall.usage.promptTokens;
+        completionTokens += aiCall.usage.completionTokens;
+        totalTokens += aiCall.usage.totalTokens;
+      }
+      if (aiCall.cost) {
+        estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+      }
     } else {
       throw primaryErr;
     }
@@ -436,7 +481,16 @@ JSON SCHEMA (MUST MATCH EXACTLY):
   } catch {
     // Retry once with a more reliable model for JSON outputs
     fallbackUsed = true;
-    raw = await callOpenRouter(fallbackModel);
+    const aiCall = await callOpenRouter(fallbackModel);
+    raw = aiCall.raw;
+    if (aiCall.usage) {
+      promptTokens += aiCall.usage.promptTokens;
+      completionTokens += aiCall.usage.completionTokens;
+      totalTokens += aiCall.usage.totalTokens;
+    }
+    if (aiCall.cost) {
+      estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+    }
     console.log("🤖 AI Raw Response (fallback):", raw.substring(0, 500));
     parsed = safeExtractJSON(raw);
   }
@@ -453,17 +507,44 @@ JSON SCHEMA (MUST MATCH EXACTLY):
 - Return JSON only.`;
 
     try {
-      raw = await callOpenRouter(modelToUse, strictMixInstruction);
+      const aiCall = await callOpenRouter(modelToUse, strictMixInstruction);
+      raw = aiCall.raw;
+      if (aiCall.usage) {
+        promptTokens += aiCall.usage.promptTokens;
+        completionTokens += aiCall.usage.completionTokens;
+        totalTokens += aiCall.usage.totalTokens;
+      }
+      if (aiCall.cost) {
+        estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+      }
       parsed = safeExtractJSON(raw);
     } catch {
       fallbackUsed = true;
-      raw = await callOpenRouter(fallbackModel, strictMixInstruction);
+      const aiCall = await callOpenRouter(fallbackModel, strictMixInstruction);
+      raw = aiCall.raw;
+      if (aiCall.usage) {
+        promptTokens += aiCall.usage.promptTokens;
+        completionTokens += aiCall.usage.completionTokens;
+        totalTokens += aiCall.usage.totalTokens;
+      }
+      if (aiCall.cost) {
+        estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+      }
       parsed = safeExtractJSON(raw);
     }
 
     if (!parsed || !meetsQuestionTypePlan(parsed, typePlan)) {
       fallbackUsed = true;
-      raw = await callOpenRouter(fallbackModel, strictMixInstruction);
+      const aiCall = await callOpenRouter(fallbackModel, strictMixInstruction);
+      raw = aiCall.raw;
+      if (aiCall.usage) {
+        promptTokens += aiCall.usage.promptTokens;
+        completionTokens += aiCall.usage.completionTokens;
+        totalTokens += aiCall.usage.totalTokens;
+      }
+      if (aiCall.cost) {
+        estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+      }
       parsed = safeExtractJSON(raw);
     }
   }
@@ -483,6 +564,10 @@ JSON SCHEMA (MUST MATCH EXACTLY):
       fallbackUsed,
       finalModel,
       finalProvider,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      estimatedCostUsd: Number(estimatedCostUsd.toFixed(8)),
     },
   };
 }
@@ -492,14 +577,16 @@ export async function generateQuizAI(
   difficulty: string,
   adaptiveLearning: boolean,
   isProOrPremium: boolean,
-  userPrompt: string = ""
+  userPrompt: string = "",
+  options?: { liteMode?: boolean }
 ) {
   const result = await generateQuizAIWithMeta(
     text,
     difficulty,
     adaptiveLearning,
     isProOrPremium,
-    userPrompt
+    userPrompt,
+    options
   );
   return result.quiz;
 }

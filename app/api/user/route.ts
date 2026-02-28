@@ -36,6 +36,7 @@ export async function GET() {
       quizUsage: true,
       aiDifficulty: true, // ADD THIS
       adaptiveLearning: true, // ADD THIS
+      liteMode: true,
       lastQuizAt: true, // ADD THIS if you need it
     },
   });

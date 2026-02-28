@@ -35,9 +35,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const html = body?.html as string | undefined;
     const title = (body?.title as string | undefined) || "lesson_plan";
-    const pageWidth = Number(body?.pageWidth) || 1024;
-    const pageHeight = Number(body?.pageHeight) || 1400;
-
+    const pageSizeRaw = String(body?.pageSize || "A4").toUpperCase();
+    const pageSize = pageSizeRaw === "A3" ? "A3" : "A4";
     if (!html) {
       return new Response("Missing HTML", { status: 400 });
     }
@@ -49,16 +48,16 @@ export async function POST(req: NextRequest) {
     await page.emulateMedia({ media: "screen" });
 
     const pdfBuffer = await page.pdf({
-      width: `${pageWidth}px`,
-      height: `${pageHeight}px`,
+      format: pageSize,
       printBackground: true,
       margin: {
-        top: "24px",
-        bottom: "24px",
-        left: "24px",
-        right: "24px",
+        top: pageSize === "A3" ? "12mm" : "18mm",
+        bottom: pageSize === "A3" ? "12mm" : "18mm",
+        left: pageSize === "A3" ? "10mm" : "14mm",
+        right: pageSize === "A3" ? "10mm" : "14mm",
       },
-      preferCSSPageSize: true,
+      preferCSSPageSize: false,
+      displayHeaderFooter: false,
     });
 
     await page.close();

@@ -10,13 +10,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { difficulty, adaptiveLearning } = await req.json();
+  const { difficulty, adaptiveLearning, liteMode } = await req.json();
 
   await prisma.user.update({
     where: { email: session.user.email },
     data: {
       aiDifficulty: difficulty,
       adaptiveLearning,
+      liteMode: Boolean(liteMode),
     },
   });
 

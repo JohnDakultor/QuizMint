@@ -10,6 +10,11 @@ import { generateLessonPlanPptAIWithMeta } from "@/lib/lesson-plan-ppt-ai";
 import { generateLessonPlanPptx } from "@/lib/generate-lesson-plan-pptx";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
+import { createHash } from "crypto";
+import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
+import { semanticCacheStore } from "@/lib/rag/semanticCache";
+import { ingestWebSourcesForQuery } from "@/lib/rag/web";
+import { normalizeForEmbedding } from "@/lib/rag/embed";
 
 const FREE_PLAN_LIMIT = 3;
 const RESET_HOURS = 3;
@@ -19,6 +24,27 @@ const PROVIDER_ISSUE_MESSAGE =
 
 export const runtime = "nodejs";
 const lessonPlanCache = new Map<string, any>();
+
+function hashString(value: string) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function buildLessonPrompt(input: {
+  topic: string;
+  subject: string;
+  grade: string;
+  days: number;
+  minutesPerDay: number;
+  objectives?: string;
+  constraints?: string;
+}) {
+  return [
+    `Create a ${input.days}-day lesson plan for ${input.topic} in ${input.subject} for ${input.grade} students.`,
+    `Each day should be ${input.minutesPerDay} minutes.`,
+    `Objectives: ${input.objectives?.trim() || "None specified"}`,
+    `Constraints: ${input.constraints?.trim() || "None specified"}`,
+  ].join("\n");
+}
 
 function isProviderIssueError(err: unknown): boolean {
   const message = String((err as { message?: string })?.message || "");
@@ -254,6 +280,13 @@ export async function POST(req: NextRequest) {
   let eventUserId: string | null = null;
   let eventPlan: string | null = null;
   const requestId = createRequestId();
+  const stageMs: Record<string, number> = {
+    ingest: 0,
+    rag: 0,
+    ai: 0,
+    cacheWrite: 0,
+    dbWrite: 0,
+  };
   try {
     const ensureNotAborted = () => {
       if (req.signal.aborted) {
@@ -274,6 +307,7 @@ export async function POST(req: NextRequest) {
     const plan = user.subscriptionPlan || "free";
     const isFree = plan === "free";
     const isPremium = plan === "premium";
+    const liteMode = Boolean((user as any).liteMode);
 
     // Check if usage should be reset
     const now = new Date();
@@ -348,6 +382,17 @@ export async function POST(req: NextRequest) {
 
     // Create a cache key
     const cacheKey = `${session.user.email}:${topic}:${subject}:${grade}:${days}`;
+    const basePrompt = buildLessonPrompt({
+      topic,
+      subject,
+      grade,
+      days,
+      minutesPerDay,
+      objectives,
+      constraints,
+    });
+    const namespaceSeed = normalizeForEmbedding(`${topic}|${subject}|${grade}`) || `${topic}|${subject}|${grade}`;
+    const namespace = `lesson:${user.id}:${hashString(namespaceSeed)}`;
 
     let lessonPlan: any;
     let lessonAiMeta: {
@@ -355,7 +400,24 @@ export async function POST(req: NextRequest) {
       fallbackUsed: boolean;
       finalModel: string;
       finalProvider: string | null;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      estimatedCostUsd: number;
     } | null = null;
+    let sources: { url: string; title?: string }[] = [];
+    let sourceMode: "semantic_cache" | "documents" | "none" = "none";
+    let cachedResponse: string | null = null;
+    let hasContext = false;
+    let ragMeta:
+      | {
+          promptForCache: string;
+          embedding: number[];
+          namespace: string;
+        }
+      | null = null;
+    let cacheStored = false;
+    let webIngestSources: { url: string; title?: string }[] = [];
     const useProvidedPlan = Boolean(providedLessonPlan);
 
     if (useProvidedPlan) {
@@ -366,23 +428,121 @@ export async function POST(req: NextRequest) {
       console.log("Using cached lesson plan for DOCX generation");
     } else {
       try {
+        let promptForGeneration = basePrompt;
+        let ragContextText = "";
+        if (!liteMode) {
+          try {
+            const docCountRows = await prisma.$queryRaw<{ count: number }[]>`
+              SELECT COUNT(*)::int AS count FROM "Document" WHERE namespace = ${namespace}
+            `;
+            const hasDocs = (docCountRows[0]?.count ?? 0) > 0;
+            if (!hasDocs) {
+              const ingestStartedAt = Date.now();
+              const firstIngest = await ingestWebSourcesForQuery({
+                query: `${topic} ${subject} ${grade} lesson plan`,
+                namespace,
+                maxSources: 5,
+                maxChunks: 24,
+                minSimilarity: 0.45,
+              });
+              webIngestSources = firstIngest.sources ?? [];
+              // Best-effort second pass to reach ~5 references when first pass is sparse.
+              if (webIngestSources.length < 5) {
+                const secondIngest = await ingestWebSourcesForQuery({
+                  query: `${topic} ${subject} ${grade} classroom examples`,
+                  namespace,
+                  maxSources: 5,
+                  maxChunks: 24,
+                  minSimilarity: 0.4,
+                });
+                const merged = [...webIngestSources, ...(secondIngest.sources ?? [])];
+                const seen = new Set<string>();
+                webIngestSources = merged.filter((s) => {
+                  const key = (s.url || "").trim();
+                  if (!key || seen.has(key)) return false;
+                  seen.add(key);
+                  return true;
+                });
+              }
+              stageMs.ingest = Date.now() - ingestStartedAt;
+            }
+          } catch (ingestErr) {
+            console.warn("Lesson-plan web ingestion failed:", ingestErr);
+          }
+
+          try {
+            const ragStartedAt = Date.now();
+            const ragResult = await enhancePromptWithRAG({
+              finalPrompt: basePrompt,
+              namespace,
+              topK: 8,
+            });
+            stageMs.rag = Date.now() - ragStartedAt;
+            promptForGeneration = ragResult.enhancedPrompt || basePrompt;
+            cachedResponse = ragResult.cachedResponse ?? null;
+            const ragSources = ragResult.sources ?? [];
+            const mergedSources = [...ragSources, ...webIngestSources];
+            const seen = new Set<string>();
+            sources = mergedSources.filter((s) => {
+              const key = (s.url || "").trim();
+              if (!key || seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            }).slice(0, 5);
+            ragMeta = ragResult.ragMeta ?? null;
+            hasContext = ragResult.hasContext ?? false;
+            sourceMode = ragResult.sourceMode ?? "none";
+            if (sourceMode === "none" && sources.length > 0) {
+              sourceMode = "documents";
+            }
+            if (hasContext && promptForGeneration.includes("\n\nUser request:\n")) {
+              ragContextText = promptForGeneration.split("\n\nUser request:\n")[0] || "";
+            }
+          } catch (ragErr) {
+            console.warn("Lesson-plan RAG failed:", ragErr);
+          }
+        }
+
         // Generate lesson plan using 4A's format with separate sections
         console.log("Calling AI to generate lesson plan...");
-        const lessonAIResult = await generateLessonPlanAIWithMeta({
-          topic,
-          subject,
-          grade,
-          duration,
-          objectives,
-          constraints,
-          days,
-          minutesPerDay,
-          isProOrPremium: !isFree,
-        });
-        lessonPlan = lessonAIResult.lessonPlan;
-        lessonAiMeta = lessonAIResult.meta;
+        if (cachedResponse) {
+          lessonPlan = JSON.parse(cachedResponse);
+        } else {
+          const aiStartedAt = Date.now();
+          const lessonAIResult = await generateLessonPlanAIWithMeta({
+            topic,
+            subject,
+            grade,
+            duration,
+            objectives,
+            constraints,
+            days,
+            minutesPerDay,
+            isProOrPremium: !isFree,
+            ragContext: hasContext ? ragContextText || promptForGeneration : undefined,
+          }, { liteMode });
+          stageMs.ai = Date.now() - aiStartedAt;
+          lessonPlan = lessonAIResult.lessonPlan;
+          lessonAiMeta = lessonAIResult.meta;
+        }
 
         console.log("AI generated lesson plan with days:", lessonPlan.days?.length || 0);
+
+        if (!liteMode && ragMeta && !cachedResponse) {
+          try {
+            const cacheStoreStartedAt = Date.now();
+            await semanticCacheStore(
+              ragMeta.promptForCache,
+              ragMeta.embedding,
+              JSON.stringify(lessonPlan),
+              ragMeta.namespace
+            );
+            stageMs.cacheWrite = Date.now() - cacheStoreStartedAt;
+            cacheStored = true;
+          } catch (cacheErr) {
+            console.warn("Lesson-plan semantic cache store failed:", cacheErr);
+          }
+        }
 
         // ENHANCE THE LESSON PLAN WITH CONTEXT
         if (lessonPlan && lessonPlan.days && lessonPlan.days.length > 0) {
@@ -811,6 +971,7 @@ export async function POST(req: NextRequest) {
 
     // Increment usage for free users (only for JSON requests, not DOCX downloads)
     if (isFree && format === "json" && !useProvidedPlan) {
+      const dbWriteStartedAt = Date.now();
       await prisma.user.update({
         where: { id: user.id },
         data: { 
@@ -818,6 +979,7 @@ export async function POST(req: NextRequest) {
           lastLessonPlanAt: now 
         },
       });
+      stageMs.dbWrite += Date.now() - dbWriteStartedAt;
     }
 
     // Handle DOCX format
@@ -831,6 +993,7 @@ export async function POST(req: NextRequest) {
           status: "success",
           plan: eventPlan,
           latencyMs: Date.now() - startedAt,
+          costUsd: 0,
         });
         return new Response(new Uint8Array(docxBuffer), {
           headers: {
@@ -856,9 +1019,9 @@ export async function POST(req: NextRequest) {
           grade,
           duration,
           isProOrPremium: !isFree,
-        });
+        }, { liteMode });
         const pptDeck = pptAIResult.deck;
-        const pptxBuffer = await generateLessonPlanPptx(pptDeck);
+        const pptxBuffer = await generateLessonPlanPptx(pptDeck, { liteMode });
         await trackGenerationEvent({
           userId: user.id,
           eventType: "pptx_generated",
@@ -866,11 +1029,16 @@ export async function POST(req: NextRequest) {
           status: "success",
           plan: eventPlan,
           latencyMs: Date.now() - startedAt,
+          costUsd: pptAIResult.meta.estimatedCostUsd ?? 0,
           metadata: {
             retryCount: pptAIResult.meta.retryCount,
             fallbackUsed: pptAIResult.meta.fallbackUsed,
             finalModel: pptAIResult.meta.finalModel,
             finalProvider: pptAIResult.meta.finalProvider,
+            promptTokens: pptAIResult.meta.promptTokens ?? 0,
+            completionTokens: pptAIResult.meta.completionTokens ?? 0,
+            totalTokens: pptAIResult.meta.totalTokens ?? 0,
+            costUsd: pptAIResult.meta.estimatedCostUsd ?? 0,
             slideCount: Array.isArray(pptDeck?.slides) ? pptDeck.slides.length : 0,
           },
         });
@@ -901,6 +1069,7 @@ export async function POST(req: NextRequest) {
           status: "success",
           plan: eventPlan,
           latencyMs: Date.now() - startedAt,
+          costUsd: 0,
         });
         
         // Return PDF response
@@ -922,7 +1091,20 @@ export async function POST(req: NextRequest) {
     ensureNotAborted();
 
     if (format === "json" && !useProvidedPlan) {
+      const lessonPlanForStorage =
+        !liteMode && (sources?.length || sourceMode !== "none")
+          ? {
+              ...lessonPlan,
+              __sources: sources ?? [],
+              __sourceTrace: {
+                mode: sourceMode ?? "none",
+                fromCache: Boolean(cachedResponse),
+                sourceCount: (sources ?? []).length,
+              },
+            }
+          : lessonPlan;
       try {
+        const dbWriteStartedAt = Date.now();
         await prisma.lessonPlan.create({
           data: {
             userId: user.id,
@@ -933,9 +1115,10 @@ export async function POST(req: NextRequest) {
             duration,
             days,
             minutesPerDay,
-            data: lessonPlan,
+            data: lessonPlanForStorage,
           },
         });
+        stageMs.dbWrite += Date.now() - dbWriteStartedAt;
       } catch (err) {
         console.error("Failed to save lesson plan history:", err);
       }
@@ -951,24 +1134,48 @@ export async function POST(req: NextRequest) {
       status: "success",
       plan: eventPlan,
       latencyMs: Date.now() - startedAt,
+      costUsd: lessonAiMeta?.estimatedCostUsd ?? 0,
       metadata: {
         days,
         minutesPerDay,
         fromProvidedPlan: useProvidedPlan,
+        sourceMode: sourceMode ?? "none",
+        sourceCount: (sources ?? []).length,
+        cacheHit: Boolean(cachedResponse),
         retryCount: lessonAiMeta?.retryCount ?? 0,
         fallbackUsed: lessonAiMeta?.fallbackUsed ?? false,
         finalModel: lessonAiMeta?.finalModel ?? null,
         finalProvider: lessonAiMeta?.finalProvider ?? null,
+        promptTokens: lessonAiMeta?.promptTokens ?? 0,
+        completionTokens: lessonAiMeta?.completionTokens ?? 0,
+        totalTokens: lessonAiMeta?.totalTokens ?? 0,
+        costUsd: lessonAiMeta?.estimatedCostUsd ?? 0,
+        stageMs,
       },
     });
     return new Response(JSON.stringify({ 
       lessonPlan,
+      ...(liteMode
+        ? {}
+        : {
+            sources: sources ?? [],
+            sourceTrace: {
+              mode: sourceMode ?? "none",
+              fromCache: Boolean(cachedResponse),
+              sourceCount: (sources ?? []).length,
+            },
+          }),
       usage: isFree ? {
         used: user.lessonPlanUsage + 1,
         limit: FREE_PLAN_LIMIT,
         resetsIn: RESET_HOURS * 60 * 60 * 1000,
         nextReset: new Date(now.getTime() + (RESET_HOURS * 60 * 60 * 1000)).toISOString()
-      } : null
+      } : null,
+      cache: {
+        hit: Boolean(cachedResponse),
+        stored: cacheStored,
+        hasRagMeta: Boolean(ragMeta),
+      },
     }), {
       headers: { "Content-Type": "application/json" },
     });
@@ -981,6 +1188,8 @@ export async function POST(req: NextRequest) {
         status: "aborted",
         plan: eventPlan,
         latencyMs: Date.now() - startedAt,
+        costUsd: 0,
+        metadata: { stageMs },
       });
       return NextResponse.json(
         { error: "Generation paused by user", requestId },
@@ -1000,10 +1209,12 @@ export async function POST(req: NextRequest) {
         status: "failed",
         plan: eventPlan,
         latencyMs: Date.now() - startedAt,
+        costUsd: 0,
         metadata: {
           providerIssue: true,
           provider: providerError.provider ?? "unknown",
           providerCode: providerError.code,
+          stageMs,
         },
       });
       return apiError(503, PROVIDER_ISSUE_MESSAGE, requestId);
@@ -1015,7 +1226,8 @@ export async function POST(req: NextRequest) {
       status: "failed",
       plan: eventPlan,
       latencyMs: Date.now() - startedAt,
-      metadata: { message: String(err?.message || "unknown_error") },
+      costUsd: 0,
+      metadata: { message: String(err?.message || "unknown_error"), stageMs },
     });
     return apiError(500, `Internal server error: ${err.message}`, requestId);
   }

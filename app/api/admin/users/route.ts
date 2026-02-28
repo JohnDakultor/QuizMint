@@ -19,7 +19,25 @@ function getProviderFromMetadata(metadata: unknown): string | null {
   if (typeof provider === "string" && provider.trim().length > 0) {
     return provider.trim();
   }
+  const finalProvider = meta.finalProvider;
+  if (typeof finalProvider === "string" && finalProvider.trim().length > 0) {
+    return finalProvider.trim();
+  }
   return null;
+}
+
+function getCostFromMetadata(metadata: unknown): number {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return 0;
+  }
+  const meta = metadata as Record<string, unknown>;
+  const raw = meta.costUsd;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
 }
 
 export async function GET(req: Request) {
@@ -41,7 +59,20 @@ export async function GET(req: Request) {
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [totalUsers, freeUsers, proUsers, premiumUsers, newUsers, users, latestQuizUsers, latestLessonUsers, latestSignups, activeUsersLast7DaysRows, generationEvents] = await Promise.all([
+  const [
+    totalUsers,
+    freeUsers,
+    proUsers,
+    premiumUsers,
+    newUsers,
+    users,
+    latestQuizUsers,
+    latestLessonUsers,
+    latestSignups,
+    activeUsersLast7DaysRows,
+    generationEvents,
+    unitEconomicsRows,
+  ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { OR: [{ subscriptionPlan: null }, { subscriptionPlan: "free" }] } }),
     prisma.user.count({ where: { subscriptionPlan: "pro" } }),
@@ -116,6 +147,33 @@ export async function GET(req: Request) {
         createdAt: true,
       },
     }),
+    prisma.$queryRaw<
+      {
+        plan: string | null;
+        feature: string | null;
+        events: number;
+        totalCostUsd: number;
+      }[]
+    >`
+      SELECT
+        "plan",
+        "feature",
+        COUNT(*)::int AS events,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN jsonb_typeof("metadata"->'costUsd') = 'number'
+                THEN ("metadata"->>'costUsd')::numeric
+              ELSE 0
+            END
+          ),
+          0
+        )::float8 AS "totalCostUsd"
+      FROM "GenerationEvent"
+      WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+      GROUP BY "plan", "feature"
+      ORDER BY "totalCostUsd" DESC, events DESC
+    `,
   ]);
   const activeUsersLast7Days = activeUsersLast7DaysRows[0]?.count ?? 0;
 
@@ -156,12 +214,29 @@ export async function GET(req: Request) {
   const safeGenerationEvents = generationEvents.map((event) => {
     const rawEmail = event.userId ? emailByUserId.get(event.userId) : null;
     const provider = getProviderFromMetadata(event.metadata);
+    const costUsd = getCostFromMetadata(event.metadata);
     return {
       ...event,
       email: rawEmail ? sanitizeEmail(rawEmail) : null,
       provider,
+      costUsd,
     };
   });
+
+  const unitEconomics = {
+    windowDays: 30,
+    byPlanFeature: unitEconomicsRows.map((row) => ({
+      plan: row.plan || "free",
+      feature: row.feature || "unknown",
+      events: row.events || 0,
+      totalCostUsd: Number((row.totalCostUsd || 0).toFixed(8)),
+    })),
+    totalCostUsd: Number(
+      unitEconomicsRows
+        .reduce((sum, row) => sum + (row.totalCostUsd || 0), 0)
+        .toFixed(8)
+    ),
+  };
 
   return NextResponse.json({
     summary: {
@@ -180,6 +255,7 @@ export async function GET(req: Request) {
     },
     latestSignups: safeLatestSignups,
     generationEvents: safeGenerationEvents,
+    unitEconomics,
   }, {
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate, private",

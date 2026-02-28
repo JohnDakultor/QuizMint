@@ -1053,7 +1053,8 @@ import {
   ListChecks, ListOrdered, Hash, Users, Lightbulb,
   Brain, ClipboardCheck, BookCheck, CheckCircle2,
   ArrowRight, ArrowLeftRight, FileQuestion, SquareCheck, Share2,
-  FileText, PauseCircle
+  RefreshCw,
+  FileText, PauseCircle, Printer
 } from "lucide-react";
 import { X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -1067,8 +1068,18 @@ import {
 import Tour from "@/components/ui/tour";
 import SkeletonLoading from "@/components/ui/skeleton-loading";
 import LoadingProgress from "@/components/ui/loading-progress";
+import LiteModeBadge from "@/components/ui/lite-mode-badge";
+import { SourceIcons, type SourceIcon } from "@/components/source-icons";
 
 const FREE_PLAN_LIMIT = 3;
+const LESSON_EXPORT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const LESSON_EXPORT_LOCALSTORAGE_KEY = "lessonPlanPendingExports";
+type PendingExportJob = {
+  jobId: string;
+  format: "docx" | "pdf" | "pptx";
+  topic: string;
+  createdAt: number;
+};
 
 // Usage Indicator Component
 function UsageIndicator({ usage }: { usage: any }) {
@@ -1620,16 +1631,25 @@ export default function LessonPlanPage() {
   const [formDataObject, setFormDataObject] = useState<any>(null);
   const [usageInfo, setUsageInfo] = useState<any>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<string>("free");
+  const [liteMode, setLiteMode] = useState(false);
   const [pptxDeck, setPptxDeck] = useState<any | null>(null);
   const [loadingSlides, setLoadingSlides] = useState(false);
   const [lessonProgress, setLessonProgress] = useState(0);
   const [slidesProgress, setSlidesProgress] = useState(0);
   const [pptxProgress, setPptxProgress] = useState(0);
+  const [pendingExportJobs, setPendingExportJobs] = useState<PendingExportJob[]>([]);
+  const [retryingPendingExport, setRetryingPendingExport] = useState(false);
   const [showPptxEditor, setShowPptxEditor] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyPlans, setHistoryPlans] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [isHistoryView, setIsHistoryView] = useState(false);
+  const [lessonSources, setLessonSources] = useState<SourceIcon[]>([]);
+  const [lessonSourceTrace, setLessonSourceTrace] = useState<{
+    mode: "none" | "documents" | "semantic_cache";
+    fromCache: boolean;
+    sourceCount: number;
+  } | null>(null);
   const lessonPlanRef = useRef<HTMLDivElement | null>(null);
   const lessonFormRef = useRef<HTMLFormElement | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
@@ -1687,6 +1707,7 @@ export default function LessonPlanPage() {
       .then((data) => {
         if (cancelled) return;
         const plan = data?.user?.subscriptionPlan || "free";
+        setLiteMode(Boolean(data?.user?.liteMode));
         setSubscriptionPlan(plan);
       })
       .catch(() => {});
@@ -1721,6 +1742,126 @@ export default function LessonPlanPage() {
       generationAbortRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(LESSON_EXPORT_LOCALSTORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setPendingExportJobs(
+          parsed.filter(
+            (job: any) =>
+              typeof job?.jobId === "string" &&
+              (job?.format === "docx" || job?.format === "pdf" || job?.format === "pptx")
+          )
+        );
+      }
+    } catch {
+      // ignore malformed local data
+    }
+  }, []);
+
+  const persistPendingExportJobs = (jobs: PendingExportJob[]) => {
+    setPendingExportJobs(jobs);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(LESSON_EXPORT_LOCALSTORAGE_KEY, JSON.stringify(jobs));
+    } catch {
+      // ignore storage failures
+    }
+  };
+
+  const addPendingExportJob = (job: PendingExportJob) => {
+    const next = [job, ...pendingExportJobs.filter((item) => item.jobId !== job.jobId)].slice(0, 5);
+    persistPendingExportJobs(next);
+  };
+
+  const removePendingExportJob = (jobId: string) => {
+    persistPendingExportJobs(pendingExportJobs.filter((item) => item.jobId !== jobId));
+  };
+
+  const downloadCompletedExport = async (
+    jobId: string,
+    format: "docx" | "pdf" | "pptx",
+    topic: string
+  ) => {
+    const fileRes = await fetch(`/api/lesson-plan-export/${jobId}?download=1`, {
+      cache: "no-store",
+    });
+    if (!fileRes.ok) {
+      const text = await fileRes.text();
+      throw new Error(withRequestIdFromText("Failed to download ready file", text));
+    }
+
+    const blob = await fileRes.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${topic || "lesson_plan"}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
+  };
+
+  const pollExportJob = async (
+    jobId: string,
+    format: "docx" | "pdf" | "pptx",
+    topic: string,
+    timeoutMs: number
+  ) => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const startedAt = Date.now();
+    let lastStatus = "queued";
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const statusRes = await fetch(`/api/lesson-plan-export/${jobId}`, {
+        cache: "no-store",
+      });
+      const statusData = await statusRes.json().catch(() => ({}));
+
+      if (!statusRes.ok) {
+        throw new Error(
+          withRequestId(statusData?.error || "Failed to fetch export status", statusData)
+        );
+      }
+
+      lastStatus = String(statusData?.status || "queued");
+      if (lastStatus === "completed") {
+        await downloadCompletedExport(jobId, format, topic);
+        removePendingExportJob(jobId);
+        return;
+      }
+
+      if (lastStatus === "failed") {
+        removePendingExportJob(jobId);
+        throw new Error(withRequestId(statusData?.error || "Export job failed", statusData));
+      }
+
+      if (lastStatus === "queued") {
+        await fetch("/api/lesson-plan-export/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobId }),
+        }).catch(() => null);
+      }
+
+      await sleep(1500);
+    }
+
+    addPendingExportJob({
+      jobId,
+      format,
+      topic,
+      createdAt: Date.now(),
+    });
+    setError(null);
+    setInfoMessage("Still processing. We kept it running in the background. Click 'Download when ready' to retry.");
+  };
 
   function pauseLessonPlanGeneration() {
     if (!generationAbortRef.current) return;
@@ -1851,18 +1992,14 @@ export default function LessonPlanPage() {
     setError(null);
     setLessonPlan(null);
     setUsageInfo(null);
+    setLessonSources([]);
+    setLessonSourceTrace(null);
     setIsHistoryView(false);
 
-    let timedOut = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
       generationAbortRef.current?.abort();
       const controller = new AbortController();
       generationAbortRef.current = controller;
-      timeoutId = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, 150000);
 
       const res = await fetch("/api/generate-lesson-plan", {
         method: "POST",
@@ -1895,22 +2032,31 @@ export default function LessonPlanPage() {
       
       setLessonPlan(data.lessonPlan);
       setUsageInfo(data.usage);
+      setLessonSources(Array.isArray(data.sources) ? data.sources : []);
+      setLessonSourceTrace(
+        data?.sourceTrace && typeof data.sourceTrace === "object"
+          ? {
+              mode:
+                data.sourceTrace.mode === "documents" ||
+                data.sourceTrace.mode === "semantic_cache"
+                  ? data.sourceTrace.mode
+                  : "none",
+              fromCache: Boolean(data.sourceTrace.fromCache),
+              sourceCount: Number(data.sourceTrace.sourceCount || 0),
+            }
+          : null
+      );
       setIsHistoryView(false);
       setLessonProgress(100);
       await new Promise((resolve) => setTimeout(resolve, 120));
       
     } catch (err: any) {
       if (err?.name === "AbortError") {
-        setError(
-          timedOut
-            ? "Generation took too long. Please try again."
-            : "Generation paused."
-        );
+        setError("Generation paused.");
         return;
       }
       setError(err.message || "Failed to generate lesson plan");
     } finally {
-      if (timeoutId) clearTimeout(timeoutId);
       generationAbortRef.current = null;
       setLoading(false);
     }
@@ -1926,8 +2072,6 @@ export default function LessonPlanPage() {
     } else {
       setDownloading(true);
     }
-
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     try {
       if (!isPremium) {
@@ -1964,65 +2108,15 @@ export default function LessonPlanPage() {
         body: JSON.stringify({ jobId }),
       }).catch(() => null);
 
-      const timeoutMs = 3 * 60 * 1000;
-      const startedAt = Date.now();
-      let lastStatus = "queued";
-
-      while (Date.now() - startedAt < timeoutMs) {
-        const statusRes = await fetch(`/api/lesson-plan-export/${jobId}`, {
-          cache: "no-store",
-        });
-        const statusData = await statusRes.json().catch(() => ({}));
-
-        if (!statusRes.ok) {
-          throw new Error(
-            withRequestId(statusData?.error || "Failed to fetch export status", statusData)
-          );
-        }
-
-        lastStatus = String(statusData?.status || "queued");
-        if (lastStatus === "completed") {
-          const fileRes = await fetch(`/api/lesson-plan-export/${jobId}?download=1`, {
-            cache: "no-store",
-          });
-          if (!fileRes.ok) {
-            const text = await fileRes.text();
-            throw new Error(text || "Failed to download ready file");
-          }
-
-          const blob = await fileRes.blob();
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = `${formDataObject.topic || "lesson_plan"}.${format}`;
-          document.body.appendChild(link);
-          link.click();
-          setTimeout(() => {
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-          }, 100);
-          return;
-        }
-
-        if (lastStatus === "failed") {
-          throw new Error(withRequestId(statusData?.error || "Export job failed", statusData));
-        }
-
-        if (lastStatus === "queued") {
-          await fetch("/api/lesson-plan-export/process", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ jobId }),
-          }).catch(() => null);
-        }
-
-        await sleep(1500);
-      }
-
-      throw new Error(`Export timeout (last status: ${lastStatus})`);
+      await pollExportJob(
+        jobId,
+        format,
+        String(formDataObject.topic || "lesson_plan"),
+        LESSON_EXPORT_POLL_TIMEOUT_MS
+      );
     } catch (err: any) {
       console.error("Download error:", err);
-      alert(`Failed to download: ${err.message}`);
+      setError(err?.message || "Failed to download.");
     } finally {
       if (format === "pptx") {
         setDownloadingPptx(false);
@@ -2043,19 +2137,62 @@ export default function LessonPlanPage() {
       }
       const element = lessonPlanRef.current;
       const styles = await collectStyles();
-      const targetWidth = Math.max(1024, element.scrollWidth);
-      const targetHeight = Math.round(targetWidth * 1.6);
+      const renderRoot = element.cloneNode(true) as HTMLElement;
+      const tmp = document.createElement("div");
+      tmp.id = "lessonplan-pdf-probe";
+      tmp.style.position = "fixed";
+      tmp.style.left = "-10000px";
+      tmp.style.top = "0";
+      tmp.style.width = `${element.clientWidth || 1024}px`;
+      tmp.style.pointerEvents = "none";
+      tmp.style.opacity = "0";
+      tmp.appendChild(renderRoot);
+      document.body.appendChild(tmp);
+
+      // Dynamic pagination:
+      // - keep a day card together when it fits in one A4 content area
+      // - allow split only for oversized day cards to prevent clipping
+      const approxA4ContentHeightPx = 980;
+      renderRoot.querySelectorAll<HTMLElement>(".pdf-day-card").forEach((card) => {
+        if (card.scrollHeight > approxA4ContentHeightPx) {
+          card.classList.add("pdf-day-card-long");
+        }
+      });
 
       const extraCss = `
         <style>
-          @page { size: ${targetWidth}px ${targetHeight}px; margin: 24px 24px; }
+          @page { size: A3; margin: 12mm 10mm; }
           body { background: white; margin: 0; }
+          html, body { width: 100%; }
           [data-print-hidden] { display: none !important; }
           [data-pdf-hide] { display: none !important; }
           [data-pdf-only] { display: block !important; }
-          [data-pdf-keep] { break-inside: avoid; page-break-inside: avoid; }
-          /* Continuous flow: remove forced page starts */
-          [data-pdf-page] { break-before: auto; page-break-before: auto; }
+          [data-page-start] { break-before: page !important; page-break-before: always !important; }
+          [data-page-end] { break-after: page !important; page-break-after: always !important; }
+          [data-page-keep] { break-inside: avoid-page !important; page-break-inside: avoid !important; }
+          [data-page-flow] { break-inside: auto !important; page-break-inside: auto !important; }
+          [data-pdf-keep] { break-inside: auto; page-break-inside: auto; }
+          .pdf-day-card { break-inside: avoid-page; page-break-inside: avoid; }
+          .pdf-day-card-long { break-inside: auto; page-break-inside: auto; }
+          /* Strict mode: each major titled section starts on a new page */
+          .pdf-section-page {
+            break-before: auto;
+            page-break-before: auto;
+            break-inside: auto;
+            page-break-inside: auto;
+            min-height: auto;
+            display: block;
+            padding-top: 0;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+          }
+          .pdf-day-card .pdf-section-page:first-of-type {
+            break-before: auto;
+            page-break-before: auto;
+          }
+          .pdf-section-title { text-align: center !important; justify-content: center !important; margin-top: 0 !important; }
+          .pdf-day-card .mb-10, .pdf-day-card .mt-10, .pdf-day-card .mt-8 { margin-top: 8px !important; margin-bottom: 8px !important; }
+          .shadow-2xl, .shadow-xl, .shadow-lg, .shadow, [class*="shadow-"] { box-shadow: none !important; }
           .pdf-header {
             border-bottom: 2px solid #e5e7eb;
             padding: 16px 0 12px;
@@ -2084,6 +2221,8 @@ export default function LessonPlanPage() {
             overflow: visible !important;
           }
           [class*="max-h-"] { max-height: none !important; }
+          [class*="overflow-y-"] { overflow-y: visible !important; }
+          [class*="overflow-x-"] { overflow-x: visible !important; }
           .flex-wrap { flex-wrap: wrap !important; }
         </style>
       `;
@@ -2098,7 +2237,7 @@ export default function LessonPlanPage() {
             ${extraCss}
           </head>
           <body>
-            ${element.outerHTML}
+            ${renderRoot.outerHTML}
           </body>
         </html>
       `;
@@ -2109,10 +2248,12 @@ export default function LessonPlanPage() {
         body: JSON.stringify({
           html,
           title: formDataObject.topic || "lesson_plan",
-          pageWidth: targetWidth,
-          pageHeight: targetHeight,
+          pageSize: "A3",
         }),
       });
+      if (tmp.parentElement) {
+        tmp.parentElement.removeChild(tmp);
+      }
 
       if (!res.ok) {
         const text = await res.text();
@@ -2132,9 +2273,36 @@ export default function LessonPlanPage() {
       }, 100);
     } catch (err: any) {
       console.error("PDF UI download error:", err);
-      alert(`Failed to download PDF: ${err.message}`);
+      setError(err?.message || "Failed to download PDF.");
     } finally {
+      const leftover = document.getElementById("lessonplan-pdf-probe");
+      if (leftover?.parentElement) {
+        leftover.parentElement.removeChild(leftover);
+      }
       setDownloadingPdf(false);
+    }
+  }
+
+  async function retryPendingExportDownload() {
+    if (!pendingExportJobs.length) {
+      setError(null);
+      setInfoMessage("No pending export found.");
+      return;
+    }
+
+    const latest = pendingExportJobs[0];
+    setRetryingPendingExport(true);
+    try {
+      await pollExportJob(
+        latest.jobId,
+        latest.format,
+        latest.topic || String(formDataObject?.topic || "lesson_plan"),
+        LESSON_EXPORT_POLL_TIMEOUT_MS
+      );
+    } catch (err: any) {
+      setError(err?.message || "Failed to retry export download.");
+    } finally {
+      setRetryingPendingExport(false);
     }
   }
 
@@ -2168,6 +2336,31 @@ export default function LessonPlanPage() {
     } finally {
       setLoadingSlides(false);
     }
+  }
+
+  function printLessonPlan() {
+    if (!lessonPlan) return;
+    if (typeof window !== "undefined") {
+      window.print();
+    }
+  }
+
+  function shouldKeepSpecificActivities(day: any) {
+    const activities = day?.specificActivities || {};
+    const q1 = Array.isArray(activities?.ACTIVITY?.questions) ? activities.ACTIVITY.questions.length : 0;
+    const q2 = Array.isArray(activities?.ANALYSIS?.trueFalse) ? activities.ANALYSIS.trueFalse.length : 0;
+    const q3 = Array.isArray(activities?.APPLICATION?.multipleChoice)
+      ? activities.APPLICATION.multipleChoice.length
+      : 0;
+    const q4 = Array.isArray(activities?.APPLICATION?.identification?.clues)
+      ? activities.APPLICATION.identification.clues.length
+      : 0;
+    return q1 + q2 + q3 + q4 <= 12;
+  }
+
+  function shouldKeepAssessment(day: any) {
+    const count = Array.isArray(day?.assessment) ? day.assessment.length : 0;
+    return count <= 2;
   }
 
   async function downloadEditedPptx() {
@@ -2329,9 +2522,65 @@ export default function LessonPlanPage() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      <Tour steps={lessonPlanTourSteps} tourId="lessonplan-generator" />
+      <style jsx global>{`
+        @media print {
+          html,
+          body {
+            background: #fff !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          #lessonplan-print-root,
+          #lessonplan-print-root * {
+            visibility: visible !important;
+          }
+          #lessonplan-print-root {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+          [data-print-hidden] {
+            display: none !important;
+          }
+          [data-page-start] { break-before: page !important; page-break-before: always !important; }
+          [data-page-end] { break-after: page !important; page-break-after: always !important; }
+          [data-page-keep] { break-inside: avoid-page !important; page-break-inside: avoid !important; }
+          [data-page-flow] { break-inside: auto !important; page-break-inside: auto !important; }
+          /* Reduce unwanted hard page breaks in browser print */
+          #lessonplan-print-root [data-pdf-page],
+          #lessonplan-print-root .pdf-day-card,
+          #lessonplan-print-root .pdf-section-page {
+            break-before: auto !important;
+            page-break-before: auto !important;
+            break-inside: auto !important;
+            page-break-inside: auto !important;
+          }
+          /* Keep visual cards together when possible */
+          #lessonplan-print-root .rounded-2xl,
+          #lessonplan-print-root .rounded-xl,
+          #lessonplan-print-root .border-2 {
+            break-inside: avoid-page !important;
+            page-break-inside: avoid !important;
+          }
+          /* Tighter print spacing to avoid whitespace-driven breaks */
+          #lessonplan-print-root .mt-10,
+          #lessonplan-print-root .mt-8,
+          #lessonplan-print-root .mb-10,
+          #lessonplan-print-root .mb-8 {
+            margin-top: 10px !important;
+            margin-bottom: 10px !important;
+          }
+        }
+      `}</style>
+      {!liteMode && <Tour steps={lessonPlanTourSteps} tourId="lessonplan-generator" />}
       {/* Header */}
       <div className="relative text-center pt-12 sm:pt-0">
+        <LiteModeBadge className="absolute right-11 top-1 sm:right-14 sm:top-0" />
         <button
           id="lessonplan-history"
           type="button"
@@ -2608,7 +2857,7 @@ export default function LessonPlanPage() {
 
       {/* Generated Lesson Plan */}
       {lessonPlan && (
-        <div ref={lessonPlanRef} className="bg-white">
+        <div id="lessonplan-print-root" ref={lessonPlanRef} className="bg-white">
         <Card className="shadow-2xl border-2 border-gray-300 overflow-hidden">
           <div className="bg-linear-to-r from-blue-600 to-purple-600 p-4">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -2619,10 +2868,38 @@ export default function LessonPlanPage() {
                   <span>-</span>
                   <span><strong>Duration:</strong> {lessonPlan.duration}</span>
                 </div>
+                {!!lessonSources.length && (
+                  <div className="mt-3">
+                    <SourceIcons
+                      sources={lessonSources}
+                      variant="compact"
+                      maxCount={6}
+                      size={30}
+                      className="max-w-full"
+                    />
+                    {lessonSourceTrace && (
+                      <p className="text-xs text-blue-100 mt-1">
+                        Sources: {lessonSourceTrace.mode === "documents" ? "Web/Docs retrieval" : lessonSourceTrace.mode === "semantic_cache" ? "Semantic cache" : "None"}
+                        {" • "}
+                        {lessonSourceTrace.sourceCount} reference{lessonSourceTrace.sourceCount === 1 ? "" : "s"}
+                        {lessonSourceTrace.fromCache ? " • cache hit" : ""}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex gap-3">
+                <Button
+                  onClick={printLessonPlan}
+                  variant="outline"
+                  className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                  data-print-hidden
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  Print
+                </Button>
                 <Button 
-                  onClick={() => downloadLessonPlan("pdf")}
+                  onClick={downloadLessonPlanPdfFromUi}
                   disabled={downloadingPdf || !isPremium}
                   variant={!isPremium ? "outline" : "default"}
                   className="bg-linear-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white shadow-lg"
@@ -2650,6 +2927,22 @@ export default function LessonPlanPage() {
                   )}
                   {!isPremium ? "Premium Only" : "Download DOCX"}
                 </Button>
+                {isPremium && (
+                  <Button
+                    onClick={retryPendingExportDownload}
+                    disabled={retryingPendingExport || !pendingExportJobs.length}
+                    variant="outline"
+                    className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                    data-print-hidden
+                  >
+                    {retryingPendingExport ? (
+                      <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Download when ready
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -2708,8 +3001,9 @@ export default function LessonPlanPage() {
             {lessonPlan.days?.map((day: any, dayIndex: number) => (
               <div
                 key={day.day || dayIndex + 1}
-                className="mt-8 pt-8 border-t-2 border-gray-300 first:border-t-0 first:pt-0"
+                className="pdf-day-card mt-8 pt-8 border-t-2 border-gray-300 first:border-t-0 first:pt-0"
                 data-pdf-page
+                data-page-start={dayIndex > 0 ? "1" : undefined}
               >
                 {dayIndex === 0 && (
                   <div className="pdf-only pdf-header" data-pdf-only data-pdf-keep>
@@ -2736,9 +3030,9 @@ export default function LessonPlanPage() {
                 </div>
                 
                 {/* 4A's Pedagogical Framework Section */}
-                <div className="mb-10" data-pdf-keep>
+                <div className="mb-10 pdf-section-page" data-pdf-keep data-page-keep="1">
                   <div className="flex items-center justify-between mb-6">
-                    <h4 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <h4 className="pdf-section-title text-xl font-bold text-gray-900 flex items-center gap-2">
                       <Brain className="h-5 w-5 text-blue-600" />
                       4A's Pedagogical Framework
                     </h4>
@@ -2757,9 +3051,15 @@ export default function LessonPlanPage() {
 
                 {/* Specific Activities Section */}
                 {day.specificActivities && (
-                  <div className="mb-10" data-pdf-keep>
+                  <div
+                    className="mb-10 pdf-section-page"
+                    data-pdf-keep
+                    {...(shouldKeepSpecificActivities(day)
+                      ? { "data-page-keep": "1" }
+                      : { "data-page-flow": "1" })}
+                  >
                     <div className="flex items-center justify-between mb-6">
-                      <h4 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <h4 className="pdf-section-title text-xl font-bold text-gray-900 flex items-center gap-2">
                         <ClipboardCheck className="h-5 w-5 text-purple-600" />
                         Specific Activity Types
                       </h4>
@@ -2782,7 +3082,11 @@ export default function LessonPlanPage() {
 
                 {/* Additional Information */}
                 {(day.differentiation || day.closure) && (
-                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6" data-pdf-keep>
+                  <div
+                    className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 pdf-section-page"
+                    data-pdf-keep
+                    data-page-keep="1"
+                  >
                     {day.differentiation && (
                       <div className="bg-linear-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border-2 border-green-200">
                         <h4 className="font-bold text-green-800 text-lg mb-3 flex items-center gap-2">
@@ -2808,8 +3112,15 @@ export default function LessonPlanPage() {
                 )}
 
                 {/* Assessment/Rubrics */}
-                <div className="mt-10" data-pdf-keep>
-                  <h4 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                <div
+                  className="mt-10 pdf-section-page"
+                  data-pdf-keep
+                  {...(shouldKeepAssessment(day)
+                    ? { "data-page-keep": "1" }
+                    : { "data-page-flow": "1" })}
+                  data-page-end="1"
+                >
+                  <h4 className="pdf-section-title text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
                     <FileQuestion className="h-5 w-5 text-red-600" />
                     Assessment / Rubrics
                   </h4>
@@ -2931,6 +3242,23 @@ export default function LessonPlanPage() {
                   days: plan.days,
                   minutesPerDay: plan.minutesPerDay,
                 });
+                const historySources = Array.isArray(plan?.data?.__sources)
+                  ? plan.data.__sources
+                  : [];
+                const historyTrace =
+                  plan?.data?.__sourceTrace && typeof plan.data.__sourceTrace === "object"
+                    ? {
+                        mode:
+                          plan.data.__sourceTrace.mode === "documents" ||
+                          plan.data.__sourceTrace.mode === "semantic_cache"
+                            ? plan.data.__sourceTrace.mode
+                            : "none",
+                        fromCache: Boolean(plan.data.__sourceTrace.fromCache),
+                        sourceCount: Number(plan.data.__sourceTrace.sourceCount || 0),
+                      }
+                    : null;
+                setLessonSources(historySources);
+                setLessonSourceTrace(historyTrace);
                 setIsHistoryView(true);
                 setHistoryOpen(false);
                 setPptxDeck(null);

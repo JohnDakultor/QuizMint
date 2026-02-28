@@ -68,11 +68,15 @@ async function extractOpenRouterImageDataUrl(data: any): Promise<string | null> 
   return null;
 }
 
-async function generateSlideImage(prompt: string): Promise<string | null> {
+async function generateSlideImage(
+  prompt: string,
+  options?: { liteMode?: boolean }
+): Promise<string | null> {
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const hfKey = process.env.HF_API_KEY;
   if (!openRouterKey && !hfKey) return null;
-  const cached = imageCache.get(prompt);
+  const cacheKey = `${options?.liteMode ? "lite" : "full"}:${prompt}`;
+  const cached = imageCache.get(cacheKey);
   if (cached) return cached;
 
   const logPrefix = "[pptx-image]";
@@ -88,6 +92,9 @@ async function generateSlideImage(prompt: string): Promise<string | null> {
             role: "user",
             content:
               `Generate exactly one educational image. No markdown. No explanation text.\n` +
+              (options?.liteMode
+                ? "Use simple composition and lower detail to keep it lightweight.\n"
+                : "") +
               `Topic prompt: ${prompt}`,
           },
         ],
@@ -159,7 +166,7 @@ async function generateSlideImage(prompt: string): Promise<string | null> {
         const data = await res.json();
         const dataUrl = await extractOpenRouterImageDataUrl(data);
         if (dataUrl) {
-          imageCache.set(prompt, dataUrl);
+          imageCache.set(cacheKey, dataUrl);
           return dataUrl;
         }
         const contentPreview = JSON.stringify(
@@ -192,7 +199,7 @@ async function generateSlideImage(prompt: string): Promise<string | null> {
       const arrayBuffer = await res.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString("base64");
       const dataUrl = `data:image/png;base64,${base64}`;
-      imageCache.set(prompt, dataUrl);
+      imageCache.set(cacheKey, dataUrl);
       return dataUrl;
     } catch (err) {
       console.warn(`${logPrefix} failed to read image body:`, err);
@@ -306,7 +313,10 @@ function addBulletedSlide(
   }
 }
 
-export async function generateLessonPlanPptx(deck: PptDeck): Promise<Buffer> {
+export async function generateLessonPlanPptx(
+  deck: PptDeck,
+  options?: { liteMode?: boolean }
+): Promise<Buffer> {
   const pptx = new pptxgen();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Quizmints AI";
@@ -319,13 +329,15 @@ export async function generateLessonPlanPptx(deck: PptDeck): Promise<Buffer> {
   for (let i = 0; i < deck.slides.length; i++) {
     const slide = deck.slides[i];
     let imageData: string | null = null;
-    if (i < 5) {
+    const imageLimit = options?.liteMode ? 2 : 5;
+    if (i < imageLimit) {
       const promptParts =
         slide.imagePrompt ||
         [deck.title, slide.title, slide.body].filter(Boolean).join(" - ").slice(0, 300);
       if (promptParts) {
         imageData = await generateSlideImage(
-          `Educational illustration about ${promptParts}`
+          `Educational illustration about ${promptParts}`,
+          { liteMode: Boolean(options?.liteMode) }
         );
       }
     }

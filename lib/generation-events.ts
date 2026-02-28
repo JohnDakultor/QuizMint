@@ -4,6 +4,7 @@ export type GenerationEventType =
   | "quiz_generated"
   | "lesson_generated"
   | "pptx_generated"
+  | "export_generated"
   | "export_failed"
   | "pause_clicked";
 
@@ -14,6 +15,7 @@ type TrackGenerationEventInput = {
   feature?: string;
   plan?: string | null;
   latencyMs?: number;
+  costUsd?: number;
   metadata?: Prisma.InputJsonValue;
 };
 
@@ -27,7 +29,14 @@ export async function trackGenerationEvent(input: TrackGenerationEventInput) {
         status: input.status,
         plan: input.plan ?? null,
         latencyMs: input.latencyMs ?? null,
-        metadata: input.metadata ?? undefined,
+        metadata:
+          input.metadata && typeof input.metadata === "object" && !Array.isArray(input.metadata)
+            ? ({
+                ...(input.metadata as Record<string, unknown>),
+                costUsd:
+                  typeof input.costUsd === "number" ? Number(input.costUsd.toFixed(8)) : undefined,
+              } as Prisma.InputJsonValue)
+            : input.metadata ?? undefined,
       },
     });
   } catch (err) {

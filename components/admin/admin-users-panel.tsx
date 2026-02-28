@@ -57,9 +57,17 @@ type AdminGenerationEvent = {
   status: string;
   plan: string | null;
   latencyMs: number | null;
+  costUsd: number;
   provider: string | null;
   metadata: unknown;
   createdAt: string;
+};
+
+type UnitEconomicsRow = {
+  plan: string;
+  feature: string;
+  events: number;
+  totalCostUsd: number;
 };
 
 function getGenerationEventCause(event: AdminGenerationEvent): string {
@@ -147,6 +155,8 @@ export default function AdminUsersPanel() {
   const [latestSignups, setLatestSignups] = useState<LatestActivityUser[]>([]);
   const [cohorts, setCohorts] = useState<CohortSummaryRow[]>([]);
   const [generationEvents, setGenerationEvents] = useState<AdminGenerationEvent[]>([]);
+  const [unitEconomicsRows, setUnitEconomicsRows] = useState<UnitEconomicsRow[]>([]);
+  const [unitEconomicsTotal, setUnitEconomicsTotal] = useState(0);
   const [email, setEmail] = useState("");
   const [plan, setPlan] = useState<"free" | "pro" | "premium">("pro");
   const [updating, setUpdating] = useState(false);
@@ -174,6 +184,8 @@ export default function AdminUsersPanel() {
       setLatestLessonUsers(data?.latestActivity?.lessonPlan || []);
       setLatestSignups(data?.latestSignups || []);
       setGenerationEvents(data?.generationEvents || []);
+      setUnitEconomicsRows(data?.unitEconomics?.byPlanFeature || []);
+      setUnitEconomicsTotal(Number(data?.unitEconomics?.totalCostUsd || 0));
       setCohorts(Array.isArray(cohortsData?.cohorts) ? cohortsData.cohorts : []);
     } catch (err: any) {
       setError(err.message || "Failed to load data");
@@ -385,10 +397,56 @@ export default function AdminUsersPanel() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Unit Economics (Last 30 Days)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="text-sm text-zinc-500">
+            Total tracked model/export cost: <span className="font-semibold text-zinc-900 dark:text-zinc-100">${unitEconomicsTotal.toFixed(4)}</span>
+          </div>
+          <div className="overflow-auto rounded-md border">
+            <table className="w-full min-w-[680px] text-sm">
+              <thead className="sticky top-0 z-10 bg-white dark:bg-zinc-950">
+                <tr className="border-b">
+                  <th className="py-2 px-3 text-left">Plan</th>
+                  <th className="py-2 px-3 text-left">Feature</th>
+                  <th className="py-2 px-3 text-left">Events</th>
+                  <th className="py-2 px-3 text-left">Total Cost</th>
+                  <th className="py-2 px-3 text-left">Avg / Event</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unitEconomicsRows.length === 0 ? (
+                  <tr>
+                    <td className="py-3 px-3 text-zinc-500" colSpan={5}>
+                      No unit economics data yet.
+                    </td>
+                  </tr>
+                ) : (
+                  unitEconomicsRows.map((row, idx) => {
+                    const avg = row.events > 0 ? row.totalCostUsd / row.events : 0;
+                    return (
+                      <tr key={`${row.plan}-${row.feature}-${idx}`} className="border-b">
+                        <td className="py-2 px-3">{row.plan}</td>
+                        <td className="py-2 px-3">{row.feature}</td>
+                        <td className="py-2 px-3">{row.events}</td>
+                        <td className="py-2 px-3">${row.totalCostUsd.toFixed(4)}</td>
+                        <td className="py-2 px-3">${avg.toFixed(6)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Generation Event Log (Latest 30)</CardTitle>
         </CardHeader>
         <CardContent className="overflow-auto rounded-md border">
-          <table className="w-full min-w-[1320px] table-fixed text-xs md:text-sm">
+          <table className="w-full min-w-[1420px] table-fixed text-xs md:text-sm">
             <colgroup>
               <col className="w-[170px]" />
               <col className="w-[220px]" />
@@ -401,6 +459,7 @@ export default function AdminUsersPanel() {
               <col className="w-[260px]" />
               <col className="w-[90px]" />
               <col className="w-[100px]" />
+              <col className="w-[110px]" />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-white dark:bg-zinc-950">
               <tr className="border-b">
@@ -415,12 +474,13 @@ export default function AdminUsersPanel() {
                 <th className="py-2 pr-2 text-left">Stage Timings</th>
                 <th className="py-2 pr-2 text-left">Plan</th>
                 <th className="py-2 pr-2 text-left">Latency</th>
+                <th className="py-2 pr-2 text-left">Cost</th>
               </tr>
             </thead>
             <tbody>
               {generationEvents.length === 0 ? (
                 <tr>
-                  <td className="py-3 text-zinc-500" colSpan={11}>
+                  <td className="py-3 text-zinc-500" colSpan={12}>
                     No generation events yet.
                   </td>
                 </tr>
@@ -464,6 +524,7 @@ export default function AdminUsersPanel() {
                     </td>
                     <td className="py-2 pr-2 align-top whitespace-nowrap">{event.plan || "free"}</td>
                     <td className="py-2 pr-2 align-top whitespace-nowrap">{typeof event.latencyMs === "number" ? `${event.latencyMs}ms` : "-"}</td>
+                    <td className="py-2 pr-2 align-top whitespace-nowrap">${(event.costUsd || 0).toFixed(6)}</td>
                   </tr>
                 ))
               )}

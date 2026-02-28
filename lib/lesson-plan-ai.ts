@@ -1,4 +1,6 @@
 // lib/lesson-plan-ai.ts - FIXED VERSION
+import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
+
 interface LessonPlanInput {
   topic: string;
   subject: string;
@@ -9,6 +11,7 @@ interface LessonPlanInput {
   days: number;
   minutesPerDay: number;
   isProOrPremium: boolean;
+  ragContext?: string;
 }
 
 export type LessonPlanAIMeta = {
@@ -16,6 +19,10 @@ export type LessonPlanAIMeta = {
   fallbackUsed: boolean;
   finalModel: string;
   finalProvider: string | null;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
 };
 
 export type LessonPlanAIResult = {
@@ -31,7 +38,10 @@ function shouldRetryStatus(status: number) {
   return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
-export async function generateLessonPlanAIWithMeta(input: LessonPlanInput): Promise<LessonPlanAIResult> {
+export async function generateLessonPlanAIWithMeta(
+  input: LessonPlanInput,
+  options?: { liteMode?: boolean }
+): Promise<LessonPlanAIResult> {
   console.log("Generating lesson plan for:", input);
   
   const systemPrompt = `You are Quizmints AI, a highly experienced DepEd-aligned lesson plan generator. You have 20+ years of teaching experience and create comprehensive, practical lesson plans that teachers can implement immediately.
@@ -171,6 +181,8 @@ Generate ${input.days} days of content. Make sure each day has:
 5. Differentiation strategies
 6. Lesson closure
 
+${input.ragContext ? `\nRETRIEVED CONTEXT (assistive):\n${input.ragContext}\n\nUse the retrieved context to improve factual accuracy and examples, but do not degrade pedagogical structure, sequencing, or JSON format.` : ""}
+
 Return ONLY valid JSON, no other text.`;
 
   const model = input.isProOrPremium
@@ -184,11 +196,18 @@ Return ONLY valid JSON, no other text.`;
     process.env.OPENROUTER_FALLBACK_MODEL_LESSON ||
     process.env.OPENROUTER_FALLBACK_MODEL ||
     "openai/gpt-4o-mini";
+  const maxTokens = options?.liteMode
+    ? Number(process.env.LESSON_PLAN_MAX_TOKENS_LITE || 4200)
+    : Number(process.env.LESSON_PLAN_MAX_TOKENS || 8000);
 
   let retryCount = 0;
   let fallbackUsed = false;
   let finalModel = model;
   let finalProvider: string | null = null;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let estimatedCostUsd = 0;
 
   const callOpenRouter = async (modelName: string) => {
     let attempt = 0;
@@ -219,7 +238,7 @@ Return ONLY valid JSON, no other text.`;
             }
           ],
           temperature: 0.3,
-          max_tokens: Number(process.env.LESSON_PLAN_MAX_TOKENS || 8000),
+          max_tokens: maxTokens,
         }),
       });
 
@@ -252,19 +271,44 @@ Return ONLY valid JSON, no other text.`;
               ? data.error.metadata.provider_name
               : null;
 
-      return data?.choices?.[0]?.message?.content || "";
+      const usage = extractOpenRouterUsage(data);
+      const cost = usage ? estimateOpenRouterCost(modelName, usage) : null;
+
+      return {
+        raw: data?.choices?.[0]?.message?.content || "",
+        usage,
+        cost,
+      };
     }
   };
 
   try {
     let raw = "";
     try {
-      raw = await callOpenRouter(model);
+      const aiCall = await callOpenRouter(model);
+      raw = aiCall.raw;
+      if (aiCall.usage) {
+        promptTokens += aiCall.usage.promptTokens;
+        completionTokens += aiCall.usage.completionTokens;
+        totalTokens += aiCall.usage.totalTokens;
+      }
+      if (aiCall.cost) {
+        estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+      }
     } catch (primaryErr) {
       if (fallbackModel && fallbackModel !== model) {
         console.warn("Primary lesson model failed, trying fallback:", fallbackModel);
         fallbackUsed = true;
-        raw = await callOpenRouter(fallbackModel);
+        const aiCall = await callOpenRouter(fallbackModel);
+        raw = aiCall.raw;
+        if (aiCall.usage) {
+          promptTokens += aiCall.usage.promptTokens;
+          completionTokens += aiCall.usage.completionTokens;
+          totalTokens += aiCall.usage.totalTokens;
+        }
+        if (aiCall.cost) {
+          estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+        }
       } else {
         throw primaryErr;
       }
@@ -294,6 +338,10 @@ Return ONLY valid JSON, no other text.`;
         fallbackUsed,
         finalModel,
         finalProvider,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCostUsd: Number(estimatedCostUsd.toFixed(8)),
       },
     };
     
@@ -307,13 +355,17 @@ Return ONLY valid JSON, no other text.`;
         fallbackUsed,
         finalModel,
         finalProvider,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCostUsd: Number(estimatedCostUsd.toFixed(8)),
       },
     };
   }
 }
 
-export async function generateLessonPlanAI(input: LessonPlanInput) {
-  const result = await generateLessonPlanAIWithMeta(input);
+export async function generateLessonPlanAI(input: LessonPlanInput, options?: { liteMode?: boolean }) {
+  const result = await generateLessonPlanAIWithMeta(input, options);
   return result.lessonPlan;
 }
 

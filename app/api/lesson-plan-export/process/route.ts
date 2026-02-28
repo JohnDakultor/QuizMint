@@ -59,10 +59,12 @@ export async function POST(req: NextRequest) {
       jobId = nextQueued.id;
     }
 
-    const job = await processLessonPlanExportJob(jobId, user.id);
-    if (!job) {
+    const processed = await processLessonPlanExportJob(jobId, user.id);
+    if (!processed) {
       return apiError(404, "Job not found", requestId);
     }
+    const job = processed.job;
+    const telemetry = processed.telemetry || { costUsd: 0 };
 
     if (job.status === "failed") {
       await trackGenerationEvent({
@@ -72,10 +74,29 @@ export async function POST(req: NextRequest) {
         status: "failed",
         plan: eventPlan,
         latencyMs: Date.now() - startedAt,
+        costUsd: typeof telemetry.costUsd === "number" ? telemetry.costUsd : 0,
         metadata: {
           jobId: job.id,
           format: job.format,
           error: job.error || null,
+          ...telemetry,
+        },
+      });
+    }
+
+    if (job.status === "completed") {
+      await trackGenerationEvent({
+        userId: user.id,
+        eventType: "export_generated",
+        feature: "lesson_plan_export",
+        status: "success",
+        plan: eventPlan,
+        latencyMs: Date.now() - startedAt,
+        costUsd: typeof telemetry.costUsd === "number" ? telemetry.costUsd : 0,
+        metadata: {
+          jobId: job.id,
+          format: job.format,
+          ...telemetry,
         },
       });
     }
@@ -98,6 +119,7 @@ export async function POST(req: NextRequest) {
         status: "failed",
         plan: eventPlan,
         latencyMs: Date.now() - startedAt,
+        costUsd: 0,
         metadata: {
           providerIssue: true,
           provider: providerError.provider ?? "unknown",
@@ -113,6 +135,7 @@ export async function POST(req: NextRequest) {
       status: "failed",
       plan: eventPlan,
       latencyMs: Date.now() - startedAt,
+      costUsd: 0,
       metadata: { message: err?.message || "Failed to process job" },
     });
     logApiError(requestId, "lesson-plan-export/process", err);

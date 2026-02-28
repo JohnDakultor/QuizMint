@@ -24,6 +24,7 @@ type UserSubscription = {
   stripeCustomerId: string | null;
   aiDifficulty?: "easy" | "medium" | "hard";
   adaptiveLearning?: boolean;
+  liteMode?: boolean;
 };
 
 import { useRouter } from "next/navigation";
@@ -36,6 +37,7 @@ export default function Account() {
   const [difficulty, setDifficulty] =
     useState<UserSubscription["aiDifficulty"]>("medium");
   const [adaptiveLearning, setAdaptiveLearning] = useState<boolean>(false);
+  const [liteMode, setLiteMode] = useState<boolean>(false);
 
   const router = useRouter();
 
@@ -49,6 +51,7 @@ export default function Account() {
       setUser(data.user);
       setDifficulty(data.user?.aiDifficulty ?? "medium");
       setAdaptiveLearning(Boolean(data.user?.adaptiveLearning ?? false));
+      setLiteMode(Boolean(data.user?.liteMode ?? false));
     } catch (err: any) {
       setError(err.message || "Failed to load account");
     } finally {
@@ -72,10 +75,11 @@ export default function Account() {
       const res = await fetch("/api/update-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ difficulty, adaptiveLearning }),
+        body: JSON.stringify({ difficulty, adaptiveLearning, liteMode }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save settings");
+      applyLiteMode(liteMode);
       await fetchAccount();
       alert("Settings updated");
     } catch (err: any) {
@@ -148,6 +152,14 @@ export default function Account() {
             popover: {
               title: "Save preferences",
               description: "Apply your AI preference changes.",
+            },
+          },
+          {
+            element: "#account-lite-mode",
+            popover: {
+              title: "Lite mode",
+              description:
+                "Turn on low-bandwidth mode to reduce visual overhead for weaker internet or devices.",
             },
           },
         ]}
@@ -332,6 +344,36 @@ export default function Account() {
                   disabled={!isPremium}
                 />
                 <div className="w-14 h-8 bg-zinc-200 peer-checked:bg-violet-600 rounded-full peer-focus:ring-2 peer-focus:ring-violet-300 transition-colors"></div>
+                <span className="absolute left-1 top-1 w-6 h-6 rounded-full bg-white shadow transform peer-checked:translate-x-6 transition-transform" />
+              </label>
+            </div>
+          </div>
+
+          <div
+            id="account-lite-mode"
+            className="mt-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/50 px-4 py-3"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                  Lite Mode (All Plans)
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Reduces transitions and UI overhead for low-bandwidth or low-performance environments.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={liteMode}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setLiteMode(next);
+                    applyLiteMode(next);
+                  }}
+                />
+                <div className="w-14 h-8 bg-zinc-200 peer-checked:bg-sky-600 rounded-full peer-focus:ring-2 peer-focus:ring-sky-300 transition-colors"></div>
                 <span className="absolute left-1 top-1 w-6 h-6 rounded-full bg-white shadow transform peer-checked:translate-x-6 transition-transform" />
               </label>
             </div>
@@ -539,3 +581,8 @@ function FeatureRow({
     </div>
   );
 }
+  const applyLiteMode = (enabled: boolean) => {
+    if (typeof document === "undefined") return;
+    document.documentElement.setAttribute("data-lite-mode", enabled ? "true" : "false");
+    localStorage.setItem("quizmint_lite_mode", enabled ? "1" : "0");
+  };

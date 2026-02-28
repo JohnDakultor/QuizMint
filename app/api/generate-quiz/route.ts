@@ -483,6 +483,7 @@ export async function POST(req: NextRequest) {
       return apiError(404, "User not found", requestId);
     eventUserId = user.id;
     eventPlan = user.subscriptionPlan || "free";
+    const liteMode = Boolean((user as any).liteMode);
 
 
     console.log("User found:", {
@@ -491,7 +492,8 @@ export async function POST(req: NextRequest) {
       subscriptionPlan: user.subscriptionPlan,
       aiDifficulty: user.aiDifficulty,
       adaptiveLearning: user.adaptiveLearning,
-      quizUsage: user.quizUsage
+      quizUsage: user.quizUsage,
+      liteMode,
     });
 
     const now = new Date();
@@ -696,7 +698,11 @@ export async function POST(req: NextRequest) {
     const namespace = isPromptOnly ? webNamespace : isUrlInput ? urlNamespace : baseNamespace;
 
     let webDebug: any = null;
-    if (isPromptOnly) {
+    if (liteMode) {
+      // Lite mode: skip heavy web/url ingestion and semantic retrieval for faster low-bandwidth flow.
+      stageMs.ingest = 0;
+      stageMs.rag = 0;
+    } else if (isPromptOnly) {
       const docCountRows = await prisma.$queryRaw<{ count: number }[]>`
         SELECT COUNT(*)::int AS count FROM "Document" WHERE namespace = ${namespace}
       `;
@@ -747,14 +753,31 @@ export async function POST(req: NextRequest) {
 
     ensureNotAborted();
 
-    const ragStartedAt = Date.now();
-    const { enhancedPrompt, cachedResponse, sources, ragMeta, hasContext, sourceMode } =
-      await enhancePromptWithRAG({
+    let enhancedPrompt = content;
+    let cachedResponse: string | null = null;
+    let sources: any[] = [];
+    let ragMeta: {
+      promptForCache: string;
+      embedding: number[];
+      namespace: string;
+    } | null = null;
+    let hasContext = false;
+    let sourceMode: string | null = null;
+    if (!liteMode) {
+      const ragStartedAt = Date.now();
+      const ragResult = await enhancePromptWithRAG({
         finalPrompt: content,
         namespace,
         topK: isPromptOnly ? 5 : 5,
       });
-    stageMs.rag = Date.now() - ragStartedAt;
+      enhancedPrompt = ragResult.enhancedPrompt;
+      cachedResponse = ragResult.cachedResponse ?? null;
+      sources = ragResult.sources ?? [];
+      ragMeta = ragResult.ragMeta ?? null;
+      hasContext = ragResult.hasContext ?? false;
+      sourceMode = ragResult.sourceMode ?? "none";
+      stageMs.rag = Date.now() - ragStartedAt;
+    }
 
     // Generate quiz with safe parameters
     ensureNotAborted();
@@ -767,7 +790,8 @@ export async function POST(req: NextRequest) {
           safeDifficulty,
           safeAdaptive,
           isProOrPremium,
-          text
+          text,
+          { liteMode }
         );
     const quiz = cachedResponse ? JSON.parse(cachedResponse) : aiResult!.quiz;
     if (!cachedResponse) {
@@ -775,7 +799,7 @@ export async function POST(req: NextRequest) {
     }
 
     let cacheStored = false;
-    if (ragMeta && !cachedResponse) {
+    if (!liteMode && ragMeta && !cachedResponse) {
       try {
         const cacheStoreStartedAt = Date.now();
         ensureNotAborted();
@@ -842,7 +866,9 @@ export async function POST(req: NextRequest) {
       status: "success",
       plan: eventPlan,
       latencyMs: Date.now() - startedAt,
+      costUsd: aiResult?.meta.estimatedCostUsd ?? 0,
       metadata: {
+        liteMode,
         sourceMode: sourceMode ?? "none",
         sourceCount: (sources ?? []).length,
         cacheHit: Boolean(cachedResponse),
@@ -850,6 +876,10 @@ export async function POST(req: NextRequest) {
         fallbackUsed: aiResult?.meta.fallbackUsed ?? false,
         finalModel: aiResult?.meta.finalModel ?? null,
         finalProvider: aiResult?.meta.finalProvider ?? null,
+        promptTokens: aiResult?.meta.promptTokens ?? 0,
+        completionTokens: aiResult?.meta.completionTokens ?? 0,
+        totalTokens: aiResult?.meta.totalTokens ?? 0,
+        costUsd: aiResult?.meta.estimatedCostUsd ?? 0,
         stageMs,
       },
     });
@@ -857,13 +887,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       message: "Quiz generated successfully",
       quiz: savedQuiz,
-      sources: sources ?? [],
-      webDebug,
-      sourceTrace: {
-        mode: sourceMode ?? "none",
-        fromCache: Boolean(cachedResponse),
-        sourceCount: (sources ?? []).length,
-      },
+      ...(liteMode
+        ? {}
+        : {
+            sources: sources ?? [],
+            webDebug,
+            sourceTrace: {
+              mode: sourceMode ?? "none",
+              fromCache: Boolean(cachedResponse),
+              sourceCount: (sources ?? []).length,
+            },
+          }),
       quizUsage: isFree ? user.quizUsage + 1 : null,
       remaining: isFree ? FREE_QUIZ_LIMIT - (user.quizUsage + 1) : null,
       cache: {
@@ -881,6 +915,7 @@ export async function POST(req: NextRequest) {
         status: "aborted",
         plan: eventPlan,
         latencyMs: Date.now() - startedAt,
+        costUsd: 0,
         metadata: { stageMs },
       });
       return NextResponse.json(
@@ -908,6 +943,7 @@ export async function POST(req: NextRequest) {
         status: "failed",
         plan: eventPlan,
         latencyMs: Date.now() - startedAt,
+        costUsd: 0,
         metadata: {
           providerIssue: true,
           provider: providerError.provider ?? "unknown",
@@ -931,6 +967,7 @@ export async function POST(req: NextRequest) {
       status: "failed",
       plan: eventPlan,
       latencyMs: Date.now() - startedAt,
+      costUsd: 0,
       metadata: { message: String(err?.message || "unknown_error"), stageMs },
     });
     logApiError(requestId, "generate-quiz", err);

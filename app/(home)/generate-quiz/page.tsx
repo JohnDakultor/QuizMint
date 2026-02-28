@@ -449,6 +449,7 @@ import Tour from "@/components/ui/tour";
 import AdUnlockButton from "@/components/ad-unlock-button";
 import SkeletonLoading from "@/components/ui/skeleton-loading";
 import LoadingProgress from "@/components/ui/loading-progress";
+import LiteModeBadge from "@/components/ui/lite-mode-badge";
 import { useSearchParams } from "next/navigation";
 
 export default function Dashboard() {
@@ -470,6 +471,7 @@ export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const liteMode = Boolean(user?.liteMode);
   const quizRef = useRef<HTMLDivElement>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const attachRequestId = (message: string, data: any) =>
@@ -779,16 +781,10 @@ export default function Dashboard() {
     setSources([]);
     setAdUnlockInfo(null);
 
-    let timedOut = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
       generationAbortRef.current?.abort();
       const controller = new AbortController();
       generationAbortRef.current = controller;
-      timeoutId = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, 120000);
 
       const difficulty = user?.aiDifficulty || "easy";
       const adaptiveLearning = user?.adaptiveLearning ?? false;
@@ -897,18 +893,13 @@ export default function Dashboard() {
     }
   } catch (err: any) {
     if (err?.name === "AbortError") {
-      if (timedOut) {
-        setError("Generation took too long. Please try again.");
-      } else {
-        setError("");
-        setInfoMessage("Generation paused.");
-      }
+      setError("");
+      setInfoMessage("Generation paused.");
       return;
     }
    
     setError(err.message || "Failed to generate quiz");
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
     generationAbortRef.current = null;
       setLoading(false);
     }
@@ -922,8 +913,9 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-      <Tour steps={tourSteps} tourId="home-quiz" />
-      <div className="text-center">
+      {!liteMode && <Tour steps={tourSteps} tourId="home-quiz" />}
+      <div className="relative text-center pt-10 sm:pt-0">
+        <LiteModeBadge className="absolute right-0 top-0" />
         <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
           Quiz Generator
         </h1>
@@ -1057,7 +1049,7 @@ export default function Dashboard() {
               </Alert>
             )}
 
-            {adUnlockInfo && (
+            {adUnlockInfo && !liteMode && (
               <AdUnlockButton
                 disabled={!adUnlockInfo.available}
                 cooldownUntil={adUnlockInfo.nextAdResetAt || undefined}

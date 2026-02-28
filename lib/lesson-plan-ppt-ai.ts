@@ -1,4 +1,6 @@
 // lib/lesson-plan-ppt-ai.ts
+import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
+
 interface LessonPlanPptInput {
   lessonPlan: any;
   topic: string;
@@ -27,6 +29,10 @@ export type LessonPlanPptAIMeta = {
   fallbackUsed: boolean;
   finalModel: string;
   finalProvider: string | null;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
 };
 
 export type LessonPlanPptAIResult = {
@@ -174,7 +180,10 @@ function extractRichContentFromLessonPlan(lessonPlan: any) {
   });
 }
 
-export async function generateLessonPlanPptAIWithMeta(input: LessonPlanPptInput): Promise<LessonPlanPptAIResult> {
+export async function generateLessonPlanPptAIWithMeta(
+  input: LessonPlanPptInput,
+  options?: { liteMode?: boolean }
+): Promise<LessonPlanPptAIResult> {
   const extractedContent = extractRichContentFromLessonPlan(input.lessonPlan);
   
   // Build comprehensive outline from ALL available data
@@ -254,6 +263,8 @@ INSTRUCTIONS:
 5. Structure: Title → Objectives → Daily content → Summary
 6. Each slide should have ACTUAL EDUCATIONAL CONTENT
 
+${options?.liteMode ? '7. Keep output compact for low-bandwidth mode (target 6-8 slides).' : ''}
+
 IMPORTANT: DO NOT make generic slides. Use the specific content provided above to create meaningful educational material about "${input.topic}".`;
 
   const model = input.isProOrPremium
@@ -267,11 +278,18 @@ IMPORTANT: DO NOT make generic slides. Use the specific content provided above t
     process.env.OPENROUTER_FALLBACK_MODEL_PPT ||
     process.env.OPENROUTER_FALLBACK_MODEL ||
     "openai/gpt-4o-mini";
+  const maxTokens = options?.liteMode
+    ? Number(process.env.LESSON_PLAN_PPT_MAX_TOKENS_LITE || 3500)
+    : Number(process.env.LESSON_PLAN_PPT_MAX_TOKENS || 8000);
 
   let retryCount = 0;
   let fallbackUsed = false;
   let finalModel = model;
   let finalProvider: string | null = null;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let estimatedCostUsd = 0;
 
   const callOpenRouter = async (modelName: string) => {
     let attempt = 0;
@@ -294,7 +312,7 @@ IMPORTANT: DO NOT make generic slides. Use the specific content provided above t
             { role: "user", content: userPrompt },
           ],
           temperature: 0.3,
-          max_tokens: Number(process.env.LESSON_PLAN_PPT_MAX_TOKENS || 8000),
+          max_tokens: maxTokens,
         }),
       });
 
@@ -324,19 +342,43 @@ IMPORTANT: DO NOT make generic slides. Use the specific content provided above t
             : typeof data?.error?.metadata?.provider_name === "string"
               ? data.error.metadata.provider_name
               : null;
-      return data?.choices?.[0]?.message?.content || "";
+      const usage = extractOpenRouterUsage(data);
+      const cost = usage ? estimateOpenRouterCost(modelName, usage) : null;
+      return {
+        raw: data?.choices?.[0]?.message?.content || "",
+        usage,
+        cost,
+      };
     }
   };
 
   try {
     let raw = "";
     try {
-      raw = await callOpenRouter(model);
+      const aiCall = await callOpenRouter(model);
+      raw = aiCall.raw;
+      if (aiCall.usage) {
+        promptTokens += aiCall.usage.promptTokens;
+        completionTokens += aiCall.usage.completionTokens;
+        totalTokens += aiCall.usage.totalTokens;
+      }
+      if (aiCall.cost) {
+        estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+      }
     } catch (primaryErr) {
       if (fallbackModel && fallbackModel !== model) {
         console.warn("Primary PPT model failed, trying fallback:", fallbackModel);
         fallbackUsed = true;
-        raw = await callOpenRouter(fallbackModel);
+        const aiCall = await callOpenRouter(fallbackModel);
+        raw = aiCall.raw;
+        if (aiCall.usage) {
+          promptTokens += aiCall.usage.promptTokens;
+          completionTokens += aiCall.usage.completionTokens;
+          totalTokens += aiCall.usage.totalTokens;
+        }
+        if (aiCall.cost) {
+          estimatedCostUsd += aiCall.cost.estimatedCostUsd;
+        }
       } else {
         throw primaryErr;
       }
@@ -348,7 +390,16 @@ IMPORTANT: DO NOT make generic slides. Use the specific content provided above t
       console.warn("Invalid PPT AI response, using content-rich fallback");
       return {
         deck: buildContentRichFallbackDeck(input, outline),
-        meta: { retryCount, fallbackUsed, finalModel, finalProvider },
+        meta: {
+          retryCount,
+          fallbackUsed,
+          finalModel,
+          finalProvider,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          estimatedCostUsd: Number(estimatedCostUsd.toFixed(8)),
+        },
       };
     }
     
@@ -372,7 +423,16 @@ IMPORTANT: DO NOT make generic slides. Use the specific content provided above t
       console.warn("AI generated insufficient content, using fallback");
       return {
         deck: buildContentRichFallbackDeck(input, outline),
-        meta: { retryCount, fallbackUsed, finalModel, finalProvider },
+        meta: {
+          retryCount,
+          fallbackUsed,
+          finalModel,
+          finalProvider,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          estimatedCostUsd: Number(estimatedCostUsd.toFixed(8)),
+        },
       };
     }
 
@@ -381,19 +441,40 @@ IMPORTANT: DO NOT make generic slides. Use the specific content provided above t
     
     return {
       deck,
-      meta: { retryCount, fallbackUsed, finalModel, finalProvider },
+      meta: {
+        retryCount,
+        fallbackUsed,
+        finalModel,
+        finalProvider,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCostUsd: Number(estimatedCostUsd.toFixed(8)),
+      },
     };
   } catch (err) {
     console.error("PPT AI generation failed:", err);
     return {
       deck: buildContentRichFallbackDeck(input, outline),
-      meta: { retryCount, fallbackUsed, finalModel, finalProvider },
+      meta: {
+        retryCount,
+        fallbackUsed,
+        finalModel,
+        finalProvider,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        estimatedCostUsd: Number(estimatedCostUsd.toFixed(8)),
+      },
     };
   }
 }
 
-export async function generateLessonPlanPptAI(input: LessonPlanPptInput): Promise<PptDeck> {
-  const result = await generateLessonPlanPptAIWithMeta(input);
+export async function generateLessonPlanPptAI(
+  input: LessonPlanPptInput,
+  options?: { liteMode?: boolean }
+): Promise<PptDeck> {
+  const result = await generateLessonPlanPptAIWithMeta(input, options);
   return result.deck;
 }
 

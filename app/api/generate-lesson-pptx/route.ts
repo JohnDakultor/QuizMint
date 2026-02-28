@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true, subscriptionPlan: true },
+      select: { id: true, subscriptionPlan: true, liteMode: true },
     });
 
     if (!user) {
@@ -53,7 +53,9 @@ export async function POST(req: NextRequest) {
       return apiError(400, "Invalid deck", requestId);
     }
 
-    const pptxBuffer = await generateLessonPlanPptx(deck);
+    const pptxBuffer = await generateLessonPlanPptx(deck, {
+      liteMode: Boolean((user as any).liteMode),
+    });
     await trackGenerationEvent({
       userId: user.id,
       eventType: "pptx_generated",
@@ -61,6 +63,7 @@ export async function POST(req: NextRequest) {
       status: "success",
       plan: eventPlan,
       latencyMs: Date.now() - startedAt,
+      costUsd: 0,
       metadata: { slideCount: deck.slides.length },
     });
     return new Response(new Uint8Array(pptxBuffer), {
@@ -83,6 +86,7 @@ export async function POST(req: NextRequest) {
         status: "failed",
         plan: eventPlan,
         latencyMs: Date.now() - startedAt,
+        costUsd: 0,
         metadata: {
           providerIssue: true,
           provider: providerError.provider ?? "unknown",
@@ -98,6 +102,7 @@ export async function POST(req: NextRequest) {
       status: "failed",
       plan: eventPlan,
       latencyMs: Date.now() - startedAt,
+      costUsd: 0,
       metadata: { message: String(err?.message || "unknown_error") },
     });
     return apiError(500, `Failed to generate PPTX: ${err.message}`, requestId);

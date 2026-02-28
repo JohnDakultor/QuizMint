@@ -183,6 +183,7 @@ export async function GET(req: NextRequest) {
         paypalCustomerId: true, // Add this
         aiDifficulty: true,
         adaptiveLearning: true,
+        liteMode: true,
       },
     });
 
