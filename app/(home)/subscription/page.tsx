@@ -335,7 +335,17 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Loader2, CreditCard, Radio, Lock, Zap } from "lucide-react";
+import {
+  Loader2,
+  CreditCard,
+  Radio,
+  Lock,
+  Zap,
+  Wallet,
+  Smartphone,
+  Apple,
+  type LucideIcon,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 type CurrencyData = {
@@ -374,7 +384,7 @@ const paymentMethods = [
   {
     id: "stripe",
     name: "Credit/Debit Card",
-    icon: "CARD",
+    icon: CreditCard,
     description: "Pay with Visa, Mastercard, Amex",
     color: "from-purple-500 to-purple-700",
     textColor: "text-white",
@@ -384,7 +394,7 @@ const paymentMethods = [
   {
     id: "paypal",
     name: "PayPal",
-    icon: "PP",
+    icon: Wallet,
     description: "Pay with your PayPal account",
     color: "from-blue-500 to-blue-700",
     textColor: "text-white",
@@ -392,26 +402,45 @@ const paymentMethods = [
     available: true,
   },
   {
-    id: "gcash",
-    name: "GCash",
-    icon: "G",
-    description: "Pay with GCash wallet",
-    color: "from-blue-500 to-sky-700",
+    id: "gpay",
+    name: "Google Pay",
+    icon: Smartphone,
+    description: "Requires Stripe (coming soon)",
+    color: "from-emerald-500 to-teal-700",
     textColor: "text-white",
-    gradient: "bg-gradient-to-r from-blue-600 to-sky-800",
-    available: true,
+    gradient: "bg-gradient-to-r from-emerald-600 to-teal-800",
+    available: false,
   },
   {
     id: "applepay",
     name: "Apple Pay",
-    icon: "AP",
-    description: "Fast checkout with Apple Pay",
-    color: "from-gray-800 to-gray-900",
+    icon: Apple,
+    description: "Requires Stripe (coming soon)",
+    color: "from-zinc-700 to-black",
     textColor: "text-white",
-    gradient: "bg-gradient-to-r from-gray-900 to-black",
-    available: false, // Coming soon
+    gradient: "bg-gradient-to-r from-zinc-800 to-black",
+    available: false,
   },
-];
+  {
+    id: "gcash",
+    name: "GCash",
+    icon: Smartphone,
+    description: "Temporarily unavailable",
+    color: "from-blue-500 to-sky-700",
+    textColor: "text-white",
+    gradient: "bg-gradient-to-r from-blue-600 to-sky-800",
+    available: false, // Temporarily disabled
+  },
+] as const satisfies ReadonlyArray<{
+  id: string;
+  name: string;
+  icon: LucideIcon;
+  description: string;
+  color: string;
+  textColor: string;
+  gradient: string;
+  available: boolean;
+}>;
 
 export default function Subscription() {
   const [loading, setLoading] = useState(false);
@@ -544,28 +573,12 @@ export default function Subscription() {
     }
   };
 
-  // Handle GCash checkout
-  const handleGCash = async (plan: "pro" | "premium") => {
-    setLoading(true);
-    setSelectedPlan(plan);
-    try {
-      const res = await fetch("/api/gcash/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planType: plan }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to start GCash checkout");
-      }
-      if (!data.checkoutUrl) {
-        throw new Error("Missing checkout URL");
-      }
-      window.location.href = data.checkoutUrl;
-    } catch (err: any) {
-      alert(`GCash error: ${err.message}`);
-      setLoading(false);
-    }
+  const handleGooglePay = async (plan: "pro" | "premium") => {
+    await handleStripe(plan);
+  };
+
+  const handleApplePay = async (plan: "pro" | "premium") => {
+    await handleStripe(plan);
   };
 
   // Handle proceed button click
@@ -595,8 +608,15 @@ export default function Subscription() {
       case "paypal":
         handlePayPalSubscription(planToSubscribe);
         break;
+      case "gpay":
+        handleGooglePay(planToSubscribe);
+        break;
+      case "applepay":
+        handleApplePay(planToSubscribe);
+        break;
       case "gcash":
-        handleGCash(planToSubscribe);
+        alert("GCash is temporarily unavailable. Please use PayPal, Google Pay, or Apple Pay.");
+        setLoading(false);
         break;
       default:
         alert("Invalid payment method selected");
@@ -720,6 +740,7 @@ export default function Subscription() {
                   {paymentMethods.map((method) => {
                     const isSelected = selectedPaymentMethod === method.id;
                     const isAvailable = method.available;
+                    const MethodIcon = method.icon;
 
                     return (
                       <div
@@ -761,9 +782,7 @@ export default function Subscription() {
 
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1">
-                                <span className="text-lg leading-none">
-                                  {method.icon}
-                                </span>
+                                <MethodIcon className="h-4 w-4" />
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1">
                                     <span
@@ -864,6 +883,10 @@ export default function Subscription() {
                       className={`py-2 text-xs ${
                         selectedPaymentMethod === "stripe"
                           ? "bg-linear-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
+                        : selectedPaymentMethod === "gpay"
+                          ? "bg-linear-to-r from-emerald-500 to-teal-700 hover:from-emerald-600 hover:to-teal-800"
+                        : selectedPaymentMethod === "applepay"
+                          ? "bg-linear-to-r from-zinc-700 to-black hover:from-zinc-800 hover:to-black"
                         : selectedPaymentMethod === "gcash"
                           ? "bg-linear-to-r from-blue-500 to-sky-700 hover:from-blue-600 hover:to-sky-800"
                           : selectedPaymentMethod === "paypal"
