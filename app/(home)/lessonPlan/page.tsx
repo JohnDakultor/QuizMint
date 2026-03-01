@@ -1054,7 +1054,7 @@ import {
   Brain, ClipboardCheck, BookCheck, CheckCircle2,
   ArrowRight, ArrowLeftRight, FileQuestion, SquareCheck, Share2,
   RefreshCw,
-  FileText, PauseCircle, Printer
+  FileText, PauseCircle, FileUp
 } from "lucide-react";
 import { X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -1633,7 +1633,13 @@ export default function LessonPlanPage() {
   const [subscriptionPlan, setSubscriptionPlan] = useState<string>("free");
   const [liteMode, setLiteMode] = useState(false);
   const [pptxDeck, setPptxDeck] = useState<any | null>(null);
+  const [pptxDeckSource, setPptxDeckSource] = useState<"lesson_plan" | "lesson_material_upload">(
+    "lesson_plan"
+  );
   const [loadingSlides, setLoadingSlides] = useState(false);
+  const [slidesLoadingLabel, setSlidesLoadingLabel] = useState(
+    "Preparing editable PPTX slides..."
+  );
   const [lessonProgress, setLessonProgress] = useState(0);
   const [slidesProgress, setSlidesProgress] = useState(0);
   const [pptxProgress, setPptxProgress] = useState(0);
@@ -1650,7 +1656,15 @@ export default function LessonPlanPage() {
     fromCache: boolean;
     sourceCount: number;
   } | null>(null);
+  const [lessonMaterialUploadUsage, setLessonMaterialUploadUsage] = useState<{
+    used: number;
+    limit: number;
+    remaining: number;
+    resetAtMs: number | null;
+  } | null>(null);
+  const [countdownNowMs, setCountdownNowMs] = useState(() => Date.now());
   const lessonPlanRef = useRef<HTMLDivElement | null>(null);
+  const uploadLessonPlanInputRef = useRef<HTMLInputElement | null>(null);
   const lessonFormRef = useRef<HTMLFormElement | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const withRequestId = (message: string, payload: any) =>
@@ -1709,6 +1723,20 @@ export default function LessonPlanPage() {
         const plan = data?.user?.subscriptionPlan || "free";
         setLiteMode(Boolean(data?.user?.liteMode));
         setSubscriptionPlan(plan);
+        if (plan === "free" || !plan) {
+          const used = Number(data?.user?.lessonMaterialUploadUsage || 0);
+          const limit = 3;
+          const resetInSeconds = Number(data?.user?.lessonMaterialUploadResetInSeconds || 0);
+          const resetAtMs = resetInSeconds > 0 ? Date.now() + resetInSeconds * 1000 : null;
+          setLessonMaterialUploadUsage({
+            used,
+            limit,
+            remaining: Math.max(limit - used, 0),
+            resetAtMs,
+          });
+        } else {
+          setLessonMaterialUploadUsage(null);
+        }
       })
       .catch(() => {});
 
@@ -1742,6 +1770,12 @@ export default function LessonPlanPage() {
       generationAbortRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!lessonMaterialUploadUsage?.resetAtMs) return;
+    const timer = setInterval(() => setCountdownNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [lessonMaterialUploadUsage?.resetAtMs]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2012,10 +2046,22 @@ export default function LessonPlanPage() {
       
       if (!res.ok) {
         if (res.status === 403 && data.error === "Free limit reached") {
-          throw new Error(
-            `${withRequestId(data.message || `You've reached your limit of ${FREE_PLAN_LIMIT} lesson plans.`, data)}\n` +
-            (data.resetTime ? `Limit resets at: ${new Date(data.resetTime).toLocaleTimeString()}` : "")
+          const resetInSeconds = Number(data?.resetInSeconds || 0);
+          const hh = Math.floor(resetInSeconds / 3600);
+          const mm = Math.floor((resetInSeconds % 3600) / 60);
+          const ss = Math.floor(resetInSeconds % 60);
+          const waitTime =
+            resetInSeconds > 0
+              ? `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`
+              : "about 3 hours";
+          setError(null);
+          setInfoMessage(
+            withRequestId(
+              `Free limit reached. You can generate up to ${FREE_PLAN_LIMIT} lesson plans every 3 hours. Try Pro or Premium now. Please try again in ${waitTime}.`,
+              data
+            )
           );
+          return;
         }
         if (res.status === 403 && data.error === "Premium required") {
           throw new Error(
@@ -2074,7 +2120,7 @@ export default function LessonPlanPage() {
     }
 
     try {
-      if (!isPremium) {
+      if (format === "pptx" && !isPremium) {
         throw new Error("Premium is required to download lesson plan files.");
       }
 
@@ -2132,9 +2178,6 @@ export default function LessonPlanPage() {
     if (!lessonPlanRef.current || !formDataObject) return;
     setDownloadingPdf(true);
     try {
-      if (!isPremium) {
-        throw new Error("Premium is required to download lesson plan files.");
-      }
       const element = lessonPlanRef.current;
       const styles = await collectStyles();
       const renderRoot = element.cloneNode(true) as HTMLElement;
@@ -2312,6 +2355,7 @@ export default function LessonPlanPage() {
       setError("Premium is required to edit and download PPTX.");
       return;
     }
+    setSlidesLoadingLabel("Preparing editable PPTX slides...");
     setLoadingSlides(true);
     try {
       const res = await fetch("/api/lesson-plan-slides", {
@@ -2330,6 +2374,7 @@ export default function LessonPlanPage() {
         throw new Error(withRequestId(data.error || "Failed to generate slides.", data));
       }
       setPptxDeck(data.deck);
+      setPptxDeckSource("lesson_plan");
       setShowPptxEditor(true);
     } catch (err: any) {
       setError(err.message || "Failed to generate slides.");
@@ -2338,10 +2383,68 @@ export default function LessonPlanPage() {
     }
   }
 
-  function printLessonPlan() {
-    if (!lessonPlan) return;
-    if (typeof window !== "undefined") {
-      window.print();
+  function openLessonPlanUploadPicker() {
+    if (loadingSlides) return;
+    uploadLessonPlanInputRef.current?.click();
+  }
+
+  async function handleLessonPlanFileUpload(file: File) {
+    if (!file) return;
+    setError(null);
+    setInfoMessage(null);
+    setSlidesLoadingLabel("Parsing uploaded file and generating editable slides...");
+    setLoadingSlides(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      // Do not auto-inject current lesson form inputs into uploaded-file generation.
+      // This keeps uploaded-file prompts based on file content unless backend defaults apply.
+
+      const res = await fetch("/api/lesson-material-from-file", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data?.usage && typeof data.usage === "object") {
+          const resetInSeconds = Number(data?.usage?.resetInSeconds || 0);
+          const resetAtMs = resetInSeconds > 0 ? Date.now() + resetInSeconds * 1000 : null;
+          setLessonMaterialUploadUsage({
+            used: Number(data.usage.used || 0),
+            limit: Number(data.usage.limit || 3),
+            remaining: Number(data.usage.remaining || 0),
+            resetAtMs,
+          });
+        }
+        throw new Error(
+          withRequestId(
+            data?.error || data?.message || "Failed to generate lesson material",
+            data
+          )
+        );
+      }
+
+      setPptxDeck(data.deck);
+      setPptxDeckSource("lesson_material_upload");
+      setShowPptxEditor(true);
+      if (data?.usage && typeof data.usage === "object") {
+        const resetInSeconds = Number(data?.usage?.resetInSeconds || 0);
+        const resetAtMs = resetInSeconds > 0 ? Date.now() + resetInSeconds * 1000 : null;
+        setLessonMaterialUploadUsage({
+          used: Number(data.usage.used || 0),
+          limit: Number(data.usage.limit || 3),
+          remaining: Number(data.usage.remaining || 0),
+          resetAtMs,
+        });
+      }
+      setInfoMessage("Uploaded lesson plan converted to editable slides.");
+    } catch (err: any) {
+      setError(err?.message || "Failed to generate lesson material from uploaded file.");
+    } finally {
+      setLoadingSlides(false);
+      if (uploadLessonPlanInputRef.current) {
+        uploadLessonPlanInputRef.current.value = "";
+      }
     }
   }
 
@@ -2370,7 +2473,7 @@ export default function LessonPlanPage() {
       const res = await fetch("/api/generate-lesson-pptx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deck: pptxDeck }),
+        body: JSON.stringify({ deck: pptxDeck, source: pptxDeckSource }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -2508,6 +2611,14 @@ export default function LessonPlanPage() {
         title: "Share template",
         description:
           "Share your current lesson input template using the device share menu.",
+      },
+    },
+    {
+      element: "#lessonplan-upload-file",
+      popover: {
+        title: "Upload Lesson File",
+        description:
+          "Upload a lesson plan file (PDF, DOCX, PPTX, XLSX, TXT, CSV, MD) to generate editable slides.",
       },
     },
     {
@@ -2766,7 +2877,62 @@ export default function LessonPlanPage() {
                 <Share2 className="mr-1 h-3.5 w-3.5" />
                 Share Template
               </Button>
+              <Button
+                id="lessonplan-upload-file"
+                type="button"
+                variant="outline"
+                onClick={openLessonPlanUploadPicker}
+                disabled={
+                  loadingSlides ||
+                  (isFree && (lessonMaterialUploadUsage?.remaining ?? 3) <= 0)
+                }
+                className="text-xs"
+              >
+                <FileUp className="mr-1 h-3.5 w-3.5" />
+                Upload Lesson Plan File
+              </Button>
+              <input
+                ref={uploadLessonPlanInputRef}
+                type="file"
+                accept=".txt,.docx,.pdf,.ppt,.pptx,.xlsx,.csv,.md"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void handleLessonPlanFileUpload(file);
+                  }
+                }}
+              />
             </div>
+
+            {isFree && lessonMaterialUploadUsage && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                File-to-PPTX uploads: {lessonMaterialUploadUsage.used}/{lessonMaterialUploadUsage.limit} used
+                {" • "}
+                {lessonMaterialUploadUsage.remaining} remaining
+                {lessonMaterialUploadUsage.resetAtMs &&
+                  lessonMaterialUploadUsage.remaining <= 0 && (
+                  <>
+                    {" • "}
+                    resets in{" "}
+                    {(() => {
+                      const remainingMs = Math.max(
+                        lessonMaterialUploadUsage.resetAtMs - countdownNowMs,
+                        0
+                      );
+                      const hh = Math.floor(remainingMs / (1000 * 60 * 60));
+                      const mm = Math.floor(
+                        (remainingMs % (1000 * 60 * 60)) / (1000 * 60)
+                      );
+                      const ss = Math.floor((remainingMs % (1000 * 60)) / 1000);
+                      return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(
+                        ss
+                      ).padStart(2, "0")}`;
+                    })()}
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-stretch">
               <Button
@@ -2889,19 +3055,10 @@ export default function LessonPlanPage() {
                 )}
               </div>
               <div className="flex gap-3">
-                <Button
-                  onClick={printLessonPlan}
-                  variant="outline"
-                  className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                  data-print-hidden
-                >
-                  <Printer className="mr-2 h-4 w-4" />
-                  Print
-                </Button>
                 <Button 
                   onClick={downloadLessonPlanPdfFromUi}
-                  disabled={downloadingPdf || !isPremium}
-                  variant={!isPremium ? "outline" : "default"}
+                  disabled={downloadingPdf}
+                  variant="default"
                   className="bg-linear-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white shadow-lg"
                   data-print-hidden
                 >
@@ -2910,13 +3067,13 @@ export default function LessonPlanPage() {
                   ) : (
                     <FileText className="mr-2 h-4 w-4" />
                   )}
-                  {!isPremium ? "Premium Only" : "Download PDF"}
+                  Download PDF
                 </Button>
                 
                 <Button 
                   onClick={() => downloadLessonPlan("docx")}
-                  disabled={downloading || !isPremium}
-                  variant={!isPremium ? "outline" : "default"}
+                  disabled={downloading}
+                  variant="default"
                   className="bg-white text-blue-600 hover:bg-blue-50 border-0 font-semibold shadow-lg"
                   data-print-hidden
                 >
@@ -2925,9 +3082,9 @@ export default function LessonPlanPage() {
                   ) : (
                     <Download className="mr-2" />
                   )}
-                  {!isPremium ? "Premium Only" : "Download DOCX"}
+                  Download DOCX
                 </Button>
-                {isPremium && (
+                {!!pendingExportJobs.length && (
                   <Button
                     onClick={retryPendingExportDownload}
                     disabled={retryingPendingExport || !pendingExportJobs.length}
@@ -2948,22 +3105,24 @@ export default function LessonPlanPage() {
           </div>
 
           <CardContent className="p-6 space-y-8">
-            <Button
-              onClick={loadPptxSlidesForEdit}
-              disabled={loadingSlides || !isPremium}
-              variant="ghost"
-              className="text-purple-700 hover:text-purple-800 hover:bg-transparent p-0 h-auto font-semibold underline underline-offset-4 self-start"
-              data-print-hidden
-            >
-              {loadingSlides
-                ? "Preparing PPTX slides..."
-                : !isPremium
-                ? "Premium Only: Edit PPTX"
-                : "Edit PPTX Before Download"}
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <Button
+                onClick={loadPptxSlidesForEdit}
+                disabled={loadingSlides || !isPremium}
+                variant="ghost"
+                className="text-purple-700 hover:text-purple-800 hover:bg-transparent p-0 h-auto font-semibold underline underline-offset-4 self-start"
+                data-print-hidden
+              >
+                {loadingSlides
+                  ? "Preparing PPTX slides..."
+                  : !isPremium
+                  ? "Premium Only: download pptx lesson material"
+                  : "Edit PPTX Before Download"}
+              </Button>
+            </div>
             {loadingSlides && (
               <LoadingProgress
-                label="Preparing editable PPTX slides..."
+                label={slidesLoadingLabel}
                 percent={slidesProgress}
               />
             )}
@@ -3184,6 +3343,9 @@ export default function LessonPlanPage() {
           <DialogHeader>
             <DialogTitle>Edit PPTX Slides</DialogTitle>
           </DialogHeader>
+          <div className="text-xs rounded-md border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2">
+            Source: {pptxDeckSource === "lesson_material_upload" ? "Uploaded file" : "Generated lesson plan"}
+          </div>
           {pptxDeck && (
             <PptxEditor
               deck={pptxDeck}
@@ -3262,6 +3424,7 @@ export default function LessonPlanPage() {
                 setIsHistoryView(true);
                 setHistoryOpen(false);
                 setPptxDeck(null);
+                setPptxDeckSource("lesson_plan");
               }}
             >
               <div className="font-semibold text-blue-900">

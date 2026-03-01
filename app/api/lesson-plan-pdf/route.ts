@@ -15,21 +15,11 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { subscriptionPlan: true },
+      select: { id: true },
     });
 
     if (!user) {
       return new Response("User not found", { status: 404 });
-    }
-
-    if (user.subscriptionPlan !== "premium") {
-      return new Response(
-        JSON.stringify({
-          error: "Premium required",
-          message: "PDF downloads are available on the Premium plan.",
-        }),
-        { status: 403, headers: { "Content-Type": "application/json" } }
-      );
     }
 
     const body = await req.json();

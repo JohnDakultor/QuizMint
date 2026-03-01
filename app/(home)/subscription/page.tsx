@@ -337,7 +337,6 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Loader2, CreditCard, Radio, Lock, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { PayPalScriptProvider } from "@paypal/react-paypal-js";
 
 type CurrencyData = {
   country: string;
@@ -375,7 +374,7 @@ const paymentMethods = [
   {
     id: "stripe",
     name: "Credit/Debit Card",
-    icon: "💳",
+    icon: "CARD",
     description: "Pay with Visa, Mastercard, Amex",
     color: "from-purple-500 to-purple-700",
     textColor: "text-white",
@@ -385,7 +384,7 @@ const paymentMethods = [
   {
     id: "paypal",
     name: "PayPal",
-    icon: "🔵",
+    icon: "PP",
     description: "Pay with your PayPal account",
     color: "from-blue-500 to-blue-700",
     textColor: "text-white",
@@ -393,19 +392,19 @@ const paymentMethods = [
     available: true,
   },
   {
-    id: "gpay",
-    name: "Google Pay",
-    icon: "🔴🟢🟡🔵",
-    description: "Fast checkout with Google Pay",
-    color: "from-gray-800 to-gray-900",
+    id: "gcash",
+    name: "GCash",
+    icon: "G",
+    description: "Pay with GCash wallet",
+    color: "from-blue-500 to-sky-700",
     textColor: "text-white",
-    gradient: "bg-gradient-to-r from-gray-900 to-black",
-    available: false, // Coming soon
+    gradient: "bg-gradient-to-r from-blue-600 to-sky-800",
+    available: true,
   },
   {
     id: "applepay",
     name: "Apple Pay",
-    icon: "🍎",
+    icon: "AP",
     description: "Fast checkout with Apple Pay",
     color: "from-gray-800 to-gray-900",
     textColor: "text-white",
@@ -454,18 +453,6 @@ export default function Subscription() {
   //   components: "buttons",
   //   "data-sdk-integration-source": "developer-studio",
   // };
-
-  useEffect(() => {
-    fetch("/api/paypal/debug-subs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ action: "get" }),
-    })
-      .then((res) => res.json())
-      .catch((error) => console.error("Error:", error));
-  }, []);
 
   // Load subscription status
   useEffect(() => {
@@ -557,13 +544,28 @@ export default function Subscription() {
     }
   };
 
-  // Handle Google Pay (coming soon)
-  const handleGooglePay = async (plan: "pro" | "premium") => {
+  // Handle GCash checkout
+  const handleGCash = async (plan: "pro" | "premium") => {
     setLoading(true);
-    alert("Google Pay integration is coming soon! For now, please use PayPal.");
-    setTimeout(() => {
+    setSelectedPlan(plan);
+    try {
+      const res = await fetch("/api/gcash/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planType: plan }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to start GCash checkout");
+      }
+      if (!data.checkoutUrl) {
+        throw new Error("Missing checkout URL");
+      }
+      window.location.href = data.checkoutUrl;
+    } catch (err: any) {
+      alert(`GCash error: ${err.message}`);
       setLoading(false);
-    }, 1000);
+    }
   };
 
   // Handle proceed button click
@@ -593,8 +595,8 @@ export default function Subscription() {
       case "paypal":
         handlePayPalSubscription(planToSubscribe);
         break;
-      case "gpay":
-        handleGooglePay(planToSubscribe);
+      case "gcash":
+        handleGCash(planToSubscribe);
         break;
       default:
         alert("Invalid payment method selected");
@@ -862,8 +864,8 @@ export default function Subscription() {
                       className={`py-2 text-xs ${
                         selectedPaymentMethod === "stripe"
                           ? "bg-linear-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
-                          : selectedPaymentMethod === "gpay"
-                          ? "bg-linear-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black"
+                        : selectedPaymentMethod === "gcash"
+                          ? "bg-linear-to-r from-blue-500 to-sky-700 hover:from-blue-600 hover:to-sky-800"
                           : selectedPaymentMethod === "paypal"
                           ? "bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
                           : "bg-linear-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
@@ -1363,3 +1365,7 @@ export default function Subscription() {
 //     </PayPalScriptProvider>
 //   );
 // }
+
+
+
+

@@ -40,23 +40,39 @@ export async function POST(req: NextRequest) {
     }
     eventUserId = user.id;
     eventPlan = user.subscriptionPlan || "free";
-    if (user.subscriptionPlan !== "premium") {
-      return apiError(403, "Premium required", requestId);
-    }
-
     const body = await req.json().catch(() => ({}));
     let jobId = body?.jobId ? String(body.jobId) : "";
+    let targetJob:
+      | {
+          id: string;
+          status: string;
+          format: string;
+        }
+      | null = null;
 
     if (!jobId) {
       const nextQueued = await prisma.lessonPlanExport.findFirst({
         where: { userId: user.id, status: "queued" },
         orderBy: { createdAt: "asc" },
-        select: { id: true },
+        select: { id: true, status: true, format: true },
       });
       if (!nextQueued) {
         return apiError(404, "No queued job", requestId);
       }
       jobId = nextQueued.id;
+      targetJob = nextQueued;
+    } else {
+      targetJob = await prisma.lessonPlanExport.findFirst({
+        where: { id: jobId, userId: user.id },
+        select: { id: true, status: true, format: true },
+      });
+      if (!targetJob) {
+        return apiError(404, "Job not found", requestId);
+      }
+    }
+
+    if (targetJob.format === "pptx" && user.subscriptionPlan !== "premium") {
+      return apiError(403, "Premium required for PPTX exports", requestId);
     }
 
     const processed = await processLessonPlanExportJob(jobId, user.id);

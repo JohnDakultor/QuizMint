@@ -26,17 +26,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (user.subscriptionPlan !== "premium") {
-      return NextResponse.json(
-        { error: "Premium required for exports" },
-        { status: 403 }
-      );
-    }
-
     const body = await req.json();
     const format = String(body?.format || "").toLowerCase() as LessonPlanExportFormat;
     if (!allowedFormats.has(format)) {
       return NextResponse.json({ error: "Invalid format" }, { status: 400 });
+    }
+    if (format === "pptx" && user.subscriptionPlan !== "premium") {
+      return NextResponse.json(
+        { error: "Premium required for PPTX exports" },
+        { status: 403 }
+      );
     }
 
     let lessonPlan = body?.lessonPlan;

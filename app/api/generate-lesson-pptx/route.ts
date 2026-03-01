@@ -24,6 +24,8 @@ export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   let eventUserId: string | null = null;
   let eventPlan: string | null = null;
+  let eventSource: "lesson_plan" | "lesson_material_upload" = "lesson_plan";
+  let eventFeature = "lesson_plan_pptx";
   const requestId = createRequestId();
   try {
     const session = await getServerSession(authOptions);
@@ -42,15 +44,41 @@ export async function POST(req: NextRequest) {
     eventUserId = user.id;
     eventPlan = user.subscriptionPlan || "free";
 
-    if (user.subscriptionPlan !== "premium") {
-      return apiError(403, "Premium required", requestId);
-    }
-
     const body = await req.json();
     const deck = body?.deck as PptDeck | undefined;
+    const source = body?.source === "lesson_material_upload" ? "lesson_material_upload" : "lesson_plan";
+    eventSource = source;
+    eventFeature =
+      source === "lesson_material_upload"
+        ? "lesson_material_upload_pptx"
+        : "lesson_plan_pptx";
 
     if (!deck || !deck.slides || !Array.isArray(deck.slides)) {
       return apiError(400, "Invalid deck", requestId);
+    }
+
+    const plan = user.subscriptionPlan || "free";
+    const isPremium = plan === "premium";
+    const isFree = plan === "free" || !plan;
+
+    // Policy:
+    // - lesson_plan decks: premium only (existing behavior)
+    // - lesson_material_upload decks: free/pro/premium allowed
+    if (source === "lesson_plan" && !isPremium) {
+      return apiError(403, "Premium required", requestId);
+    }
+    if (source === "lesson_material_upload" && isFree) {
+      const usageRows = await prisma.$queryRaw<Array<{ lessonMaterialUploadUsage: number | null }>>`
+        SELECT "lessonMaterialUploadUsage" FROM "User" WHERE id = ${user.id} LIMIT 1
+      `;
+      const uploadUsage = Number(usageRows?.[0]?.lessonMaterialUploadUsage || 0);
+      if (uploadUsage <= 0) {
+        return apiError(
+          403,
+          "Generate slides from an uploaded lesson file first before downloading PPTX.",
+          requestId
+        );
+      }
     }
 
     const pptxBuffer = await generateLessonPlanPptx(deck, {
@@ -59,12 +87,12 @@ export async function POST(req: NextRequest) {
     await trackGenerationEvent({
       userId: user.id,
       eventType: "pptx_generated",
-      feature: "lesson_plan_pptx",
+      feature: eventFeature,
       status: "success",
       plan: eventPlan,
       latencyMs: Date.now() - startedAt,
       costUsd: 0,
-      metadata: { slideCount: deck.slides.length },
+      metadata: { slideCount: deck.slides.length, source: eventSource },
     });
     return new Response(new Uint8Array(pptxBuffer), {
       headers: {
@@ -82,7 +110,7 @@ export async function POST(req: NextRequest) {
       await trackGenerationEvent({
         userId: eventUserId,
         eventType: "pptx_generated",
-        feature: "lesson_plan_pptx",
+        feature: eventFeature,
         status: "failed",
         plan: eventPlan,
         latencyMs: Date.now() - startedAt,
@@ -91,6 +119,7 @@ export async function POST(req: NextRequest) {
           providerIssue: true,
           provider: providerError.provider ?? "unknown",
           providerCode: providerError.code,
+          source: eventSource,
         },
       });
       return apiError(503, PROVIDER_ISSUE_MESSAGE, requestId);
@@ -98,12 +127,12 @@ export async function POST(req: NextRequest) {
     await trackGenerationEvent({
       userId: eventUserId,
       eventType: "pptx_generated",
-      feature: "lesson_plan_pptx",
+      feature: eventFeature,
       status: "failed",
       plan: eventPlan,
       latencyMs: Date.now() - startedAt,
       costUsd: 0,
-      metadata: { message: String(err?.message || "unknown_error") },
+      metadata: { message: String(err?.message || "unknown_error"), source: eventSource },
     });
     return apiError(500, `Failed to generate PPTX: ${err.message}`, requestId);
   }

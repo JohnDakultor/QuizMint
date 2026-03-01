@@ -1,298 +1,207 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import crypto from 'crypto';
 
-const base = process.env.NEXT_PUBLIC_PAYPAL_ENVIRONMENT === 'production' 
-  ? "https://api-m.paypal.com" 
-  : "https://api-m.sandbox.paypal.com";
+const base =
+  process.env.NEXT_PUBLIC_PAYPAL_ENVIRONMENT === "production"
+    ? "https://api-m.paypal.com"
+    : "https://api-m.sandbox.paypal.com";
 
-// Verify webhook signature (important for production)
-async function verifyWebhook(headers: Headers, rawBody: string): Promise<boolean> {
-  // For development, skip verification
-  if (process.env.NODE_ENV === 'development') {
-    return true;
-  }
+const PRO_PLAN_ID = process.env.PAYPAL_PRO_PLAN_ID || "";
+const PREMIUM_PLAN_ID = process.env.PAYPAL_PREMIUM_PLAN_ID || "";
 
-  const transmissionId = headers.get('paypal-transmission-id');
-  const transmissionTime = headers.get('paypal-transmission-time');
-  const certUrl = headers.get('paypal-cert-url');
-  const authAlgo = headers.get('paypal-auth-algo');
-  const transmissionSig = headers.get('paypal-transmission-sig');
+async function getAccessToken() {
+  const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
+  const secret = process.env.PAYPAL_SECRET_ID;
+  if (!clientId || !secret) throw new Error("PayPal credentials missing");
+
+  const auth = Buffer.from(`${clientId}:${secret}`).toString("base64");
+  const res = await fetch(`${base}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+  if (!res.ok) throw new Error(`PayPal token error (${res.status})`);
+  const data = await res.json();
+  return data.access_token as string;
+}
+
+async function verifyWebhook(headers: Headers, rawBody: string) {
   const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+  if (!webhookId) return false;
 
-  if (!webhookId || !transmissionId || !transmissionTime || !certUrl || !authAlgo || !transmissionSig) {
-    console.error('Missing PayPal webhook headers');
+  const transmissionId = headers.get("paypal-transmission-id");
+  const transmissionTime = headers.get("paypal-transmission-time");
+  const certUrl = headers.get("paypal-cert-url");
+  const authAlgo = headers.get("paypal-auth-algo");
+  const transmissionSig = headers.get("paypal-transmission-sig");
+
+  if (!transmissionId || !transmissionTime || !certUrl || !authAlgo || !transmissionSig) {
     return false;
   }
 
-  // In production, you should implement proper signature verification
-  // This is a simplified version - you should use PayPal's SDK for proper verification
-  return true;
+  const accessToken = await getAccessToken();
+  const res = await fetch(`${base}/v1/notifications/verify-webhook-signature`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      auth_algo: authAlgo,
+      cert_url: certUrl,
+      transmission_id: transmissionId,
+      transmission_sig: transmissionSig,
+      transmission_time: transmissionTime,
+      webhook_id: webhookId,
+      webhook_event: JSON.parse(rawBody),
+    }),
+  });
+
+  if (!res.ok) return false;
+  const data = await res.json();
+  return data.verification_status === "SUCCESS";
+}
+
+async function resolvePlanTypeFromSubscription(accessToken: string, planId: string) {
+  if (planId && PRO_PLAN_ID && planId === PRO_PLAN_ID) return "pro";
+  if (planId && PREMIUM_PLAN_ID && planId === PREMIUM_PLAN_ID) return "premium";
+
+  const planRes = await fetch(`${base}/v1/billing/plans/${planId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!planRes.ok) return "pro";
+  const plan = await planRes.json();
+  const amount = Number(plan?.billing_cycles?.[0]?.pricing_scheme?.fixed_price?.value ?? "0");
+  return amount >= 15 ? "premium" : "pro";
 }
 
 export async function POST(req: NextRequest) {
   try {
-    // Get raw body for verification
     const rawBody = await req.text();
     const body = JSON.parse(rawBody);
-    
-    console.log('📩 PayPal Webhook Received:', {
-      event_type: body.event_type,
-      resource_type: body.resource_type,
-      resource_id: body.resource?.id,
-    });
 
-    // Verify webhook signature
     const isValid = await verifyWebhook(req.headers, rawBody);
     if (!isValid) {
       return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 });
     }
 
-    const eventType = body.event_type;
-    const resource = body.resource;
+    const eventType = body.event_type as string;
+    const resource = body.resource as any;
 
-    // Handle subscription events
-    if (eventType.includes('BILLING.SUBSCRIPTION')) {
-      const subscriptionId = resource.id;
-      
-      switch (eventType) {
-        case 'BILLING.SUBSCRIPTION.ACTIVATED':
-          console.log(`✅ Subscription Activated: ${subscriptionId}`);
-          await handleSubscriptionActivated(resource);
-          break;
-          
-        case 'BILLING.SUBSCRIPTION.CANCELLED':
-          console.log(`❌ Subscription Cancelled: ${subscriptionId}`);
-          await handleSubscriptionCancelled(subscriptionId);
-          break;
-          
-        case 'BILLING.SUBSCRIPTION.SUSPENDED':
-          console.log(`⏸️ Subscription Suspended: ${subscriptionId}`);
-          await handleSubscriptionSuspended(subscriptionId);
-          break;
-          
-        case 'BILLING.SUBSCRIPTION.EXPIRED':
-          console.log(`⌛ Subscription Expired: ${subscriptionId}`);
-          await handleSubscriptionExpired(subscriptionId);
-          break;
-          
-        case 'BILLING.SUBSCRIPTION.PAYMENT.FAILED':
-          console.log(`💸 Payment Failed: ${subscriptionId}`);
-          await handlePaymentFailed(subscriptionId);
-          break;
-          
-        case 'BILLING.SUBSCRIPTION.PAYMENT.COMPLETED':
-          console.log(`💰 Payment Completed: ${subscriptionId}`);
-          await handlePaymentCompleted(resource);
-          break;
+    if (!eventType?.startsWith("BILLING.SUBSCRIPTION")) {
+      return NextResponse.json({ success: true, ignored: true });
+    }
+
+    const subscriptionId = resource?.id as string;
+    if (!subscriptionId) {
+      return NextResponse.json({ error: "Missing subscription ID" }, { status: 400 });
+    }
+
+    if (eventType === "BILLING.SUBSCRIPTION.ACTIVATED") {
+      const payerEmail = String(resource?.subscriber?.email_address || "").toLowerCase();
+      if (!payerEmail) return NextResponse.json({ success: true, ignored: "missing payer email" });
+
+      const user = await prisma.user.findUnique({ where: { email: payerEmail } });
+      if (!user) return NextResponse.json({ success: true, ignored: "user not found" });
+
+      const accessToken = await getAccessToken();
+      const planType = await resolvePlanTypeFromSubscription(accessToken, resource.plan_id);
+
+      await prisma.payPalSubscription.upsert({
+        where: { subscriptionId },
+        update: {
+          status: "ACTIVE",
+          planType,
+          planId: resource.plan_id,
+          nextBillingTime: resource.billing_info?.next_billing_time
+            ? new Date(resource.billing_info.next_billing_time)
+            : null,
+          updatedAt: new Date(),
+        },
+        create: {
+          subscriptionId,
+          planId: resource.plan_id,
+          planType,
+          status: "ACTIVE",
+          userId: user.id,
+          startTime: new Date(resource.start_time || new Date()),
+          nextBillingTime: resource.billing_info?.next_billing_time
+            ? new Date(resource.billing_info.next_billing_time)
+            : null,
+        },
+      });
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          subscriptionPlan: planType,
+          subscriptionStatus: "active",
+          subscriptionStart: new Date(resource.start_time || new Date()),
+          subscriptionEnd: resource.billing_info?.next_billing_time
+            ? new Date(resource.billing_info.next_billing_time)
+            : null,
+          paypalCustomerId: resource?.subscriber?.payer_id || null,
+        },
+      });
+    }
+
+    if (
+      eventType === "BILLING.SUBSCRIPTION.CANCELLED" ||
+      eventType === "BILLING.SUBSCRIPTION.SUSPENDED" ||
+      eventType === "BILLING.SUBSCRIPTION.EXPIRED"
+    ) {
+      const status =
+        eventType === "BILLING.SUBSCRIPTION.CANCELLED"
+          ? "CANCELLED"
+          : eventType === "BILLING.SUBSCRIPTION.SUSPENDED"
+          ? "SUSPENDED"
+          : "EXPIRED";
+
+      const sub = await prisma.payPalSubscription.update({
+        where: { subscriptionId },
+        data: { status, updatedAt: new Date() },
+        select: { userId: true },
+      }).catch(() => null);
+
+      if (sub?.userId) {
+        await prisma.user.update({
+          where: { id: sub.userId },
+          data: {
+            subscriptionStatus: status.toLowerCase(),
+            subscriptionPlan: status === "EXPIRED" ? "free" : undefined,
+            subscriptionEnd: new Date(),
+          },
+        });
+      }
+    }
+
+    if (eventType === "BILLING.SUBSCRIPTION.PAYMENT.COMPLETED") {
+      const next = resource?.billing_info?.next_billing_time
+        ? new Date(resource.billing_info.next_billing_time)
+        : null;
+      if (next) {
+        const sub = await prisma.payPalSubscription.update({
+          where: { subscriptionId },
+          data: { nextBillingTime: next, status: "ACTIVE", updatedAt: new Date() },
+          select: { userId: true },
+        }).catch(() => null);
+        if (sub?.userId) {
+          await prisma.user.update({
+            where: { id: sub.userId },
+            data: { subscriptionEnd: next, subscriptionStatus: "active" },
+          });
+        }
       }
     }
 
     return NextResponse.json({ success: true });
-    
   } catch (error: any) {
-    console.error('❌ Webhook processing error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-// Handler functions
-async function handleSubscriptionActivated(resource: any) {
-  const subscriptionId = resource.id;
-  const payerEmail = resource.subscriber?.email_address;
-  const payerId = resource.subscriber?.payer_id;
-  
-  if (!payerEmail) {
-    console.error('No payer email in subscription data');
-    return;
-  }
-
-  try {
-    // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email: payerEmail }
-    });
-
-    if (!user) {
-      console.error(`User not found with email: ${payerEmail}`);
-      // You might want to create a user record here or log this for manual intervention
-      return;
-    }
-
-    // Determine plan type from plan ID or description
-    let planType = 'pro';
-    const planId = resource.plan_id;
-    if (planId.includes('premium') || resource.description?.toLowerCase().includes('premium')) {
-      planType = 'premium';
-    }
-
-    // Create or update subscription record
-    const subscription = await prisma.payPalSubscription.upsert({
-      where: { subscriptionId },
-      update: {
-        status: 'ACTIVE',
-        updatedAt: new Date(),
-      },
-      create: {
-        subscriptionId,
-        planId: resource.plan_id,
-        planType,
-        status: 'ACTIVE',
-        userId: user.id,
-        startTime: new Date(resource.start_time || new Date()),
-        nextBillingTime: resource.billing_info?.next_billing_time 
-          ? new Date(resource.billing_info.next_billing_time)
-          : null,
-      },
-    });
-
-    // Update user subscription info
-    const subscriptionEnd = new Date();
-    subscriptionEnd.setMonth(subscriptionEnd.getMonth() + 1); // 1 month from now
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        subscriptionPlan: planType,
-        subscriptionStatus: 'active',
-        subscriptionStart: new Date(),
-        subscriptionEnd,
-        paypalCustomerId: payerId,
-      }
-    });
-
-    console.log(`✅ User ${user.email} subscription activated: ${planType}`);
-    
-  } catch (error) {
-    console.error('Error handling subscription activation:', error);
-  }
-}
-
-async function handleSubscriptionCancelled(subscriptionId: string) {
-  try {
-    // Update subscription status
-    await prisma.payPalSubscription.update({
-      where: { subscriptionId },
-      data: {
-        status: 'CANCELLED',
-        updatedAt: new Date(),
-      }
-    });
-
-    // Find subscription to get user ID
-    const subscription = await prisma.payPalSubscription.findUnique({
-      where: { subscriptionId },
-      select: { userId: true }
-    });
-
-    if (subscription) {
-      // Update user subscription info
-      await prisma.user.update({
-        where: { id: subscription.userId },
-        data: {
-          subscriptionStatus: 'cancelled',
-          subscriptionEnd: new Date(),
-        }
-      });
-    }
-    
-  } catch (error) {
-    console.error('Error handling subscription cancellation:', error);
-  }
-}
-
-async function handleSubscriptionSuspended(subscriptionId: string) {
-  try {
-    await prisma.payPalSubscription.update({
-      where: { subscriptionId },
-      data: {
-        status: 'SUSPENDED',
-        updatedAt: new Date(),
-      }
-    });
-  } catch (error) {
-    console.error('Error handling subscription suspension:', error);
-  }
-}
-
-async function handleSubscriptionExpired(subscriptionId: string) {
-  try {
-    await prisma.payPalSubscription.update({
-      where: { subscriptionId },
-      data: {
-        status: 'EXPIRED',
-        updatedAt: new Date(),
-      }
-    });
-
-    const subscription = await prisma.payPalSubscription.findUnique({
-      where: { subscriptionId },
-      select: { userId: true }
-    });
-
-    if (subscription) {
-      await prisma.user.update({
-        where: { id: subscription.userId },
-        data: {
-          subscriptionStatus: 'expired',
-          subscriptionPlan: null,
-          subscriptionEnd: new Date(),
-        }
-      });
-    }
-    
-  } catch (error) {
-    console.error('Error handling subscription expiration:', error);
-  }
-}
-
-async function handlePaymentFailed(subscriptionId: string) {
-  try {
-    await prisma.payPalSubscription.update({
-      where: { subscriptionId },
-      data: {
-        status: 'SUSPENDED',
-        updatedAt: new Date(),
-      }
-    });
-  } catch (error) {
-    console.error('Error handling payment failure:', error);
-  }
-}
-
-async function handlePaymentCompleted(resource: any) {
-  const subscriptionId = resource.id;
-  
-  try {
-    // Update next billing time
-    if (resource.billing_info?.next_billing_time) {
-      await prisma.payPalSubscription.update({
-        where: { subscriptionId },
-        data: {
-          nextBillingTime: new Date(resource.billing_info.next_billing_time),
-          status: 'ACTIVE',
-          updatedAt: new Date(),
-        }
-      });
-
-      // Update user subscription end date
-      const subscription = await prisma.payPalSubscription.findUnique({
-        where: { subscriptionId },
-        select: { userId: true }
-      });
-
-      if (subscription) {
-        const newEndDate = new Date(resource.billing_info.next_billing_time);
-        await prisma.user.update({
-          where: { id: subscription.userId },
-          data: {
-            subscriptionEnd: newEndDate,
-          }
-        });
-      }
-    }
-    
-  } catch (error) {
-    console.error('Error handling payment completion:', error);
+    return NextResponse.json(
+      { error: "Webhook processing failed", message: error?.message || "Unknown error" },
+      { status: 500 }
+    );
   }
 }

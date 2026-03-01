@@ -3,18 +3,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
+import { assertAdminSession } from "@/lib/admin-auth";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    const admin = await assertAdminSession();
+    if (!admin.ok) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { action, planType } = await req.json();
+    const { action } = await req.json();
     
     if (action === 'get') {
       // Get current user info
+      const session = await getServerSession(authOptions);
+      if (!session?.user?.email) {
+        return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      }
+
       const user = await prisma.user.findUnique({
         where: { email: session.user.email },
         select: {
@@ -36,33 +42,6 @@ export async function POST(req: NextRequest) {
         user,
         subscriptions,
         timestamp: new Date().toISOString()
-      });
-    }
-    
-    if (action === 'fix' && (planType === 'pro' || planType === 'premium')) {
-      // Force fix user plan
-      const user = await prisma.user.update({
-        where: { email: session.user.email },
-        data: {
-          subscriptionPlan: planType
-        },
-        select: {
-          id: true,
-          email: true,
-          subscriptionPlan: true,
-        }
-      });
-
-      // Also update PayPal subscriptions
-      await prisma.payPalSubscription.updateMany({
-        where: { userId: user.id },
-        data: { planType: planType }
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `Force updated to ${planType}`,
-        user
       });
     }
 

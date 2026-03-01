@@ -1,8 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { assertAdminSession } from "@/lib/admin-auth";
 
 const base = "https://api-m.sandbox.paypal.com";
 
 export async function GET() {
+  const admin = await assertAdminSession();
+  if (!admin.ok) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const debugInfo: any = {
     timestamp: new Date().toISOString(),
     environment: "development",

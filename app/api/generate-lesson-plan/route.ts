@@ -56,6 +56,12 @@ function isProviderIssueError(err: unknown): boolean {
   );
 }
 
+function toInt(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
 function enhanceLessonPlanWithContext(lessonPlan: any, topic: string, subject: string, grade: string, dayIndex: number) {
   if (!lessonPlan.days || !Array.isArray(lessonPlan.days)) return lessonPlan;
   
@@ -304,19 +310,58 @@ export async function POST(req: NextRequest) {
     eventUserId = user.id;
     eventPlan = user.subscriptionPlan || "free";
 
-    const plan = user.subscriptionPlan || "free";
-    const isFree = plan === "free";
+    const plan = String(user.subscriptionPlan || "free").trim().toLowerCase();
+    const isFree = plan === "free" || plan === "";
     const isPremium = plan === "premium";
     const liteMode = Boolean((user as any).liteMode);
+    const debugCounters = process.env.DEBUG_LESSON_COUNTERS === "1";
+
+    if ((plan === "pro" || plan === "premium") && user.lessonPlanUsage !== 0) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lessonPlanUsage: 0, lastLessonPlanAt: null },
+      });
+      user.lessonPlanUsage = 0;
+      user.lastLessonPlanAt = null;
+    }
+
+    const now = new Date();
+    const usageRows = await prisma.$queryRaw<
+      Array<{ lessonPlanUsage: number | null; secondsUntilReset: number | null }>
+    >`
+      SELECT
+        COALESCE("lessonPlanUsage", 0) AS "lessonPlanUsage",
+        CASE
+          WHEN "lastLessonPlanAt" IS NULL THEN NULL
+          ELSE CEIL(EXTRACT(EPOCH FROM (("lastLessonPlanAt" + INTERVAL '3 hours') - NOW())))
+        END::int AS "secondsUntilReset"
+      FROM "User"
+      WHERE id = ${user.id}
+      LIMIT 1
+    `;
+    let currentLessonPlanUsage = Number(usageRows?.[0]?.lessonPlanUsage || 0);
+    let secondsUntilReset = toInt(usageRows?.[0]?.secondsUntilReset);
+    if (debugCounters) {
+      console.info("[lesson-plan-counter][before]", {
+        userId: user.id,
+        email: session.user.email,
+        plan,
+        isFree,
+        currentLessonPlanUsage,
+        secondsUntilReset: secondsUntilReset !== null && Number.isFinite(secondsUntilReset)
+          ? Math.trunc(secondsUntilReset)
+          : null,
+      });
+    }
 
     // Check if usage should be reset
-    const now = new Date();
-    const shouldResetUsage = user.lastLessonPlanAt 
-      ? (now.getTime() - user.lastLessonPlanAt.getTime()) > (RESET_HOURS * 60 * 60 * 1000)
-      : true;
+    const shouldResetUsage =
+      currentLessonPlanUsage >= FREE_PLAN_LIMIT &&
+      secondsUntilReset !== null &&
+      secondsUntilReset <= 0;
 
     // Reset usage if 3 hours have passed
-    if (isFree && shouldResetUsage && user.lessonPlanUsage > 0) {
+    if (isFree && shouldResetUsage) {
       await prisma.user.update({
         where: { id: user.id },
         data: { 
@@ -324,30 +369,31 @@ export async function POST(req: NextRequest) {
           lastLessonPlanAt: null 
         },
       });
-      
-      user.lessonPlanUsage = 0;
-      user.lastLessonPlanAt = null;
+      currentLessonPlanUsage = 0;
+      secondsUntilReset = null;
+      if (debugCounters) {
+        console.info("[lesson-plan-counter][reset]", {
+          userId: user.id,
+          email: session.user.email,
+          plan,
+        });
+      }
     }
 
-    // Check if user has reached the limit
-    if (isFree && user.lessonPlanUsage >= FREE_PLAN_LIMIT) {
-      return NextResponse.json(
-        {
-          error: "Free limit reached",
-          message: `You've reached your limit of ${FREE_PLAN_LIMIT} lesson plans. Please wait 3 hours for your limit to reset or upgrade to premium.`,
-          resetTime: user.lastLessonPlanAt
-            ? new Date(
-                user.lastLessonPlanAt.getTime() + RESET_HOURS * 60 * 60 * 1000
-              ).toISOString()
-            : null,
-          requestId,
-        },
-        {
-          status: 403,
-          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
-        }
-      );
+    // Self-heal corrupted window state: usage at/over limit but no reset timestamp.
+    // Pin window start to DB NOW and force proper 403 behavior.
+    if (isFree && currentLessonPlanUsage >= FREE_PLAN_LIMIT && secondsUntilReset === null) {
+      await prisma.$executeRaw`
+        UPDATE "User"
+        SET "lastLessonPlanAt" = NOW()
+        WHERE id = ${user.id}
+      `;
+      secondsUntilReset = RESET_HOURS * 60 * 60;
     }
+
+    // Free-tier limit for lesson-plan generation requests.
+    const freeResetInSeconds =
+      secondsUntilReset === null ? null : Math.max(secondsUntilReset, 0);
 
     const body = await req.json();
     const providedLessonPlan = body.lessonPlan;
@@ -419,6 +465,20 @@ export async function POST(req: NextRequest) {
     let cacheStored = false;
     let webIngestSources: { url: string; title?: string }[] = [];
     const useProvidedPlan = Boolean(providedLessonPlan);
+    if (isFree && format === "json" && !useProvidedPlan && currentLessonPlanUsage >= FREE_PLAN_LIMIT) {
+      return NextResponse.json(
+        {
+          error: "Free limit reached",
+          message: `You've reached the free limit of ${FREE_PLAN_LIMIT} lesson plans.`,
+          resetInSeconds: freeResetInSeconds,
+          requestId,
+        },
+        {
+          status: 403,
+          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+        }
+      );
+    }
 
     if (useProvidedPlan) {
       lessonPlan = providedLessonPlan;
@@ -969,16 +1029,33 @@ export async function POST(req: NextRequest) {
 
     ensureNotAborted();
 
-    // Increment usage for free users (only for JSON requests, not DOCX downloads)
+    // Increment usage only for free plan on real lesson generation.
+    // Pro/Premium remain unlimited and are not counted.
     if (isFree && format === "json" && !useProvidedPlan) {
       const dbWriteStartedAt = Date.now();
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { 
-          lessonPlanUsage: user.lessonPlanUsage + 1, 
-          lastLessonPlanAt: now 
-        },
-      });
+      await prisma.$executeRaw`
+        UPDATE "User"
+        SET "lessonPlanUsage" = COALESCE("lessonPlanUsage", 0) + 1,
+            "lastLessonPlanAt" = NOW()
+        WHERE id = ${user.id}
+      `;
+      const updatedRows = await prisma.$queryRaw<Array<{ lessonPlanUsage: number | null }>>`
+        SELECT COALESCE("lessonPlanUsage", 0) AS "lessonPlanUsage"
+        FROM "User"
+        WHERE id = ${user.id}
+        LIMIT 1
+      `;
+      currentLessonPlanUsage = Number(updatedRows?.[0]?.lessonPlanUsage || 0);
+      if (debugCounters) {
+        console.info("[lesson-plan-counter][increment]", {
+          userId: user.id,
+          email: session.user.email,
+          plan,
+          updatedUsage: currentLessonPlanUsage,
+          format,
+          useProvidedPlan,
+        });
+      }
       stageMs.dbWrite += Date.now() - dbWriteStartedAt;
     }
 
@@ -1166,7 +1243,7 @@ export async function POST(req: NextRequest) {
             },
           }),
       usage: isFree ? {
-        used: user.lessonPlanUsage + 1,
+        used: currentLessonPlanUsage,
         limit: FREE_PLAN_LIMIT,
         resetsIn: RESET_HOURS * 60 * 60 * 1000,
         nextReset: new Date(now.getTime() + (RESET_HOURS * 60 * 60 * 1000)).toISOString()
