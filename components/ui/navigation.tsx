@@ -23,7 +23,11 @@ export default function Navigation() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [user, setUser] = useState<{ username: string } | null>(null);
+  const [user, setUser] = useState<{
+    username: string;
+    image?: string | null;
+    authProvider?: string | null;
+  } | null>(null);
   const tourId =
     pathname === "/account"
       ? "account"
@@ -104,7 +108,21 @@ export default function Navigation() {
           {/* User */}
           {!collapsed && user && (
             <div className="bg-white/10 text-white px-3 py-2 rounded-lg mb-6 truncate">
-              {user.username}
+              <div className="flex items-center gap-2">
+                {user.image ? (
+                  // Using img avoids next/image remote host restrictions for OAuth image URLs.
+                  <img
+                    src={user.image}
+                    alt="Profile"
+                    className="h-7 w-7 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="h-7 w-7 rounded-full bg-white/20 flex items-center justify-center">
+                    <User size={16} />
+                  </div>
+                )}
+                <span className="truncate">{user.username}</span>
+              </div>
             </div>
           )}
 
@@ -186,6 +204,22 @@ export default function Navigation() {
       onClick={() => setMobileMenuOpen(false)}
     />
     <div className="absolute bottom-24 right-3 w-56 rounded-xl border border-zinc-200 bg-white shadow-xl p-2 space-y-1">
+      {user && (
+        <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm bg-zinc-50">
+          {user.image ? (
+            <img
+              src={user.image}
+              alt="Profile"
+              className="h-6 w-6 rounded-full object-cover"
+            />
+          ) : (
+            <div className="h-6 w-6 rounded-full bg-zinc-200 flex items-center justify-center">
+              <User size={14} className="text-zinc-700" />
+            </div>
+          )}
+          <span className="truncate text-zinc-800">{user.username}</span>
+        </div>
+      )}
       <Link
         href="/subscription"
         className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-zinc-100"

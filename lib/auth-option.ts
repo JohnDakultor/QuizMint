@@ -142,7 +142,16 @@ export const authOptions: NextAuthOptions = {
     // Upsert the user: create only if it doesn't exist
     const user = await prisma.user.upsert({
       where: { email: userEmail },
-      update: {}, // nothing to update here, just fetch existing
+      update: {
+        // Keep Google profile data fresh for existing accounts.
+        ...(token.name ? { name: String(token.name) } : {}),
+        ...(token.picture
+          ? {
+              image: String(token.picture),
+              authProvider: "google",
+            }
+          : {}),
+      },
       create: {
         id: userId,
         email: userEmail,

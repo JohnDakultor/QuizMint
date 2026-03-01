@@ -17,6 +17,8 @@ export async function GET() {
       username: true,
       name: true,
       email: true,
+      image: true,
+      authProvider: true,
     },
   });
 
@@ -33,6 +35,8 @@ export async function GET() {
     {
       user: {
         username: displayName,
+        image: user.image,
+        authProvider: user.authProvider,
       },
     },
     {
