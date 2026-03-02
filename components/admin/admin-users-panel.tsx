@@ -70,6 +70,20 @@ type UnitEconomicsRow = {
   totalCostUsd: number;
 };
 
+type GenerationCountRow = {
+  day?: string;
+  month?: string;
+  quizzes: number;
+  lessonPlans: number;
+};
+
+type GenerationCounts = {
+  today: { quizzes: number; lessonPlans: number };
+  monthToDate: { quizzes: number; lessonPlans: number };
+  byDay: GenerationCountRow[];
+  byMonth: GenerationCountRow[];
+};
+
 function getGenerationEventCause(event: AdminGenerationEvent): string {
   if (!event.metadata || typeof event.metadata !== "object" || Array.isArray(event.metadata)) {
     return "-";
@@ -157,6 +171,7 @@ export default function AdminUsersPanel() {
   const [generationEvents, setGenerationEvents] = useState<AdminGenerationEvent[]>([]);
   const [unitEconomicsRows, setUnitEconomicsRows] = useState<UnitEconomicsRow[]>([]);
   const [unitEconomicsTotal, setUnitEconomicsTotal] = useState(0);
+  const [generationCounts, setGenerationCounts] = useState<GenerationCounts | null>(null);
   const [email, setEmail] = useState("");
   const [plan, setPlan] = useState<"free" | "pro" | "premium">("pro");
   const [updating, setUpdating] = useState(false);
@@ -186,6 +201,7 @@ export default function AdminUsersPanel() {
       setGenerationEvents(data?.generationEvents || []);
       setUnitEconomicsRows(data?.unitEconomics?.byPlanFeature || []);
       setUnitEconomicsTotal(Number(data?.unitEconomics?.totalCostUsd || 0));
+      setGenerationCounts(data?.generationCounts || null);
       setCohorts(Array.isArray(cohortsData?.cohorts) ? cohortsData.cohorts : []);
     } catch (err: any) {
       setError(err.message || "Failed to load data");
@@ -331,6 +347,101 @@ export default function AdminUsersPanel() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Generation Volume (Quiz & Lesson Plan)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Today</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-1">
+                <div>Quizzes: <span className="font-semibold">{generationCounts?.today?.quizzes ?? 0}</span></div>
+                <div>Lesson Plans: <span className="font-semibold">{generationCounts?.today?.lessonPlans ?? 0}</span></div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Month To Date</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-1">
+                <div>Quizzes: <span className="font-semibold">{generationCounts?.monthToDate?.quizzes ?? 0}</span></div>
+                <div>Lesson Plans: <span className="font-semibold">{generationCounts?.monthToDate?.lessonPlans ?? 0}</span></div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div className="overflow-auto rounded-md border">
+              <table className="w-full text-sm">
+                <thead className="bg-white dark:bg-zinc-950 sticky top-0 z-10">
+                  <tr className="border-b">
+                    <th className="py-2 px-3 text-left">Day</th>
+                    <th className="py-2 px-3 text-left">Quizzes</th>
+                    <th className="py-2 px-3 text-left">Lesson Plans</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(generationCounts?.byDay || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="py-3 px-3 text-zinc-500">
+                        No daily generation data yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    (generationCounts?.byDay || []).map((row, idx) => (
+                      <tr key={`${row.day || idx}`} className="border-b">
+                        <td className="py-2 px-3">{row.day ? new Date(row.day).toLocaleDateString() : "-"}</td>
+                        <td className="py-2 px-3">{row.quizzes}</td>
+                        <td className="py-2 px-3">{row.lessonPlans}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="overflow-auto rounded-md border">
+              <table className="w-full text-sm">
+                <thead className="bg-white dark:bg-zinc-950 sticky top-0 z-10">
+                  <tr className="border-b">
+                    <th className="py-2 px-3 text-left">Month</th>
+                    <th className="py-2 px-3 text-left">Quizzes</th>
+                    <th className="py-2 px-3 text-left">Lesson Plans</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(generationCounts?.byMonth || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="py-3 px-3 text-zinc-500">
+                        No monthly generation data yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    (generationCounts?.byMonth || []).map((row, idx) => (
+                      <tr key={`${row.month || idx}`} className="border-b">
+                        <td className="py-2 px-3">
+                          {row.month
+                            ? new Date(row.month).toLocaleDateString(undefined, {
+                                year: "numeric",
+                                month: "long",
+                              })
+                            : "-"}
+                        </td>
+                        <td className="py-2 px-3">{row.quizzes}</td>
+                        <td className="py-2 px-3">{row.lessonPlans}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </CardContent>

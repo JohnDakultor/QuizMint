@@ -72,6 +72,10 @@ export async function GET(req: Request) {
     activeUsersLast7DaysRows,
     generationEvents,
     unitEconomicsRows,
+    dailyGenerationRows,
+    monthlyGenerationRows,
+    todayGenerationRows,
+    monthToDateGenerationRows,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { OR: [{ subscriptionPlan: null }, { subscriptionPlan: "free" }] } }),
@@ -174,6 +178,78 @@ export async function GET(req: Request) {
       GROUP BY "plan", "feature"
       ORDER BY "totalCostUsd" DESC, events DESC
     `,
+    prisma.$queryRaw<
+      {
+        day: Date;
+        quizzes: number;
+        lessonPlans: number;
+      }[]
+    >`
+      SELECT
+        DATE_TRUNC('day', "createdAt") AS day,
+        COUNT(*) FILTER (WHERE "eventType" = 'quiz_generated' AND "status" = 'success')::int AS quizzes,
+        COUNT(*) FILTER (WHERE "eventType" = 'lesson_generated' AND "status" = 'success' AND COALESCE("feature", '') = 'lesson_plan')::int AS "lessonPlans"
+      FROM "GenerationEvent"
+      WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+      GROUP BY 1
+      ORDER BY 1 DESC
+    `,
+    prisma.$queryRaw<
+      {
+        month: Date;
+        quizzes: number;
+        lessonPlans: number;
+      }[]
+    >`
+      SELECT
+        DATE_TRUNC('month', "createdAt") AS month,
+        COUNT(*) FILTER (WHERE "eventType" = 'quiz_generated' AND "status" = 'success')::int AS quizzes,
+        COUNT(*) FILTER (WHERE "eventType" = 'lesson_generated' AND "status" = 'success' AND COALESCE("feature", '') = 'lesson_plan')::int AS "lessonPlans"
+      FROM "GenerationEvent"
+      WHERE "createdAt" >= NOW() - INTERVAL '12 months'
+      GROUP BY 1
+      ORDER BY 1 DESC
+    `,
+    prisma.$queryRaw<
+      {
+        quizzes: number;
+        lessonPlans: number;
+      }[]
+    >`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE "eventType" = 'quiz_generated'
+            AND "status" = 'success'
+            AND "createdAt" >= DATE_TRUNC('day', NOW())
+        )::int AS quizzes,
+        COUNT(*) FILTER (
+          WHERE "eventType" = 'lesson_generated'
+            AND "status" = 'success'
+            AND COALESCE("feature", '') = 'lesson_plan'
+            AND "createdAt" >= DATE_TRUNC('day', NOW())
+        )::int AS "lessonPlans"
+      FROM "GenerationEvent"
+    `,
+    prisma.$queryRaw<
+      {
+        quizzes: number;
+        lessonPlans: number;
+      }[]
+    >`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE "eventType" = 'quiz_generated'
+            AND "status" = 'success'
+            AND "createdAt" >= DATE_TRUNC('month', NOW())
+        )::int AS quizzes,
+        COUNT(*) FILTER (
+          WHERE "eventType" = 'lesson_generated'
+            AND "status" = 'success'
+            AND COALESCE("feature", '') = 'lesson_plan'
+            AND "createdAt" >= DATE_TRUNC('month', NOW())
+        )::int AS "lessonPlans"
+      FROM "GenerationEvent"
+    `,
   ]);
   const activeUsersLast7Days = activeUsersLast7DaysRows[0]?.count ?? 0;
 
@@ -238,6 +314,24 @@ export async function GET(req: Request) {
     ),
   };
 
+  const today = todayGenerationRows[0] ?? { quizzes: 0, lessonPlans: 0 };
+  const monthToDate = monthToDateGenerationRows[0] ?? { quizzes: 0, lessonPlans: 0 };
+
+  const generationCounts = {
+    today,
+    monthToDate,
+    byDay: dailyGenerationRows.map((row) => ({
+      day: row.day,
+      quizzes: row.quizzes ?? 0,
+      lessonPlans: row.lessonPlans ?? 0,
+    })),
+    byMonth: monthlyGenerationRows.map((row) => ({
+      month: row.month,
+      quizzes: row.quizzes ?? 0,
+      lessonPlans: row.lessonPlans ?? 0,
+    })),
+  };
+
   return NextResponse.json({
     summary: {
       totalUsers,
@@ -256,6 +350,7 @@ export async function GET(req: Request) {
     latestSignups: safeLatestSignups,
     generationEvents: safeGenerationEvents,
     unitEconomics,
+    generationCounts,
   }, {
     headers: {
       "Cache-Control": "no-store, no-cache, must-revalidate, private",

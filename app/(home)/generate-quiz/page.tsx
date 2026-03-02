@@ -433,6 +433,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ArrowRight,
+  BrainCircuit,
   ClipboardList,
   Copy,
   FileDown,
@@ -469,9 +470,14 @@ export default function Dashboard() {
     remaining?: number;
   } | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [adaptiveSuggestions, setAdaptiveSuggestions] = useState<string[]>([]);
+  const [showAdaptivePanel, setShowAdaptivePanel] = useState(false);
+  const [forceFreshGeneration, setForceFreshGeneration] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const liteMode = Boolean(user?.liteMode);
+  const isPremiumAdaptiveEnabled =
+    user?.subscriptionPlan === "premium" && user?.adaptiveLearning === true;
   const quizRef = useRef<HTMLDivElement>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const attachRequestId = (message: string, data: any) =>
@@ -490,6 +496,31 @@ export default function Dashboard() {
     };
     fetchUser();
   }, []);
+
+  const loadAdaptiveSuggestions = async () => {
+    if (!isPremiumAdaptiveEnabled) {
+      setAdaptiveSuggestions([]);
+      return;
+    }
+    try {
+      const res = await fetch("/api/adaptive/suggestions?feature=quiz", {
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setAdaptiveSuggestions(
+        Array.isArray(data?.suggestions)
+          ? data.suggestions.filter((item: unknown): item is string => typeof item === "string")
+          : []
+      );
+    } catch {
+      // ignore personalization failures
+    }
+  };
+
+  useEffect(() => {
+    void loadAdaptiveSuggestions();
+  }, [isPremiumAdaptiveEnabled]);
 
   const tourSteps = [
     {
@@ -548,6 +579,7 @@ export default function Dashboard() {
         const data = await res.json();
         if (data?.quiz) {
           setQuiz(data.quiz);
+          setSources(Array.isArray(data.sources) ? data.sources : []);
           setLastLoaded(true);
         }
       } catch (err) {
@@ -825,6 +857,7 @@ export default function Dashboard() {
           text: prompt,
           difficulty: difficulty, // This will always be a valid string
           adaptiveLearning: adaptiveLearning, // This will always be a boolean
+          forceFreshGeneration,
         };
 
     
@@ -885,6 +918,8 @@ export default function Dashboard() {
           setQuiz(data.quiz);
           setSources(Array.isArray(data.sources) ? data.sources : []);
           setLastLoaded(false);
+          setForceFreshGeneration(false);
+          void loadAdaptiveSuggestions();
           setAdUnlockInfo(null);
           setQuizProgress(100);
           await new Promise((resolve) => setTimeout(resolve, 120));
@@ -915,7 +950,20 @@ export default function Dashboard() {
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
       {!liteMode && <Tour steps={tourSteps} tourId="home-quiz" />}
       <div className="relative text-center pt-10 sm:pt-0">
-        <LiteModeBadge className="absolute right-0 top-0" />
+        <div className="absolute right-0 top-0 flex items-center gap-2">
+          {isPremiumAdaptiveEnabled && (
+            <button
+              type="button"
+              onClick={() => setShowAdaptivePanel((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 shadow-sm hover:bg-indigo-100"
+              title="Adaptive suggestions"
+            >
+              <BrainCircuit className="h-3.5 w-3.5 shrink-0" />
+              <span className="hidden sm:inline">Adaptive</span>
+            </button>
+          )}
+          <LiteModeBadge />
+        </div>
         <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
           Quiz Generator
         </h1>
@@ -923,6 +971,46 @@ export default function Dashboard() {
           Generate structured quizzes from prompt, links, or uploaded content with shareable templates.
         </p>
       </div>
+      {isPremiumAdaptiveEnabled && showAdaptivePanel && (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-xs font-medium text-indigo-900">
+              Adaptive Suggestions
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAdaptivePanel(false)}
+              className="text-xs text-indigo-700 hover:text-indigo-900"
+            >
+              Close
+            </button>
+          </div>
+          {adaptiveSuggestions.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {adaptiveSuggestions.slice(0, 6).map((suggestion, index) => (
+                <button
+                  key={`${index}-${suggestion}`}
+                  type="button"
+                  onClick={() => {
+                    setPrompt(suggestion);
+                    setForceFreshGeneration(true);
+                    setError("");
+                    setInfoMessage("Suggestion applied. Fresh generation enabled.");
+                    setShowAdaptivePanel(false);
+                  }}
+                  className="rounded-full border border-indigo-300 bg-white px-3 py-1 text-left text-xs text-indigo-800 hover:bg-indigo-100"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-indigo-700">
+              Generate a few quizzes first to unlock personalized prompt suggestions.
+            </div>
+          )}
+        </div>
+      )}
 
       <section className="flex flex-col lg:flex-row gap-6 justify-center w-full">
         {/* ================= INPUT CARD ================= */}
@@ -943,7 +1031,10 @@ export default function Dashboard() {
                 id="quiz-input"
                 placeholder="Paste text, youtube link, or instructions here..."
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={(e) => {
+                  setPrompt(e.target.value);
+                  setForceFreshGeneration(false);
+                }}
                 className="premium-scrollbar h-full w-full rounded-lg border-2 border-zinc-300 bg-white p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
               <div className="absolute bottom-3 right-3 flex gap-2">

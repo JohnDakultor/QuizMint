@@ -334,6 +334,7 @@ import { ingestWebSourcesForQuery } from "@/lib/rag/web";
 import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
+import { buildPromptProfile } from "@/lib/adaptive-personalization";
 
 import { fetchTranscript } from "@/lib/youtube-transcript";
 
@@ -567,10 +568,12 @@ export async function POST(req: NextRequest) {
       : (typeof body.adaptiveLearning === "string"
         ? body.adaptiveLearning.toLowerCase() === "true"
         : undefined);
+    const forceFreshGeneration = Boolean(body.forceFreshGeneration === true || body.forceFresh === true);
     
     let text = body.text?.trim();
     if (!text)
       return apiError(400, "No input provided", requestId);
+    const promptProfile = buildPromptProfile(text);
 
     // Determine content source
     let content = text;
@@ -660,6 +663,47 @@ export async function POST(req: NextRequest) {
     }
     
     const safeAdaptive = canUseAdaptive ? chosenAdaptive : false;
+    let adaptiveGuidance = "";
+    const effectiveDifficulty = safeDifficulty;
+
+    if (safeAdaptive) {
+      const recentHistory = await prisma.generationEvent.findMany({
+        where: {
+          userId: user.id,
+          eventType: "quiz_generated",
+          status: "success",
+          feature: "quiz",
+        },
+        orderBy: { createdAt: "desc" },
+        take: 25,
+        select: { metadata: true },
+      });
+
+      const topicFrequency = new Map<string, number>();
+      for (const row of recentHistory) {
+        if (!row.metadata || typeof row.metadata !== "object" || Array.isArray(row.metadata)) {
+          continue;
+        }
+        const meta = row.metadata as Record<string, unknown>;
+        const topic = typeof meta.promptTopic === "string" ? meta.promptTopic.trim() : "";
+        if (topic) {
+          topicFrequency.set(topic, (topicFrequency.get(topic) ?? 0) + 1);
+        }
+      }
+
+      const frequentTopics = Array.from(topicFrequency.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([topic]) => topic);
+
+      if (frequentTopics.length > 0) {
+        adaptiveGuidance = [
+          "Teacher Intent Personalization:",
+          `- Teacher frequently generates quizzes on: ${frequentTopics.join(", ")}.`,
+          "- Keep requested topic primary, but align examples/wording with the teacher's recurring classroom context.",
+        ].join("\n");
+      }
+    }
 
     // Update user preferences only if they're different
     if (isProOrPremium) {
@@ -687,7 +731,9 @@ export async function POST(req: NextRequest) {
     console.log("Request body received:", {
       text: body.text?.substring(0, 100) + "...",
       difficulty: body.difficulty,
-      adaptiveLearning: body.adaptiveLearning
+      adaptiveLearning: body.adaptiveLearning,
+      adaptiveGuidanceEnabled: Boolean(adaptiveGuidance),
+      effectiveDifficulty,
     });
 
     const isPromptOnly = !isURL(text);
@@ -771,7 +817,7 @@ export async function POST(req: NextRequest) {
         topK: isPromptOnly ? 5 : 5,
       });
       enhancedPrompt = ragResult.enhancedPrompt;
-      cachedResponse = ragResult.cachedResponse ?? null;
+      cachedResponse = forceFreshGeneration ? null : (ragResult.cachedResponse ?? null);
       sources = ragResult.sources ?? [];
       ragMeta = ragResult.ragMeta ?? null;
       hasContext = ragResult.hasContext ?? false;
@@ -783,14 +829,15 @@ export async function POST(req: NextRequest) {
     ensureNotAborted();
 
     const aiStartedAt = Date.now();
+    const composedUserPrompt = [text, adaptiveGuidance].filter(Boolean).join("\n\n");
     const aiResult = cachedResponse
       ? null
       : await generateQuizAIWithMeta(
           isPromptOnly && !hasContext ? text : enhancedPrompt,
-          safeDifficulty,
+          effectiveDifficulty,
           safeAdaptive,
           isProOrPremium,
-          text,
+          composedUserPrompt,
           { liteMode }
         );
     const quiz = cachedResponse ? JSON.parse(cachedResponse) : aiResult!.quiz;
@@ -872,6 +919,10 @@ export async function POST(req: NextRequest) {
         sourceMode: sourceMode ?? "none",
         sourceCount: (sources ?? []).length,
         cacheHit: Boolean(cachedResponse),
+        forceFreshGeneration,
+        promptTopic: promptProfile.topic,
+        promptKeywords: promptProfile.keywords,
+        promptPreview: promptProfile.preview,
         retryCount: aiResult?.meta.retryCount ?? 0,
         fallbackUsed: aiResult?.meta.fallbackUsed ?? false,
         finalModel: aiResult?.meta.finalModel ?? null,
