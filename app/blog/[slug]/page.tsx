@@ -1,47 +1,85 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import { format } from "date-fns";
+import { prisma } from "@/lib/prisma";
 
-export default function BlogPostPage() {
-  const { slug } = useParams();
-  const [post, setPost] = useState<any>();
-  const [loading, setLoading] = useState(true);
+type Params = { slug: string };
 
-  useEffect(() => {
-    if (!slug) return;
+async function getPost(slug: string) {
+  return prisma.blogPost.findUnique({
+    where: { slug },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      excerpt: true,
+      content: true,
+      featuredImage: true,
+      authorName: true,
+      createdAt: true,
+      published: true,
+      metaTitle: true,
+      metaDescription: true,
+    },
+  });
+}
 
-    async function fetchPost() {
-      const res = await fetch(`/api/blog/${slug}`);
-      if (!res.ok) return setPost(null);
-      const data = await res.json();
-      setPost(data);
-      setLoading(false);
-    }
+export async function generateStaticParams() {
+  const posts = await prisma.blogPost.findMany({
+    where: { published: true },
+    select: { slug: true },
+  });
 
-    fetchPost();
-  }, [slug]);
+  return posts.map((post) => ({ slug: post.slug }));
+}
 
-  if (loading)
-    return (
-      <div className="flex justify-center items-center h-screen text-gray-500">
-        Loading...
-      </div>
-    );
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<Params>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const post = await getPost(slug);
+  if (!post || !post.published) {
+    return {
+      title: "Post Not Found | QuizMintAI Blog",
+      robots: { index: false, follow: false },
+    };
+  }
 
-  if (!post)
-    return (
-      <div className="flex justify-center items-center h-screen text-gray-500">
-        Post not found
-      </div>
-    );
+  const title = post.metaTitle || post.title;
+  const description = post.metaDescription || post.excerpt;
+  const url = `https://www.quizmintai.com/blog/${post.slug}`;
 
-  // Generate a simple TOC from headings
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description,
+      url,
+      type: "article",
+    },
+  };
+}
+
+export default async function BlogPostPage({
+  params,
+}: {
+  params: Promise<Params>;
+}) {
+  const { slug } = await params;
+  const post = await getPost(slug);
+
+  if (!post || !post.published) {
+    notFound();
+  }
+
   const extractHeadings = (markdown: string) => {
     const regex = /^###?\s+(.*)$/gm;
     const matches = [...markdown.matchAll(regex)];
@@ -53,7 +91,6 @@ export default function BlogPostPage() {
   return (
     <div className="bg-gray-50 min-h-screen py-12 px-4 md:px-8 lg:px-16">
       <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-12">
-        {/* Main content */}
         <div className="flex-1 bg-white shadow-lg rounded-xl overflow-hidden">
           {post.featuredImage && (
             <img
@@ -88,7 +125,6 @@ export default function BlogPostPage() {
           </div>
         </div>
 
-        {/* TOC */}
         {headings.length > 0 && (
           <aside className="hidden lg:block w-64 sticky top-24 self-start">
             <h2 className="text-xl font-semibold mb-4 text-gray-800">
@@ -98,7 +134,7 @@ export default function BlogPostPage() {
               {headings.map((h, i) => {
                 const id = h.toLowerCase().replace(/\s+/g, "-");
                 return (
-                  <li key={i}>
+                  <li key={`${id}-${i}`}>
                     <a
                       href={`#${id}`}
                       className="hover:text-blue-600 transition-colors"

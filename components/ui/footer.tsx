@@ -52,9 +52,9 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4">Product</h3>
             <ul className="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
-              <li><a href="#features" className="hover:text-blue-600 transition-colors">Features</a></li>
-              <li><a href="#pricing" className="hover:text-blue-600 transition-colors">Pricing</a></li>
-              <li><a href="#testimonials" className="hover:text-blue-600 transition-colors">Testimonials</a></li>
+              <li><Link href="/#features" className="hover:text-blue-600 transition-colors">Features</Link></li>
+              <li><Link href="/#pricing" className="hover:text-blue-600 transition-colors">Pricing</Link></li>
+              <li><Link href="/#testimonials" className="hover:text-blue-600 transition-colors">Testimonials</Link></li>
             </ul>
           </div>
 

@@ -1,16 +1,15 @@
-"use client";
-
-import { useEffect, useState } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { format } from "date-fns";
 import { ArrowRight, Calendar } from "lucide-react";
+import { prisma } from "@/lib/prisma";
 
 type BlogPost = {
   id: string;
   slug: string;
   title: string;
   excerpt: string;
-  createdAt?: string;
+  createdAt: Date;
 };
 
 const fallbackPosts = [
@@ -34,29 +33,27 @@ const fallbackPosts = [
   },
 ];
 
-export default function BlogPage() {
-  const [posts, setPosts] = useState<BlogPost[]>([]);
-  const [loading, setLoading] = useState(true);
+export const metadata: Metadata = {
+  title: "QuizMintAI Blog | Teaching, Quiz, and Lesson Plan Guides",
+  description:
+    "Read practical guides for teachers and students on quiz generation, lesson planning, study workflows, and classroom-ready AI usage.",
+  alternates: {
+    canonical: "https://www.quizmintai.com/blog",
+  },
+};
 
-  useEffect(() => {
-    async function fetchPosts() {
-      try {
-        const res = await fetch("/api/blog");
-        if (!res.ok) {
-          setPosts([]);
-          return;
-        }
-        const data = await res.json();
-        setPosts(Array.isArray(data) ? data : []);
-      } catch {
-        setPosts([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchPosts();
-  }, []);
+export default async function BlogPage() {
+  const posts = (await prisma.blogPost.findMany({
+    where: { published: true },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      excerpt: true,
+      createdAt: true,
+    },
+  })) as BlogPost[];
 
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-cyan-50">
@@ -67,20 +64,16 @@ export default function BlogPage() {
           </span>
         </h1>
 
-        {loading ? (
-          <div className="text-center py-20">Loading...</div>
-        ) : posts.length > 0 ? (
+        {posts.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {posts.map((post) => (
               <Link key={post.id} href={`/blog/${post.slug}`}>
                 <div className="border rounded-xl overflow-hidden hover:shadow-xl transition-all p-6 cursor-pointer bg-white">
                   <div className="flex gap-4 text-sm text-zinc-500 mb-3">
-                    {post.createdAt && (
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />
-                        {format(new Date(post.createdAt), "MMM d, yyyy")}
-                      </span>
-                    )}
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-4 w-4" />
+                      {format(new Date(post.createdAt), "MMM d, yyyy")}
+                    </span>
                   </div>
                   <h2 className="text-xl font-semibold mb-2">{post.title}</h2>
                   <p className="text-zinc-600 line-clamp-3 mb-4">{post.excerpt}</p>
