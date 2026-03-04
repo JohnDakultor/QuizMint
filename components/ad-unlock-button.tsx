@@ -133,7 +133,7 @@ export default function AdUnlockButton({
                 data-full-width-responsive="true"
               />
             ) : (
-              <div className="text-sm text-muted-foreground">Monetag mode active.</div>
+              <div className="text-sm text-muted-foreground">Ad is loading...</div>
             )}
           </div>
           <div className="text-sm text-muted-foreground">
