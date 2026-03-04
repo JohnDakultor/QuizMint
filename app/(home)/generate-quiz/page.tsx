@@ -903,6 +903,29 @@ export default function Dashboard() {
           );
           return;
         }
+        if (
+          res.status === 403 &&
+          (typeof data?.adResetAvailable === "boolean" ||
+            typeof data?.adResetsRemaining === "number")
+        ) {
+          setAdUnlockInfo({
+            available: Boolean(data?.adResetAvailable),
+            nextAdResetAt: data?.nextAdResetAt || null,
+            nextFreeAt: data?.nextFreeAt || null,
+            remaining:
+              typeof data?.adResetsRemaining === "number"
+                ? data.adResetsRemaining
+                : undefined,
+          });
+          setError("");
+          setInfoMessage(
+            attachRequestId(
+              "Free limit reached. Watch an ad to unlock immediately or wait for reset.",
+              data
+            )
+          );
+          return;
+        }
         if (res.status === 403 && data?.error?.toString().includes("Free limit")) {
           setAdUnlockInfo({
             available: Boolean(data?.adResetAvailable),
@@ -1165,13 +1188,15 @@ export default function Dashboard() {
                 disabled={!adUnlockInfo.available}
                 cooldownUntil={adUnlockInfo.nextAdResetAt || undefined}
                 remaining={adUnlockInfo.remaining}
-                onUnlocked={() => {
-                  setError("");
-                  setInfoMessage("Usage reset. You can generate again.");
-                  setAdUnlockInfo(null);
-                }}
-              />
-            )}
+              onUnlocked={() => {
+                setError("");
+                setInfoMessage("Usage reset. You can generate again.");
+                setAdUnlockInfo(null);
+              }}
+              title="Watch Ad To Unlock"
+              description="Watch an ad to reset your free usage now."
+            />
+          )}
 
             {uploadedFile && (
               <div className="flex items-center justify-between text-sm text-green-600 dark:text-green-400">

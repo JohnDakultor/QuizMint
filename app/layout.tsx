@@ -27,17 +27,33 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const adProvider = (process.env.NEXT_PUBLIC_AD_PROVIDER || "adsense").toLowerCase();
+  const monetagScriptSrc = process.env.NEXT_PUBLIC_MONETAG_SCRIPT_SRC || "";
+  const monetagZone = process.env.NEXT_PUBLIC_MONETAG_ZONE || "";
+
   return (
     <html lang="en">
+      <head>
+        {adProvider === "monetag" && monetagScriptSrc && (
+          <script
+            src={monetagScriptSrc}
+            data-zone={monetagZone || undefined}
+            async
+            data-cfasync="false"
+          />
+        )}
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-linear-to-b from-white to-zinc-50 dark:from-black dark:to-zinc-900 text-zinc-900 dark:text-zinc-50`}
       >
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8981480808378326"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
-        />
+        {adProvider === "adsense" && (
+          <Script
+            async
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8981480808378326"
+            crossOrigin="anonymous"
+            strategy="afterInteractive"
+          />
+        )}
 
         <Script
           src="https://accounts.google.com/gsi/client"

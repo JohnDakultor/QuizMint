@@ -84,7 +84,7 @@ import type { NextConfig } from "next";
 //   manifest-src 'self';
 // `;
 const ContentSecurityPolicy = `
-  default-src 'self' https://*.google.com https://*.gstatic.com https://ep2.adtrafficquality.google;
+  default-src 'self' https://*.google.com https://*.gstatic.com https://ep2.adtrafficquality.google https://*.5gvci.com https://*.quge5.com;
   
   script-src
     'self'
@@ -101,6 +101,8 @@ const ContentSecurityPolicy = `
     https://partner.googleadservices.com
     https://www.googletagmanager.com
     https://googleads.g.doubleclick.net
+    https://*.5gvci.com
+    https://*.quge5.com
     blob:;
   
   style-src
@@ -126,6 +128,8 @@ const ContentSecurityPolicy = `
   connect-src
     'self'
     https://*
+    https://*.5gvci.com
+    https://*.quge5.com
     ws://localhost:3000
     wss://localhost:3000
     https://ep2.adtrafficquality.google
@@ -134,11 +138,15 @@ const ContentSecurityPolicy = `
   frame-src
     'self'
     https://*
+    https://*.5gvci.com
+    https://*.quge5.com
     blob:;
   
   child-src
     'self'
     https://*
+    https://*.5gvci.com
+    https://*.quge5.com
     blob:;
   
   object-src 'none';

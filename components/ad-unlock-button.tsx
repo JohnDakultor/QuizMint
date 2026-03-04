@@ -30,6 +30,8 @@ export default function AdUnlockButton({
   timerSeconds = 30,
   remaining,
 }: AdUnlockButtonProps) {
+  const adProvider = (process.env.NEXT_PUBLIC_AD_PROVIDER || "adsense").toLowerCase();
+  const isAdSense = adProvider === "adsense";
   const [open, setOpen] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(timerSeconds);
   const [unlocking, setUnlocking] = useState(false);
@@ -65,7 +67,13 @@ export default function AdUnlockButton({
       const res = await fetch("/api/quiz-ad-reset", { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || data.error || "Failed to unlock.");
+        if (res.status === 429) {
+          throw new Error("Too many reset attempts. Please wait a moment and try again.");
+        }
+        if (res.status === 403) {
+          throw new Error("Ad reset is not available yet. Please wait for cooldown.");
+        }
+        throw new Error(data.message || data.error || "Unable to reset usage right now.");
       }
       setOpen(false);
       onUnlocked?.();
@@ -77,14 +85,14 @@ export default function AdUnlockButton({
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !isAdSense) return;
     try {
       // @ts-ignore
       (window.adsbygoogle = window.adsbygoogle || []).push({});
     } catch {
       // ignore
     }
-  }, [open]);
+  }, [open, isAdSense]);
 
 
   return (
@@ -111,16 +119,22 @@ export default function AdUnlockButton({
           </DialogHeader>
           <div className="border rounded-md p-4 bg-muted/40">
             <div className="text-sm text-muted-foreground mb-2">
-              Ad will be displayed here. Please keep this window open.
+              {isAdSense
+                ? "Ad will be displayed here. Please keep this window open."
+                : "Ad network is enabled. Please keep this window open while ad verification runs."}
             </div>
-            <ins
-              className="adsbygoogle"
-              style={{ display: "block" }}
-              data-ad-client="ca-pub-8981480808378326"
-              data-ad-slot="1347935059"
-              data-ad-format="auto"
-              data-full-width-responsive="true"
-            />
+            {isAdSense ? (
+              <ins
+                className="adsbygoogle"
+                style={{ display: "block" }}
+                data-ad-client="ca-pub-8981480808378326"
+                data-ad-slot="1347935059"
+                data-ad-format="auto"
+                data-full-width-responsive="true"
+              />
+            ) : (
+              <div className="text-sm text-muted-foreground">Monetag mode active.</div>
+            )}
           </div>
           <div className="text-sm text-muted-foreground">
             {secondsLeft > 0
