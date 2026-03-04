@@ -15,6 +15,7 @@ import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
 import { semanticCacheStore } from "@/lib/rag/semanticCache";
 import { ingestWebSourcesForQuery } from "@/lib/rag/web";
 import { normalizeForEmbedding } from "@/lib/rag/embed";
+import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
 
 const FREE_PLAN_LIMIT = 3;
 const RESET_HOURS = 3;
@@ -312,6 +313,23 @@ export async function POST(req: NextRequest) {
 
     const plan = String(user.subscriptionPlan || "free").trim().toLowerCase();
     const isFree = plan === "free" || plan === "";
+
+    const burstCheck = checkFeatureBurstLimit({
+      userId: user.id,
+      plan: user.subscriptionPlan,
+      feature: "lesson_plan_generate",
+    });
+    if (!burstCheck.ok) {
+      return apiError(
+        429,
+        `Too many lesson plan requests. Please wait ${burstCheck.retryAfterSec}s and try again.`,
+        requestId,
+        {
+          retryAfterSec: burstCheck.retryAfterSec,
+          limitPerMinute: burstCheck.limit,
+        }
+      );
+    }
     const isPremium = plan === "premium";
     const liteMode = Boolean((user as any).liteMode);
     const debugCounters = process.env.DEBUG_LESSON_COUNTERS === "1";

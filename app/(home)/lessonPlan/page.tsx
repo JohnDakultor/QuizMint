@@ -2045,6 +2045,18 @@ export default function LessonPlanPage() {
       const data = await res.json().catch(() => ({}));
       
       if (!res.ok) {
+        if (res.status === 429) {
+          setError(null);
+          setInfoMessage(
+            withRequestId(
+              data?.message ||
+                data?.error ||
+                "Too many requests. Please wait a moment and try again.",
+              data
+            )
+          );
+          return;
+        }
         if (res.status === 403 && data.error === "Free limit reached") {
           const resetInSeconds = Number(data?.resetInSeconds || 0);
           const hh = Math.floor(resetInSeconds / 3600);
@@ -2406,6 +2418,18 @@ export default function LessonPlanPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 429) {
+          setError(null);
+          setInfoMessage(
+            withRequestId(
+              data?.message ||
+                data?.error ||
+                "Too many requests. Please wait a moment and try again.",
+              data
+            )
+          );
+          return;
+        }
         if (data?.usage && typeof data.usage === "object") {
           const resetInSeconds = Number(data?.usage?.resetInSeconds || 0);
           const resetAtMs = resetInSeconds > 0 ? Date.now() + resetInSeconds * 1000 : null;
@@ -2476,7 +2500,20 @@ export default function LessonPlanPage() {
         body: JSON.stringify({ deck: pptxDeck, source: pptxDeckSource }),
       });
       if (!res.ok) {
-        const text = await res.text();
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          setError(null);
+          setInfoMessage(
+            withRequestId(
+              data?.message ||
+                data?.error ||
+                "Too many requests. Please wait a moment and try again.",
+              data
+            )
+          );
+          return;
+        }
+        const text = JSON.stringify(data || {});
         throw new Error(withRequestIdFromText("Failed to generate PPTX", text));
       }
       const blob = await res.blob();

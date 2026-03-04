@@ -6,6 +6,7 @@ import { generateLessonPlanPptx } from "@/lib/generate-lesson-plan-pptx";
 import type { PptDeck } from "@/lib/lesson-plan-ppt-ai";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
+import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
 
 const PROVIDER_ISSUE_MESSAGE =
   "Server issue - we're fixing it. Please try again in a few minutes.";
@@ -41,6 +42,24 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return apiError(404, "User not found", requestId);
     }
+
+    const burstCheck = checkFeatureBurstLimit({
+      userId: user.id,
+      plan: user.subscriptionPlan,
+      feature: "lesson_pptx_download",
+    });
+    if (!burstCheck.ok) {
+      return apiError(
+        429,
+        `Too many PPTX download requests. Please wait ${burstCheck.retryAfterSec}s and try again.`,
+        requestId,
+        {
+          retryAfterSec: burstCheck.retryAfterSec,
+          limitPerMinute: burstCheck.limit,
+        }
+      );
+    }
+
     eventUserId = user.id;
     eventPlan = user.subscriptionPlan || "free";
 

@@ -91,6 +91,7 @@ import { getServerSession } from "next-auth";
 import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
 import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
 import { semanticCacheStore } from "@/lib/rag/semanticCache";
+import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
 
 export const runtime = "nodejs";
 
@@ -122,6 +123,22 @@ export async function POST(req: Request) {
         { error: "You must subscribe to upload files." },
         { status: 403 },
       );
+
+    const burstCheck = checkFeatureBurstLimit({
+      userId: user.id,
+      plan: user.subscriptionPlan,
+      feature: "quiz_file_upload_generate",
+    });
+    if (!burstCheck.ok) {
+      return NextResponse.json(
+        {
+          error: `Too many file quiz generation requests. Please wait ${burstCheck.retryAfterSec}s and try again.`,
+          retryAfterSec: burstCheck.retryAfterSec,
+          limitPerMinute: burstCheck.limit,
+        },
+        { status: 429 }
+      );
+    }
 
     // --- FILE & PROMPT ---
     const formData = await req.formData();

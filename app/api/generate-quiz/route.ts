@@ -335,6 +335,7 @@ import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { buildPromptProfile } from "@/lib/adaptive-personalization";
+import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
 
 import { fetchTranscript } from "@/lib/youtube-transcript";
 
@@ -502,6 +503,23 @@ export async function POST(req: NextRequest) {
     const isFree = subscriptionPlan === "free";
     const isProOrPremium =
       user.subscriptionPlan === "pro" || user.subscriptionPlan === "premium";
+
+    const burstCheck = checkFeatureBurstLimit({
+      userId: user.id,
+      plan: user.subscriptionPlan,
+      feature: "quiz_generate",
+    });
+    if (!burstCheck.ok) {
+      return apiError(
+        429,
+        `Too many quiz generation requests. Please wait ${burstCheck.retryAfterSec}s and try again.`,
+        requestId,
+        {
+          retryAfterSec: burstCheck.retryAfterSec,
+          limitPerMinute: burstCheck.limit,
+        }
+      );
+    }
 
     if (isFree && user.quizUsage >= FREE_QUIZ_LIMIT) {
       if (user.lastQuizAt) {

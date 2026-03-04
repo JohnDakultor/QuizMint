@@ -59,13 +59,23 @@ function titleCase(input: string): string {
     .join(" ");
 }
 
+function sanitizeTopicForSuggestion(input: string): string {
+  return input
+    .replace(/\b\d+\s*(easy|medium|hard)\b/gi, " ")
+    .replace(/\b(easy|medium|hard)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function buildQuizSuggestionsFromHistory(input: {
   topics: string[];
   keywords: string[];
   limit?: number;
 }) {
   const limit = Math.min(Math.max(input.limit ?? 6, 3), 10);
-  const topics = input.topics.filter(Boolean);
+  const topics = input.topics
+    .map((topic) => sanitizeTopicForSuggestion(topic))
+    .filter(Boolean);
   const keywordSet = Array.from(new Set(input.keywords.filter(Boolean)));
   const topKeywords = keywordSet.slice(0, 6);
 
@@ -74,8 +84,7 @@ export function buildQuizSuggestionsFromHistory(input: {
   if (topics[0]) {
     templates.push(
       `Create a 10-item quiz about ${topics[0]} with multiple choice and true/false.`,
-      `Create an exit-ticket quiz on ${topics[0]} for Grade 8 with answer key.`,
-      `Generate a differentiated quiz on ${topics[0]}: 6 easy, 3 medium, 1 hard.`
+      `Create an exit-ticket quiz on ${topics[0]} for Grade 8 with answer key.`
     );
   }
 

@@ -115,8 +115,7 @@ const ContentSecurityPolicy = `
     'self'
     data:
     blob:
-    https://*
-    http://*;
+    https://*;
   
   font-src
     'self'
@@ -127,20 +126,19 @@ const ContentSecurityPolicy = `
   connect-src
     'self'
     https://*
-    wss://*
+    ws://localhost:3000
+    wss://localhost:3000
     https://ep2.adtrafficquality.google
     https://ep1.adtrafficquality.google;
   
   frame-src
     'self'
     https://*
-    http://*
     blob:;
   
   child-src
     'self'
     https://*
-    http://*
     blob:;
   
   object-src 'none';

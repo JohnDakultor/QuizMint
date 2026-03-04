@@ -11,6 +11,7 @@ import {
   generateLessonPlanPptAIWithMeta,
   type LessonPlanPptAIMeta,
 } from "@/lib/lesson-plan-ppt-ai";
+import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import fs from "fs/promises";
@@ -301,6 +302,23 @@ export async function POST(req: NextRequest) {
     if (!user) return apiError(404, "User not found", requestId);
     eventUserId = user.id;
     eventPlan = String(user.subscriptionPlan || "free").toLowerCase();
+
+    const burstCheck = checkFeatureBurstLimit({
+      userId: user.id,
+      plan: user.subscriptionPlan,
+      feature: "lesson_material_upload",
+    });
+    if (!burstCheck.ok) {
+      return apiError(
+        429,
+        `Too many file-to-PPTX requests. Please wait ${burstCheck.retryAfterSec}s and try again.`,
+        requestId,
+        {
+          retryAfterSec: burstCheck.retryAfterSec,
+          limitPerMinute: burstCheck.limit,
+        }
+      );
+    }
 
     const normalizedPlan = String(user.subscriptionPlan || "free").toLowerCase();
     const isFree = normalizedPlan === "free";

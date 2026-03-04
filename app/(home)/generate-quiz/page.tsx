@@ -837,6 +837,16 @@ export default function Dashboard() {
         const data = await res.json();
 
         if (!res.ok) {
+          if (res.status === 429) {
+            setError("");
+            setInfoMessage(
+              attachRequestId(
+                data.message || data.error || "Too many requests. Please wait a moment and try again.",
+                data
+              )
+            );
+            return;
+          }
           // Backend sent 400 or other error
           setError(
             attachRequestId(
@@ -883,6 +893,16 @@ export default function Dashboard() {
       }
 
       if (!res.ok) {
+        if (res.status === 429) {
+          setError("");
+          setInfoMessage(
+            attachRequestId(
+              data.message || data.error || "Too many requests. Please wait a moment and try again.",
+              data
+            )
+          );
+          return;
+        }
         if (res.status === 403 && data?.error?.toString().includes("Free limit")) {
           setAdUnlockInfo({
             available: Boolean(data?.adResetAvailable),
