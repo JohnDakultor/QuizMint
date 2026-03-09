@@ -1,7 +1,6 @@
 import React from "react";
 import { Facebook, Linkedin, XIcon } from "lucide-react";
 import Link from "next/link";
-import icon from "@/public/icon.png";
 import Image from "next/image";
 
 export default function Footer() {
@@ -11,7 +10,7 @@ export default function Footer() {
         <div className="grid md:grid-cols-5 gap-12 mb-12">
           <div className="md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <Image src={icon} alt="Logo" className="w-15 h-15" />
+              <Image src="/icon.png" alt="Logo" className="w-15 h-15" width={60} height={60} />
               <span className="font-bold text-xl">QuizMintAI</span>
             </div>
             <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
-import icon from "@/public/icon.png"
 import Footer from "@/components/ui/footer";
 
 export default function PublicLayout({
@@ -21,9 +20,11 @@ export default function PublicLayout({
           >
             {/* <Sparkles className="text-blue-500 h-6 w-6" /> */}
             <Image
-              src={icon}
+              src="/icon.png"
               alt="Logo"
               className="w-15 h-15"
+              width={60}
+              height={60}
             />
             <span>QuizMintAI</span>
           </Link>

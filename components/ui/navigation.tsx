@@ -17,7 +17,6 @@ import {
   Ellipsis,
 } from "lucide-react";
 import Image from "next/image";
-import icon from "@/public/icon.png";
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -86,7 +85,7 @@ export default function Navigation() {
                 href="/home"
                 className="flex items-center space-x-2 text-yellow-400 font-bold text-lg"
               >
-                <Image src={icon} alt="Logo" className="w-10 h-10" />
+                <Image src="/icon.png" alt="Logo" className="w-10 h-10" width={40} height={40} />
                 <span>QuizMintAI</span>
               </Link>
             )}

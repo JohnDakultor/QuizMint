@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "../globals.css";
 import Image from "next/image";
-import icon from "@/public/icon.png"
 import Link from "next/link";
 
 const geistSans = Geist({
@@ -33,10 +32,12 @@ export default function AuthLayout({
           <Link href="/" className="flex items-center gap-2">
             {/* <Sparkles className="text-blue-500 h-6 w-6" /> */}
             <Image
-                          src={icon}
-                          alt="Logo"
-                          className="w-15 h-15"
-                        />
+              src="/icon.png"
+              alt="Logo"
+              className="w-15 h-15"
+              width={60}
+              height={60}
+            />
             <span className="font-bold text-xl">QuizMint</span>
           </Link>
         </header>
