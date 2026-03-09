@@ -36,12 +36,19 @@ function normalizeText(input: string): string {
     .trim();
 }
 
+export function extractKeywordTokens(input: string, max = 8): string[] {
+  const normalized = normalizeText(input);
+  return Array.from(
+    new Set(
+      normalized
+        .split(" ")
+        .filter((token) => token.length > 2 && !STOPWORDS.has(token))
+    )
+  ).slice(0, max);
+}
+
 export function buildPromptProfile(prompt: string) {
-  const normalized = normalizeText(prompt);
-  const tokens = normalized
-    .split(" ")
-    .filter((token) => token.length > 2 && !STOPWORDS.has(token));
-  const uniqueKeywords = Array.from(new Set(tokens)).slice(0, 8);
+  const uniqueKeywords = extractKeywordTokens(prompt, 8);
   const topic = uniqueKeywords.slice(0, 4).join(" ");
 
   return {
@@ -111,6 +118,48 @@ export function buildQuizSuggestionsFromHistory(input: {
       "Create a 10-item formative quiz with 7 multiple choice and 3 true/false questions.",
       "Generate a remediation quiz focused on common misconceptions for the current unit.",
       "Create a short pre-assessment quiz aligned to today's lesson objective."
+    );
+  }
+
+  return Array.from(new Set(templates)).slice(0, limit);
+}
+
+export function buildQuizSuggestionsFromOutcomes(input: {
+  lowScoreTopics: string[];
+  missedAnswerTerms: string[];
+  limit?: number;
+}) {
+  const limit = Math.min(Math.max(input.limit ?? 4, 2), 8);
+  const topics = input.lowScoreTopics
+    .map((topic) => sanitizeTopicForSuggestion(topic))
+    .filter(Boolean);
+  const missed = Array.from(new Set(input.missedAnswerTerms.filter(Boolean))).slice(0, 6);
+
+  const templates: string[] = [];
+
+  if (topics[0]) {
+    templates.push(
+      `Create a remediation quiz on ${topics[0]} with scaffolded questions from easy to medium.`,
+      `Create a reteach quiz on ${topics[0]} focused on common student errors and misconceptions.`
+    );
+  }
+
+  if (topics[0] && topics[1]) {
+    templates.push(
+      `Generate a spiral review quiz on ${topics[0]} and ${topics[1]} with short feedback hints per item.`
+    );
+  }
+
+  if (missed.length > 0) {
+    const top = missed.slice(0, 3).map(titleCase).join(", ");
+    templates.push(
+      `Create a targeted practice quiz to correct misunderstandings around ${top}.`
+    );
+  }
+
+  if (templates.length < limit) {
+    templates.push(
+      "Create a 10-item mastery-check quiz with progressive difficulty and misconception-focused distractors."
     );
   }
 

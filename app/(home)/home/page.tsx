@@ -56,6 +56,10 @@ type StudentAttemptSummary = {
   correctAnswers: number;
   totalQuestions: number;
   submittedAt: string;
+  details?: Array<{
+    selected: string;
+    correct: boolean;
+  }>;
 };
 
 const FREE_QUIZ_LIMIT = 3;
@@ -178,6 +182,7 @@ function getResetTimer(lastQuizAt: string | null) {
   const s = Math.floor((remaining % 60000) / 1000);
   return `${h}h ${m}m ${s}s`;
 }
+
 
 export default function HomeDashboardPage() {
   const [data, setData] = useState<DashboardSummary | null>(null);
@@ -389,6 +394,7 @@ export default function HomeDashboardPage() {
     if (!data) return "-";
     return `${data.todayQuizCount} quizzes - ${data.todayLessonPlanCount} lesson plans`;
   }, [data]);
+
 
   async function copyTemplate(text: string) {
     try {

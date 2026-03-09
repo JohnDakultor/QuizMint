@@ -9,7 +9,7 @@ type SimpleQuiz = {
   createdAt: string;
   difficulty: string;
   adaptiveLearning: boolean;
-  questions: { id: number; question: string }[];
+  questions: { id: number; question: string; options: string[] }[];
 };
 
 type SimpleLessonPlan = {
@@ -23,13 +23,31 @@ type SimpleLessonPlan = {
 };
 
 // detect question type helper
-function detectQuestionType(text: string) {
+function detectQuestionType(text: string, options: string[] = []) {
+  if (
+    options.length === 2 &&
+    options.some((o) => o.toLowerCase() === "true") &&
+    options.some((o) => o.toLowerCase() === "false")
+  ) {
+    return "True/False";
+  }
+  if (options.length >= 3) return "Multiple Choice";
   if (!text) return "Other";
   const lower = text.toLowerCase();
   if (/\btrue\b.*\bfalse\b|\bfalse\b.*\btrue\b/.test(lower)) return "True/False";
   if (/_+|___/.test(text)) return "Fill-in-blank";
   if (/[A-D]\)|\boption\b|\bchoices\b/.test(text)) return "Multiple Choice";
-  return "Multiple Choice";
+  if (/\bshort answer\b|\bexplain\b|\bwhy\b|\bhow\b/.test(lower)) return "Short Answer";
+  return "Other";
+}
+
+function extractTerms(value: string, max = 4) {
+  return (value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 3)
+    .slice(0, max);
 }
 
 // OpenRouter fetch helper
@@ -106,7 +124,7 @@ export async function GET(req: Request) {
                   id: true,
                   title: true,
                   createdAt: true,
-                  questions: { select: { id: true, question: true, hint: true } },
+                  questions: { select: { id: true, question: true, options: true, hint: true } },
                 },
               },
             },
@@ -262,32 +280,66 @@ ${JSON.stringify(
       });
     }
 
-    const allQuizzes: SimpleQuiz[] = (user as any).quizzes.map((q: { id: number; title: string; createdAt: Date; questions: { id: number; question: string; hint: string | undefined; explanation: string | undefined; }[]; }) => ({
+    const difficultyRows = await prisma.$queryRaw<
+      Array<{ quizId: number; difficulty: string | null }>
+    >`
+      SELECT "quizId", "difficulty"
+      FROM (
+        SELECT
+          ("metadata"->>'quizId')::int AS "quizId",
+          COALESCE("metadata"->>'difficulty', "metadata"->>'effectiveDifficulty') AS "difficulty",
+          ROW_NUMBER() OVER (
+            PARTITION BY ("metadata"->>'quizId')
+            ORDER BY "createdAt" DESC
+          ) AS rn
+        FROM "GenerationEvent"
+        WHERE "userId" = ${user.id}
+          AND "eventType" = 'quiz_generated'
+          AND "status" = 'success'
+          AND ("feature" = 'quiz' OR "feature" = 'quiz_file_upload')
+          AND ("metadata"->>'quizId') IS NOT NULL
+      ) ranked
+      WHERE rn = 1
+    `;
+    const difficultyByQuizId = new Map<number, string>();
+    for (const row of difficultyRows) {
+      const d = (row.difficulty || "").toLowerCase().trim();
+      if (row.quizId && d) difficultyByQuizId.set(row.quizId, d);
+    }
+
+    const allQuizzes: SimpleQuiz[] = (user as any).quizzes.map((q: { id: number; title: string; createdAt: Date; questions: { id: number; question: string; options: string[]; hint: string | undefined; explanation: string | undefined; }[]; }) => ({
       id: q.id,
       title: q.title,
       createdAt: q.createdAt.toISOString(),
-      difficulty: ((user as any).aiDifficulty || "easy").toLowerCase(),
+      difficulty: difficultyByQuizId.get(q.id) || "unknown",
       adaptiveLearning: q.questions.some((qq: { hint: string | undefined; }) => !!qq.hint),
-      questions: q.questions.map((qq: { id: number | undefined; question: string | undefined; }) => ({ id: qq.id, question: qq.question })),
+      questions: q.questions.map((qq: { id: number | undefined; question: string | undefined; options: string[] | undefined; }) => ({
+        id: qq.id,
+        question: qq.question,
+        options: Array.isArray(qq.options) ? qq.options : [],
+      })),
     }));
 
     const totalQuizzes = allQuizzes.length;
     const adaptiveQuizzes = allQuizzes.filter((q) => q.adaptiveLearning).length;
 
-    const difficultyCounts = { easy: 0, medium: 0, hard: 0 };
+    const difficultyCounts = { easy: 0, medium: 0, hard: 0, unknown: 0 };
     allQuizzes.forEach((q) => {
       const d = q.difficulty.toLowerCase();
-      difficultyCounts[d as keyof typeof difficultyCounts] =
-        (difficultyCounts[d as keyof typeof difficultyCounts] || 0) + 1;
+      if (d === "easy" || d === "medium" || d === "hard") {
+        difficultyCounts[d] = (difficultyCounts[d] || 0) + 1;
+      } else {
+        difficultyCounts.unknown += 1;
+      }
     });
 
     const questionTypeCounts: Record<string, number> = {};
-    allQuizzes.forEach((q) =>
+    allQuizzes.forEach((q) => {
       q.questions.forEach((qq) => {
-        const type = detectQuestionType(qq.question);
+        const type = detectQuestionType(qq.question, qq.options);
         questionTypeCounts[type] = (questionTypeCounts[type] || 0) + 1;
-      })
-    );
+      });
+    });
 
     const questionDistribution = allQuizzes.map((q) => ({
       title: q.title,
@@ -366,11 +418,87 @@ Data snapshot:
 ${JSON.stringify(fullDataSnapshot, null, 2)}
 `;
 
+    const attemptRows = await prisma.$queryRaw<
+      Array<{ scorePercent: number; result: unknown; title: string }>
+    >`
+      SELECT s."scorePercent", s."result", q."title"
+      FROM "StudentQuizAttempt" s
+      JOIN "Quiz" q ON q."id" = s."quizId"
+      WHERE q."userId" = ${user.id}
+      ORDER BY s."submittedAt" DESC
+      LIMIT 200
+    `;
+
+    const lowScoreTopicCount: Record<string, number> = {};
+    const missedTermCount: Record<string, number> = {};
+    for (const row of attemptRows) {
+      if ((row.scorePercent ?? 0) < 60) {
+        const title = (row.title || "").trim() || "Untitled quiz";
+        lowScoreTopicCount[title] = (lowScoreTopicCount[title] || 0) + 1;
+      }
+      const details = Array.isArray(row.result)
+        ? (row.result as Array<Record<string, unknown>>)
+        : [];
+      for (const d of details) {
+        if (d?.correct === false) {
+          const selected = typeof d.selected === "string" ? d.selected : "";
+          for (const term of extractTerms(selected, 4)) {
+            missedTermCount[term] = (missedTermCount[term] || 0) + 1;
+          }
+        }
+      }
+    }
+
+    const adaptiveInsights = {
+      weakTopics: Object.entries(lowScoreTopicCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([title, count]) => ({ title, count })),
+      missedTerms: Object.entries(missedTermCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([term, count]) => ({ term, count })),
+      attemptCount: attemptRows.length,
+    };
+
+    const attemptQuestionTypeCounts: Record<string, number> = {};
+    for (const row of attemptRows) {
+      const details = Array.isArray(row.result)
+        ? (row.result as Array<Record<string, unknown>>)
+        : [];
+      for (const d of details) {
+        const qt = typeof d.questionType === "string" ? d.questionType : "";
+        const normalized =
+          qt === "true_false"
+            ? "True/False"
+            : qt === "fill_blank"
+              ? "Fill-in-blank"
+              : qt === "mcq"
+                ? "Multiple Choice"
+                : qt === "short_answer"
+                  ? "Short Answer"
+                  : "";
+        if (normalized) {
+          attemptQuestionTypeCounts[normalized] =
+            (attemptQuestionTypeCounts[normalized] || 0) + 1;
+        }
+      }
+    }
+    const finalQuestionTypeCounts =
+      Object.keys(attemptQuestionTypeCounts).length > 0
+        ? attemptQuestionTypeCounts
+        : questionTypeCounts;
+
+    const adaptiveContext =
+      adaptiveInsights.attemptCount > 0
+        ? `\nAdaptive outcome signals:\n${JSON.stringify(adaptiveInsights, null, 2)}`
+        : "\nAdaptive outcome signals: none available.";
+
     const aiPayload = {
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
+        { role: "user", content: `${userPrompt}\n${adaptiveContext}` },
       ],
     };
 
@@ -385,10 +513,11 @@ ${JSON.stringify(fullDataSnapshot, null, 2)}
         { name: "Easy", value: difficultyCounts.easy },
         { name: "Medium", value: difficultyCounts.medium },
         { name: "Hard", value: difficultyCounts.hard },
+        { name: "Unknown", value: difficultyCounts.unknown },
       ],
       trendData,
       questionDistribution,
-      questionTypeData: Object.entries(questionTypeCounts).map(([type, count]) => ({
+      questionTypeData: Object.entries(finalQuestionTypeCounts).map(([type, count]) => ({
         type,
         count,
       })),
@@ -397,6 +526,7 @@ ${JSON.stringify(fullDataSnapshot, null, 2)}
       allQuizzes,
       topQuizzes,
       radarProfile,
+      adaptiveInsights,
       insights,
     });
   } catch (err: any) {

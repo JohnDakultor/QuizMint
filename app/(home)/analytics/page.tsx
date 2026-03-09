@@ -333,6 +333,41 @@ export default function AnalyticsPageClient() {
             <CardTitle>AI Insights</CardTitle>
           </CardHeader>
           <CardContent className="overflow-auto max-h-[400px] space-y-4">
+            <p className="text-xs text-zinc-500">
+              AI-generated recommendations based on your {isLesson ? "lesson plan" : "quiz"} data.
+            </p>
+            {!isLesson && charts?.adaptiveInsights && (
+              <div className="rounded-md border bg-zinc-50 p-3 text-xs space-y-2">
+                <p className="font-semibold text-zinc-700">Adaptive Signals</p>
+                <div>
+                  <p className="font-medium text-zinc-600">Weak Topics</p>
+                  {Array.isArray(charts.adaptiveInsights.weakTopics) &&
+                  charts.adaptiveInsights.weakTopics.length > 0 ? (
+                    charts.adaptiveInsights.weakTopics.slice(0, 5).map((item: any) => (
+                      <p key={item.title} className="text-zinc-700">
+                        {item.title} • {item.count}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-zinc-500">No weak-topic signals yet.</p>
+                  )}
+                </div>
+                <div>
+                  <p className="font-medium text-zinc-600">Most Missed Terms</p>
+                  {Array.isArray(charts.adaptiveInsights.missedTerms) &&
+                  charts.adaptiveInsights.missedTerms.length > 0 ? (
+                    <p className="text-zinc-700">
+                      {charts.adaptiveInsights.missedTerms
+                        .slice(0, 10)
+                        .map((item: any) => item.term)
+                        .join(", ")}
+                    </p>
+                  ) : (
+                    <p className="text-zinc-500">No wrong-answer text signals yet.</p>
+                  )}
+                </div>
+              </div>
+            )}
             {loading || chartsLoading ? (
               <div className="space-y-3">
                 <SkeletonLoading className="h-4 w-full" />

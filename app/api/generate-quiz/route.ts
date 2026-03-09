@@ -328,6 +328,7 @@ import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { buildPromptProfile } from "@/lib/adaptive-personalization";
+import { extractKeywordTokens } from "@/lib/adaptive-personalization";
 import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
 
 import { fetchTranscript } from "@/lib/youtube-transcript";
@@ -803,12 +804,64 @@ export async function POST(req: NextRequest) {
         .slice(0, 3)
         .map(([topic]) => topic);
 
-      if (frequentTopics.length > 0) {
-        adaptiveGuidance = [
+      const attemptRows = await prisma.$queryRaw<
+        Array<{ scorePercent: number; result: unknown; title: string }>
+      >`
+        SELECT s."scorePercent", s."result", q."title"
+        FROM "StudentQuizAttempt" s
+        JOIN "Quiz" q ON q."id" = s."quizId"
+        WHERE q."userId" = ${user.id}
+        ORDER BY s."submittedAt" DESC
+        LIMIT 120
+      `;
+
+      const lowScoreTopics: string[] = [];
+      const missedAnswerTerms: string[] = [];
+      for (const row of attemptRows) {
+        if ((row.scorePercent ?? 0) < 60) {
+          const profile = buildPromptProfile(row.title || "");
+          if (profile.topic) lowScoreTopics.push(profile.topic);
+        }
+        const details = Array.isArray(row.result)
+          ? (row.result as Array<Record<string, unknown>>)
+          : [];
+        for (const detail of details) {
+          if (detail?.correct === false) {
+            const selected =
+              typeof detail.selected === "string" ? detail.selected.trim() : "";
+            if (selected) {
+              missedAnswerTerms.push(...extractKeywordTokens(selected, 3));
+            }
+          }
+        }
+      }
+
+      const topLowTopics = Array.from(new Set(lowScoreTopics)).slice(0, 3);
+      const topMissedTerms = Array.from(new Set(missedAnswerTerms)).slice(0, 5);
+
+      if (frequentTopics.length > 0 || topLowTopics.length > 0 || topMissedTerms.length > 0) {
+        const guidanceLines = [
           "Teacher Intent Personalization:",
-          `- Teacher frequently generates quizzes on: ${frequentTopics.join(", ")}.`,
-          "- Keep requested topic primary, but align examples/wording with the teacher's recurring classroom context.",
-        ].join("\n");
+        ];
+        if (frequentTopics.length > 0) {
+          guidanceLines.push(
+            `- Teacher frequently generates quizzes on: ${frequentTopics.join(", ")}.`
+          );
+        }
+        if (topLowTopics.length > 0) {
+          guidanceLines.push(
+            `- Student outcomes indicate remediation focus on: ${topLowTopics.join(", ")}.`
+          );
+        }
+        if (topMissedTerms.length > 0) {
+          guidanceLines.push(
+            `- Common wrong-answer terms seen in submissions: ${topMissedTerms.join(", ")}.`
+          );
+        }
+        guidanceLines.push(
+          "- Keep requested topic primary, but adapt examples and distractors to address these learning gaps."
+        );
+        adaptiveGuidance = guidanceLines.join("\n");
       }
     }
 
@@ -1041,6 +1094,7 @@ export async function POST(req: NextRequest) {
       costUsd: aiResult?.meta.estimatedCostUsd ?? 0,
       metadata: {
         liteMode,
+        difficulty: effectiveDifficulty,
         sourceMode: sourceMode ?? "none",
         sourceCount: (sources ?? []).length,
         sources: normalizedSources,

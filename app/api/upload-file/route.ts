@@ -382,6 +382,7 @@ content = meaningfulText;  // override to pass to AI
       latencyMs: Date.now() - startedAt,
       costUsd: 0,
       metadata: {
+        difficulty,
         promptTopic: promptProfile.topic,
         promptKeywords: promptProfile.keywords,
         promptPreview: promptProfile.preview,

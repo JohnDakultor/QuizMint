@@ -7,6 +7,8 @@ import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import {
   buildPromptProfile,
   buildQuizSuggestionsFromHistory,
+  buildQuizSuggestionsFromOutcomes,
+  extractKeywordTokens,
 } from "@/lib/adaptive-personalization";
 
 function extractHistoryFromMetadata(metadata: unknown) {
@@ -72,6 +74,17 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
+    const attemptRows = await prisma.$queryRaw<
+      Array<{ scorePercent: number; result: unknown; title: string }>
+    >`
+      SELECT s."scorePercent", s."result", q."title"
+      FROM "StudentQuizAttempt" s
+      JOIN "Quiz" q ON q."id" = s."quizId"
+      WHERE q."userId" = ${user.id}
+      ORDER BY s."submittedAt" DESC
+      LIMIT 120
+    `;
+
     const topics: string[] = [];
     const keywords: string[] = [];
 
@@ -89,18 +102,49 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const suggestions = buildQuizSuggestionsFromHistory({
+    const lowScoreTopics: string[] = [];
+    const missedTerms: string[] = [];
+    for (const attempt of attemptRows) {
+      if ((attempt.scorePercent ?? 0) < 60) {
+        const topicProfile = buildPromptProfile(attempt.title || "");
+        if (topicProfile.topic) lowScoreTopics.push(topicProfile.topic);
+      }
+
+      const details = Array.isArray(attempt.result)
+        ? (attempt.result as Array<Record<string, unknown>>)
+        : [];
+      for (const detail of details) {
+        if (detail?.correct === false) {
+          const selected =
+            typeof detail.selected === "string" ? detail.selected.trim() : "";
+          if (selected) {
+            missedTerms.push(...extractKeywordTokens(selected, 3));
+          }
+        }
+      }
+    }
+
+    const historySuggestions = buildQuizSuggestionsFromHistory({
       topics,
       keywords,
       limit: 6,
     });
+    const outcomeSuggestions = buildQuizSuggestionsFromOutcomes({
+      lowScoreTopics,
+      missedAnswerTerms: missedTerms,
+      limit: 4,
+    });
+    const suggestions = Array.from(
+      new Set([...outcomeSuggestions, ...historySuggestions])
+    ).slice(0, 8);
 
     return NextResponse.json({
       requestId,
       feature,
       suggestions,
-      engine: "history_v1",
+      engine: "history_outcomes_answers_v2",
       hasHistory: topics.length > 0 || keywords.length > 0,
+      hasOutcomes: attemptRows.length > 0,
     });
   } catch (err: any) {
     logApiError(requestId, "adaptive-suggestions", err);
