@@ -3,8 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "../globals.css";
 import Image from "next/image";
 import icon from "@/public/icon.png"
-
-import { Sparkles } from "lucide-react";
 import Link from "next/link";
 
 const geistSans = Geist({

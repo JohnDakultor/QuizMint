@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { Sparkles, Twitter } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import Image from "next/image";
 import icon from "@/public/icon.png"
 import Footer from "@/components/ui/footer";

@@ -92,6 +92,10 @@ import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
 import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
 import { semanticCacheStore } from "@/lib/rag/semanticCache";
 import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
+import { trackGenerationEvent } from "@/lib/generation-events";
+import { buildPromptProfile } from "@/lib/adaptive-personalization";
+import { apiError, createRequestId, logApiError } from "@/lib/api-error";
+import { logDebug, logWarn } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -109,20 +113,37 @@ function chunkText(text: string, chunkSize = 1200, overlap = 200) {
   return chunks;
 }
 
+function hasExplicitQuestionCount(prompt: string) {
+  return /\b\d+\s*-?\s*(item|items|question|questions)\b/i.test(prompt);
+}
+
+function enforceDefaultQuestionCount(prompt: string, defaultCount = 10) {
+  const trimmed = (prompt || "").trim();
+  if (trimmed && hasExplicitQuestionCount(trimmed)) return trimmed;
+  const defaultRule = `Generate exactly ${defaultCount} questions.`;
+  if (!trimmed) {
+    return `Create a quiz based on the uploaded document. ${defaultRule}`;
+  }
+  return `${trimmed}\n\n${defaultRule}`;
+}
+
 export async function POST(req: Request) {
+  const startedAt = Date.now();
+  let eventUserId: string | null = null;
+  let eventPlan: string | null = null;
+  const requestId = createRequestId();
   try {
     // --- AUTH ---
     const session = await getServerSession(authOptions);
     const email = session?.user?.email;
     if (!email)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return apiError(401, "Unauthorized", requestId);
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || user.subscriptionPlan !== "premium")
-      return NextResponse.json(
-        { error: "You must subscribe to upload files." },
-        { status: 403 },
-      );
+      return apiError(403, "You must subscribe to upload files.", requestId);
+    eventUserId = user.id;
+    eventPlan = user.subscriptionPlan || "free";
 
     const burstCheck = checkFeatureBurstLimit({
       userId: user.id,
@@ -130,13 +151,14 @@ export async function POST(req: Request) {
       feature: "quiz_file_upload_generate",
     });
     if (!burstCheck.ok) {
-      return NextResponse.json(
+      return apiError(
+        429,
+        `Too many file quiz generation requests. Please wait ${burstCheck.retryAfterSec}s and try again.`,
+        requestId,
         {
-          error: `Too many file quiz generation requests. Please wait ${burstCheck.retryAfterSec}s and try again.`,
           retryAfterSec: burstCheck.retryAfterSec,
           limitPerMinute: burstCheck.limit,
         },
-        { status: 429 }
       );
     }
 
@@ -178,9 +200,11 @@ export async function POST(req: Request) {
 
           content = await pptxTextParser(tempFilePath, "text");
 
-          console.log("=== EXTRACTED PPTX TEXT START ===");
-          console.log(content);
-          console.log("=== EXTRACTED PPTX TEXT END ===");
+          logDebug("PPT extracted text preview", {
+            requestId,
+            chars: content.length,
+            preview: content.slice(0, 300),
+          });
 
           await fs.unlink(tempFilePath);
 
@@ -191,30 +215,33 @@ export async function POST(req: Request) {
   .filter((line) => line && !line.startsWith("---"))
   .join("\n");
 
-console.log("Meaningful text length:", meaningfulText.length);
+          logDebug("PPT meaningful text", {
+            requestId,
+            meaningfulChars: meaningfulText.length,
+          });
 
 if (!meaningfulText) {
   // <-- Return proper 400 so frontend sees error
-  return NextResponse.json(
-    {
-      error: "InsufficientContent",
-      message:
-        "No meaningful content found in the uploaded file. Please provide a file with actual text.",
-    },
-    { status: 400 } // <-- status 400
-  );
+            return apiError(
+              400,
+              "No meaningful content found in the uploaded file. Please provide a file with actual text.",
+              requestId,
+              { code: "InsufficientContent" },
+            );
 }
 
 content = meaningfulText;  // override to pass to AI
-        } catch (pptErr: any) {
-          console.error("PPT parsing error:", pptErr);
+        } catch (pptErr: unknown) {
+          const parseError =
+            pptErr instanceof Error ? pptErr.message : String(pptErr);
+          logWarn("PPT parsing failed", {
+            requestId,
+            error: parseError,
+          });
           content = "";
         }
       } else {
-        return NextResponse.json({
-          error: "Unsupported file type",
-          status: 400,
-        });
+        return apiError(400, "Unsupported file type", requestId);
       }
     }
 
@@ -247,8 +274,7 @@ content = meaningfulText;  // override to pass to AI
     }
 
     // --- RAG-ENHANCED GENERATION ---
-    const basePrompt =
-      prompt?.trim() || "Create a quiz based on the uploaded document.";
+    const basePrompt = enforceDefaultQuestionCount(prompt || "", 10);
 
     const { enhancedPrompt, cachedResponse, sources, ragMeta, sourceMode } =
       await enhancePromptWithRAG({
@@ -264,7 +290,7 @@ content = meaningfulText;  // override to pass to AI
           difficulty,
           adaptiveLearning,
           true,
-          prompt,
+          basePrompt,
         );
 
     if (ragMeta && !cachedResponse) {
@@ -282,19 +308,23 @@ content = meaningfulText;  // override to pass to AI
 
     // --- DEFENSIVE CHECK ---
     if (!quiz || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
-  return NextResponse.json(
-    {
-      error: "InsufficientContent",
-      message:
+      return apiError(
+        400,
         "No quiz questions generated. Reason: Provided content is insufficient for question generation.",
-    },
-    { status: 400 }
-  );
+        requestId,
+        { code: "InsufficientContent" },
+      );
 }
 
     const safeQuiz = {
       ...quiz,
-      questions: quiz.questions.map((q: any) => ({
+      questions: quiz.questions.map((q: {
+        question: string;
+        options: string[];
+        answer: string;
+        explanation?: string | null;
+        hint?: string | null;
+      }) => ({
         question: q.question ?? "",
         options: Array.isArray(q.options) ? q.options : [],
         answer: q.answer ?? "",
@@ -309,7 +339,13 @@ content = meaningfulText;  // override to pass to AI
     instructions: safeQuiz.instructions,
     userId: user.id, // from your authenticated session
     questions: {
-      create: safeQuiz.questions.map((q: any) => ({
+      create: safeQuiz.questions.map((q: {
+        question: string;
+        options: string[];
+        answer: string;
+        explanation?: string | null;
+        hint?: string | null;
+      }) => ({
         question: q.question,
         options: q.options,
         answer: q.answer,
@@ -323,6 +359,42 @@ content = meaningfulText;  // override to pass to AI
   },
 });
 
+    const promptProfile = buildPromptProfile(
+      [basePrompt, title, content.slice(0, 1200)].filter(Boolean).join("\n\n"),
+    );
+    type NormalizedSource = { url: string; title?: string };
+    const normalizedSources = (Array.isArray(sources) ? sources : [])
+      .reduce<NormalizedSource[]>((acc, source) => {
+        const url = typeof source?.url === "string" ? source.url.trim() : "";
+        const sourceTitle =
+          typeof source?.title === "string" ? source.title.trim() : "";
+        if (!url) return acc;
+        acc.push(sourceTitle ? { url, title: sourceTitle } : { url });
+        return acc;
+      }, [])
+      .slice(0, 5);
+    await trackGenerationEvent({
+      userId: user.id,
+      eventType: "quiz_generated",
+      feature: "quiz_file_upload",
+      status: "success",
+      plan: eventPlan,
+      latencyMs: Date.now() - startedAt,
+      costUsd: 0,
+      metadata: {
+        promptTopic: promptProfile.topic,
+        promptKeywords: promptProfile.keywords,
+        promptPreview: promptProfile.preview,
+        quizId: savedQuiz.id,
+        sourceMode: sourceMode ?? "documents",
+        sourceCount: (sources ?? []).length,
+        sources: normalizedSources,
+        cacheHit: Boolean(cachedResponse),
+        fileName: file?.name ?? null,
+        fileType: sourceType,
+      },
+    });
+
     return NextResponse.json({
       message: "Quiz generated",
       quiz: savedQuiz,
@@ -332,12 +404,26 @@ content = meaningfulText;  // override to pass to AI
         fromCache: Boolean(cachedResponse),
         sourceCount: (sources ?? []).length,
       },
+      requestId,
     });
-  } catch (err: any) {
-    console.error("Upload file error:", err);
-    return NextResponse.json(
-      { error: err.message || "Failed to process file" },
-      { status: 500 },
+  } catch (err: unknown) {
+    await trackGenerationEvent({
+      userId: eventUserId,
+      eventType: "quiz_generated",
+      feature: "quiz_file_upload",
+      status: "failed",
+      plan: eventPlan,
+      latencyMs: Date.now() - startedAt,
+      costUsd: 0,
+      metadata: {
+        message: err instanceof Error ? err.message : "unknown_error",
+      },
+    });
+    logApiError(requestId, "upload-file", err);
+    return apiError(
+      500,
+      err instanceof Error ? err.message : "Failed to process file",
+      requestId
     );
   }
 }

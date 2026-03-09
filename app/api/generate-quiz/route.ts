@@ -318,15 +318,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
-import { Stripe } from "stripe";
 import fetch from "node-fetch";
 import * as cheerio from "cheerio";
-import { getSubtitles } from "youtube-captions-scraper";
-
-import ytdl from "ytdl-core";
-import axios from "axios";
-import { XMLParser } from "fast-xml-parser";
 import { generateQuizAIWithMeta } from "@/lib/ai";
 import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
 import { semanticCacheStore } from "@/lib/rag/semanticCache";
@@ -360,6 +353,21 @@ function hashString(input: string) {
   return Math.abs(hash).toString(36);
 }
 
+function buildAdaptiveProfileInput(input: {
+  rawInput: string;
+  resolvedContent: string;
+  sourceTitle: string;
+  isUrlInput: boolean;
+}) {
+  const parts: string[] = [];
+  if (input.rawInput?.trim()) parts.push(input.rawInput.trim());
+  if (input.sourceTitle?.trim()) parts.push(input.sourceTitle.trim());
+  if (input.isUrlInput && input.resolvedContent?.trim()) {
+    parts.push(input.resolvedContent.slice(0, 1200));
+  }
+  return parts.join("\n\n");
+}
+
 function chunkText(text: string, chunkSize = 1200, overlap = 200) {
   const cleaned = normalizeForEmbedding(text);
   if (!cleaned) return [];
@@ -374,6 +382,21 @@ function chunkText(text: string, chunkSize = 1200, overlap = 200) {
   return chunks;
 }
 
+function buildBalancedContentWindow(text: string, maxChars = 8000): string {
+  if (!text || text.length <= maxChars) return text;
+
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= maxChars) return clean;
+
+  const part = Math.floor(maxChars / 3);
+  const top = clean.slice(0, part);
+  const midStart = Math.max(Math.floor(clean.length / 2) - Math.floor(part / 2), 0);
+  const middle = clean.slice(midStart, midStart + part);
+  const bottom = clean.slice(Math.max(clean.length - part, 0));
+
+  return `${top}\n\n${middle}\n\n${bottom}`.slice(0, maxChars);
+}
+
 // Helper to check if input is URL
 function isURL(str: string) {
   try {
@@ -384,27 +407,80 @@ function isURL(str: string) {
   }
 }
 
-// Extract text from a web page
-async function extractTextFromURL(url: string) {
+// Extract text from a web page (blogs/articles/news)
+async function extractTextFromURL(
+  url: string,
+): Promise<{ text: string; title: string }> {
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`URL fetch failed: ${res.status}`);
+    }
+
     const html = await res.text();
     const $ = cheerio.load(html);
-    return $("p")
-      .map((i: number, el: cheerio.Element) => $(el).text())
-      .get()
-      .join("\n\n");
+    $("script, style, noscript, iframe, svg, nav, footer, header, aside, form").remove();
+
+    const title =
+      $('meta[property="og:title"]').attr("content")?.trim() ||
+      $("title").first().text().trim() ||
+      $("h1").first().text().trim() ||
+      "";
+
+    const selectors = [
+      "article p",
+      "main p",
+      '[role="main"] p',
+      ".post-content p",
+      ".entry-content p",
+      ".article-content p",
+      ".content p",
+    ];
+
+    let text = "";
+    for (const selector of selectors) {
+      const candidate = $(selector)
+        .map((_: number, el: cheerio.Element) => $(el).text().trim())
+        .get()
+        .filter(Boolean)
+        .join("\n\n");
+      if (candidate.length > text.length) text = candidate;
+    }
+
+    if (!text) {
+      text = $("p")
+        .map((_: number, el: cheerio.Element) => $(el).text().trim())
+        .get()
+        .filter(Boolean)
+        .join("\n\n");
+    }
+
+    if (!text) {
+      text = $("main, article, body")
+        .first()
+        .text()
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    return { text, title };
   } catch (err) {
-    console.error("❌ Failed to fetch page content:", err);
-    return "";
+    console.error("Failed to fetch page content:", err);
+    return { text: "", title: "" };
   }
 }
 
 // Transform Youtube Data
-async function transformYoutubeData(data: any[]) {
+async function transformYoutubeData(data: Array<{ text?: string }>) {
   let text = "";
 
-  data.forEach((item: any) => {
+  data.forEach((item) => {
     text += item.text + "\n";
   });
   return {
@@ -485,7 +561,7 @@ export async function POST(req: NextRequest) {
       return apiError(404, "User not found", requestId);
     eventUserId = user.id;
     eventPlan = user.subscriptionPlan || "free";
-    const liteMode = Boolean((user as any).liteMode);
+    const liteMode = Boolean((user as { liteMode?: boolean }).liteMode);
 
 
     console.log("User found:", {
@@ -588,10 +664,9 @@ export async function POST(req: NextRequest) {
         : undefined);
     const forceFreshGeneration = Boolean(body.forceFreshGeneration === true || body.forceFresh === true);
     
-    let text = body.text?.trim();
+    const text = body.text?.trim();
     if (!text)
       return apiError(400, "No input provided", requestId);
-    const promptProfile = buildPromptProfile(text);
 
     // Determine content source
     let content = text;
@@ -614,7 +689,7 @@ export async function POST(req: NextRequest) {
           } else {
             videoId = urlObj.searchParams.get("v") || undefined;
           }
-        } catch (err) {
+        } catch {
           return apiError(400, "Invalid YouTube URL", requestId);
         }
 
@@ -646,7 +721,14 @@ export async function POST(req: NextRequest) {
 
         content = extractedText;
       } else {
-        content = await extractTextFromURL(content);
+        const targetUrl = content;
+        const extracted = await extractTextFromURL(content);
+        content = extracted.text;
+        sourceTitle = extracted.title;
+        const preview = (content || "").replace(/\s+/g, " ").trim().slice(0, 600);
+        console.log(
+          `[url-extract] url=${targetUrl} title="${sourceTitle || ""}" chars=${content?.length || 0} preview="${preview}"`,
+        );
       }
     }
 
@@ -654,8 +736,15 @@ export async function POST(req: NextRequest) {
 
     if (!content?.trim())
       return apiError(400, "Content Not Available", requestId);
-
-    if (content.length > 8000) content = content.slice(0, 8000);
+    content = buildBalancedContentWindow(content, 8000);
+    const promptProfile = buildPromptProfile(
+      buildAdaptiveProfileInput({
+        rawInput: text,
+        resolvedContent: content,
+        sourceTitle,
+        isUrlInput: isURL(text),
+      }),
+    );
 
     // Validate and set difficulty
     const validDifficulties = new Set(["easy", "medium", "hard"]);
@@ -690,7 +779,7 @@ export async function POST(req: NextRequest) {
           userId: user.id,
           eventType: "quiz_generated",
           status: "success",
-          feature: "quiz",
+          OR: [{ feature: "quiz" }, { feature: "quiz_file_upload" }],
         },
         orderBy: { createdAt: "desc" },
         take: 25,
@@ -725,7 +814,7 @@ export async function POST(req: NextRequest) {
 
     // Update user preferences only if they're different
     if (isProOrPremium) {
-      const updateData: any = {};
+      const updateData: { aiDifficulty?: string; adaptiveLearning?: boolean } = {};
       let needsUpdate = false;
       
       if (requestedDifficulty && validDifficulties.has(requestedDifficulty) && requestedDifficulty !== user.aiDifficulty) {
@@ -761,7 +850,7 @@ export async function POST(req: NextRequest) {
     const urlNamespace = `url:${user.id}:${hashString(text)}`;
     const namespace = isPromptOnly ? webNamespace : isUrlInput ? urlNamespace : baseNamespace;
 
-    let webDebug: any = null;
+    let webDebug: unknown = null;
     if (liteMode) {
       // Lite mode: skip heavy web/url ingestion and semantic retrieval for faster low-bandwidth flow.
       stageMs.ingest = 0;
@@ -819,7 +908,7 @@ export async function POST(req: NextRequest) {
 
     let enhancedPrompt = content;
     let cachedResponse: string | null = null;
-    let sources: any[] = [];
+    let sources: Array<{ url: string; title?: string }> = [];
     let ragMeta: {
       promptForCache: string;
       embedding: number[];
@@ -876,10 +965,10 @@ export async function POST(req: NextRequest) {
         );
         stageMs.cacheWrite = Date.now() - cacheStoreStartedAt;
         cacheStored = true;
-      } catch (cacheErr: any) {
+      } catch (cacheErr: unknown) {
         if (
-          cacheErr?.name === "AbortError" ||
-          cacheErr?.message === "REQUEST_ABORTED"
+          cacheErr instanceof Error &&
+          (cacheErr.name === "AbortError" || cacheErr.message === "REQUEST_ABORTED")
         ) {
           throw cacheErr;
         }
@@ -887,8 +976,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    type NormalizedSource = { url: string; title?: string };
+    const normalizedSources = (Array.isArray(sources) ? sources : [])
+      .reduce<NormalizedSource[]>((acc, source) => {
+        const url = typeof source?.url === "string" ? source.url.trim() : "";
+        const title =
+          typeof source?.title === "string" ? source.title.trim() : "";
+        if (!url) return acc;
+        acc.push(title ? { url, title } : { url });
+        return acc;
+      }, [])
+      .slice(0, 5);
+
     // Sanitize questions
-    const safeQuestions = quiz.questions.map((q: any) => ({
+    const safeQuestions = quiz.questions.map((q: {
+      question: string;
+      options: string[];
+      answer: string;
+      explanation?: string | null;
+      hint?: string | null;
+    }) => ({
       question: q.question,
       options: q.options,
       answer: q.answer,
@@ -936,8 +1043,10 @@ export async function POST(req: NextRequest) {
         liteMode,
         sourceMode: sourceMode ?? "none",
         sourceCount: (sources ?? []).length,
+        sources: normalizedSources,
         cacheHit: Boolean(cachedResponse),
         forceFreshGeneration,
+        quizId: savedQuiz.id,
         promptTopic: promptProfile.topic,
         promptKeywords: promptProfile.keywords,
         promptPreview: promptProfile.preview,

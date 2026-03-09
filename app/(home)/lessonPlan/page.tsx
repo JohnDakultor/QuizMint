@@ -3008,6 +3008,18 @@ export default function LessonPlanPage() {
                 percent={lessonProgress}
               />
             )}
+            {loadingSlides && !lessonPlan && (
+              <LoadingProgress
+                label={slidesLoadingLabel || "Preparing lesson material slides..."}
+                percent={slidesProgress}
+              />
+            )}
+            {downloadingPptx && !lessonPlan && (
+              <LoadingProgress
+                label="Generating PPTX file..."
+                percent={pptxProgress}
+              />
+            )}
           </form>
 
           {infoMessage && (
@@ -3157,7 +3169,7 @@ export default function LessonPlanPage() {
                   : "Edit PPTX Before Download"}
               </Button>
             </div>
-            {loadingSlides && (
+            {loadingSlides && lessonPlan && (
               <LoadingProgress
                 label={slidesLoadingLabel}
                 percent={slidesProgress}
@@ -3383,6 +3395,12 @@ export default function LessonPlanPage() {
           <div className="text-xs rounded-md border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2">
             Source: {pptxDeckSource === "lesson_material_upload" ? "Uploaded file" : "Generated lesson plan"}
           </div>
+          {downloadingPptx && (
+            <LoadingProgress
+              label="Generating PPTX file..."
+              percent={pptxProgress}
+            />
+          )}
           {pptxDeck && (
             <PptxEditor
               deck={pptxDeck}

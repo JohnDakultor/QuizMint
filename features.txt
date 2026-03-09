@@ -217,6 +217,53 @@ Acceptance Criteria:
 - Steps documented for rotating API keys
 - Includes OpenRouter, HF, Tavily, NextAuth secrets
 
+QF-024 | P0 | M | FE/BE | Generation reliability hardening
+Scope:
+- app/api/generate-quiz/route.ts
+- app/api/generate-lesson-plan/route.ts
+- app/(home)/generate-quiz/page.tsx
+- app/(home)/lessonPlan/page.tsx
+Acceptance Criteria:
+- Provider failure path retries once with fallback model
+- User-facing message is consistent and friendly for timeout/provider errors
+- Request IDs shown in UI for support cases
+
+QF-025 | P0 | M | BE | Heavy job background completion
+Scope:
+- app/api/lesson-plan-export/*
+- app/api/generate-lesson-pptx/route.ts
+- export polling UI
+Acceptance Criteria:
+- Long-running exports continue in background
+- Status can be resumed after refresh/navigation
+- "Download when ready" works for pending jobs
+
+QF-026 | P0 | S | BE | Endpoint guard parity
+Scope:
+- quiz, lesson-plan, file-upload, pptx routes
+Acceptance Criteria:
+- All expensive routes enforce 429 burst guard
+- All limit reached paths return structured 403/429 payload
+- Frontend displays info-style message (not raw server error)
+
+QF-027 | P1 | M | BE | Output contract validator
+Scope:
+- lib/ai.ts
+- lib/lesson-plan-ai.ts
+- route handlers before DB save
+Acceptance Criteria:
+- Quiz output enforces requested item count + schema
+- Lesson plan output enforces valid days/sections
+- Auto-repair/retry when model output drifts
+
+QF-028 | P1 | M | QA | Deploy quality gate
+Scope:
+- package scripts + CI workflow
+Acceptance Criteria:
+- Pre-deploy check runs lint + typecheck + smoke tests
+- Deploy blocked on failing checks
+- Core flows smoke test: sign-in, quiz gen, lesson gen, pptx export
+
 ========================================
 KPI Targets (Quarter)
 ========================================

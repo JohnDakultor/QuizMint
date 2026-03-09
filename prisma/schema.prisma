@@ -52,6 +52,7 @@ model User {
   lessonPlans        LessonPlan[]
   lessonPlanExports  LessonPlanExport[]
   winbackEmails      WinbackEmailLog[]
+  loginSessions      UserLoginSession[]
 }
 
 model UserPolicyAcceptance {
@@ -74,6 +75,9 @@ model Quiz {
   userId       String
   user         User       @relation(fields: [userId], references: [id])
   questions    Question[]
+  attempts     StudentQuizAttempt[]
+  takeLocks    StudentQuizTake[]
+  shareSettings QuizShareSettings?
 }
 
 model Question {
@@ -268,4 +272,64 @@ model WinbackEmailLog {
   @@unique([userId, milestoneDay])
   @@index([milestoneDay, sentAt])
   @@index([userId, sentAt])
+}
+
+model UserLoginSession {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId  String   @unique
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  revokedAt  DateTime?
+
+  @@index([userId, lastSeenAt])
+  @@index([userId, revokedAt])
+}
+
+model StudentQuizAttempt {
+  id             String   @id @default(cuid())
+  quizId         Int
+  quiz           Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  studentName    String?
+  studentEmail   String?
+  scorePercent   Int
+  correctAnswers Int
+  totalQuestions Int
+  result         Json
+  ip             String?
+  userAgent      String?
+  submittedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([quizId, submittedAt])
+  @@index([studentEmail, submittedAt])
+  @@unique([quizId, studentEmail])
+}
+
+model QuizShareSettings {
+  id        String   @id @default(cuid())
+  quizId    Int      @unique
+  quiz      Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  isOpen    Boolean  @default(true)
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([quizId, isOpen])
+  @@index([expiresAt])
+}
+
+model StudentQuizTake {
+  id            String   @id @default(cuid())
+  quizId        Int
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  takeSessionId String
+  submittedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@unique([quizId, takeSessionId])
+  @@index([quizId, submittedAt])
 }

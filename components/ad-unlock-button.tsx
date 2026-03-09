@@ -77,8 +77,10 @@ export default function AdUnlockButton({
       }
       setOpen(false);
       onUnlocked?.();
-    } catch (err: any) {
-      setError(err.message || "Failed to unlock.");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to unlock.";
+      setError(message);
     } finally {
       setUnlocking(false);
     }
@@ -87,8 +89,11 @@ export default function AdUnlockButton({
   useEffect(() => {
     if (!open || !isAdSense) return;
     try {
-      // @ts-ignore
-      (window.adsbygoogle = window.adsbygoogle || []).push({});
+      const adWindow = window as Window & {
+        adsbygoogle?: Array<Record<string, unknown>>;
+      };
+      adWindow.adsbygoogle = adWindow.adsbygoogle || [];
+      adWindow.adsbygoogle.push({});
     } catch {
       // ignore
     }

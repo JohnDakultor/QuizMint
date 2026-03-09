@@ -20,7 +20,15 @@ type DashboardSummary = {
   lessonPlanCount: number;
   todayQuizCount: number;
   todayLessonPlanCount: number;
-  recentQuizzes: { id: number; title: string; createdAt: string }[];
+  recentQuizzes: {
+    id: number;
+    title: string;
+    createdAt: string;
+    shareSettings?: {
+      isOpen: boolean;
+      expiresAt: string | null;
+    } | null;
+  }[];
   recentPlans: { id: string; title: string; subject: string; createdAt: string }[];
 };
 
@@ -36,6 +44,18 @@ type LastPlan = {
   title: string;
   subject: string;
   createdAt: string;
+};
+
+type StudentAttemptSummary = {
+  id: string;
+  quizId: number;
+  quizTitle: string;
+  studentName: string | null;
+  studentEmail: string | null;
+  scorePercent: number;
+  correctAnswers: number;
+  totalQuestions: number;
+  submittedAt: string;
 };
 
 const FREE_QUIZ_LIMIT = 3;
@@ -166,6 +186,9 @@ export default function HomeDashboardPage() {
   const [copiedTemplate, setCopiedTemplate] = useState<string | null>(null);
   const [lastQuiz, setLastQuiz] = useState<LastQuiz | null>(null);
   const [lastPlan, setLastPlan] = useState<LastPlan | null>(null);
+  const [studentAttempts, setStudentAttempts] = useState<StudentAttemptSummary[]>([]);
+  const [attemptsLoading, setAttemptsLoading] = useState(true);
+  const [quizActionLoadingId, setQuizActionLoadingId] = useState<number | null>(null);
   const [, setTick] = useState(0);
   const dashboardTourSteps = [
     {
@@ -193,7 +216,16 @@ export default function HomeDashboardPage() {
       element: "#dashboard-recent-quizzes",
       popover: {
         title: "Recent quizzes",
-        description: "Review your latest generated quizzes and continue quickly.",
+        description:
+          "Each quiz row is droppable. Open it to view attempts, close/reopen access, or delete the quiz.",
+      },
+    },
+    {
+      element: "#dashboard-student-submissions",
+      popover: {
+        title: "Student submissions",
+        description:
+          "Submissions are grouped per quiz title with student name, email, score, and exact date/time taken.",
       },
     },
     {
@@ -212,6 +244,28 @@ export default function HomeDashboardPage() {
     },
   ];
 
+  async function refreshSummaryData() {
+    const res = await fetch("/api/dashboard/summary", { cache: "no-store" });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error || "Failed to load dashboard");
+    setData(json);
+  }
+
+  async function refreshAttemptsData() {
+    setAttemptsLoading(true);
+    const res = await fetch("/api/quiz-share/attempts", { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setStudentAttempts([]);
+      setAttemptsLoading(false);
+      return;
+    }
+    setStudentAttempts(
+      Array.isArray(json?.attempts) ? (json.attempts as StudentAttemptSummary[]) : []
+    );
+    setAttemptsLoading(false);
+  }
+
   useEffect(() => {
     const interval = setInterval(() => setTick((v) => v + 1), 1000);
     return () => clearInterval(interval);
@@ -224,10 +278,7 @@ export default function HomeDashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/dashboard/summary", { cache: "no-store" });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || "Failed to load dashboard");
-        if (mounted) setData(json);
+        await refreshSummaryData();
       } catch (err: any) {
         if (mounted) setError(err.message || "Failed to load dashboard");
       } finally {
@@ -265,6 +316,62 @@ export default function HomeDashboardPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadAttempts() {
+      try {
+        await refreshAttemptsData();
+        if (!mounted) return;
+      } catch {
+        if (!mounted) return;
+        setStudentAttempts([]);
+      } finally {
+        if (mounted) setAttemptsLoading(false);
+      }
+    }
+    loadAttempts();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function handleToggleQuizOpen(quizId: number, nextOpen: boolean) {
+    try {
+      setQuizActionLoadingId(quizId);
+      const res = await fetch("/api/quiz-share", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quizId, isOpen: nextOpen }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to update quiz availability");
+      await Promise.all([refreshSummaryData(), refreshAttemptsData()]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to update quiz";
+      setError(msg);
+    } finally {
+      setQuizActionLoadingId(null);
+    }
+  }
+
+  async function handleDeleteQuiz(quizId: number) {
+    const confirmed = window.confirm("Delete this quiz and all student attempts?");
+    if (!confirmed) return;
+    try {
+      setQuizActionLoadingId(quizId);
+      const res = await fetch(`/api/quizzes/${quizId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to delete quiz");
+      await Promise.all([refreshSummaryData(), refreshAttemptsData()]);
+      if (lastQuiz?.id === quizId) setLastQuiz(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete quiz";
+      setError(msg);
+    } finally {
+      setQuizActionLoadingId(null);
+    }
+  }
 
   const usageStatus = useMemo(() => {
     if (!data) return "-";
@@ -493,15 +600,79 @@ export default function HomeDashboardPage() {
             ) : !data?.recentQuizzes?.length ? (
               <p className="text-sm text-zinc-500">No quizzes yet.</p>
             ) : (
-              data.recentQuizzes.map((quiz) => (
-                <div key={quiz.id} className="flex items-center justify-between border border-blue-100 bg-white/90 rounded-lg px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{quiz.title}</p>
-                    <p className="text-xs text-zinc-500">{new Date(quiz.createdAt).toLocaleString()}</p>
-                  </div>
-                  <FileText className="w-4 h-4 text-zinc-400" />
-                </div>
-              ))
+              data.recentQuizzes.map((quiz) => {
+                const attemptsForQuiz = studentAttempts.filter((a) => a.quizId === quiz.id);
+                const isOpen = quiz.shareSettings?.isOpen ?? true;
+                const expiresAt = quiz.shareSettings?.expiresAt
+                  ? new Date(quiz.shareSettings.expiresAt).toLocaleString()
+                  : null;
+                const busy = quizActionLoadingId === quiz.id;
+                return (
+                  <details key={quiz.id} className="group border border-blue-100 bg-white/90 rounded-lg px-3 py-2">
+                    <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{quiz.title}</p>
+                        <p className="text-xs text-zinc-500">
+                          {new Date(quiz.createdAt).toLocaleString()} •{" "}
+                          <span className={isOpen ? "text-green-700" : "text-red-600"}>
+                            {isOpen ? "Open" : "Closed"}
+                          </span>
+                          {expiresAt ? ` • Ends: ${expiresAt}` : ""}
+                        </p>
+                        <p className="text-[11px] text-zinc-500">
+                          Click to view attempts and controls
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-zinc-400" />
+                        <span className="text-xs text-zinc-500 transition-transform group-open:rotate-180">
+                          ▼
+                        </span>
+                      </div>
+                    </summary>
+                    <div className="mt-3 space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => void handleToggleQuizOpen(quiz.id, !isOpen)}
+                        >
+                          {isOpen ? "Close Quiz" : "Reopen Quiz"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={busy}
+                          onClick={() => void handleDeleteQuiz(quiz.id)}
+                        >
+                          Delete Quiz
+                        </Button>
+                      </div>
+                      <div className="rounded border bg-white p-2">
+                        <p className="text-xs font-semibold text-zinc-600 mb-1">
+                          Attempts ({attemptsForQuiz.length})
+                        </p>
+                        {attemptsForQuiz.length === 0 ? (
+                          <p className="text-xs text-zinc-500">No submissions yet.</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {attemptsForQuiz.slice(0, 8).map((attempt) => (
+                              <div key={attempt.id} className="text-xs text-zinc-700">
+                                {attempt.studentName} ({attempt.studentEmail}) •{" "}
+                                {attempt.correctAnswers}/{attempt.totalQuestions} •{" "}
+                                {attempt.scorePercent}% •{" "}
+                                {new Date(attempt.submittedAt).toLocaleDateString()}{" "}
+                                {new Date(attempt.submittedAt).toLocaleTimeString()}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </details>
+                );
+              })
             )}
             <Button asChild variant="outline" className="w-full">
               <Link href="/generate-quiz">Create New Quiz</Link>
@@ -540,6 +711,70 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card
+        id="dashboard-student-submissions"
+        className="border-slate-200 bg-linear-to-br from-white to-slate-50 shadow-sm"
+      >
+        <CardHeader>
+          <CardTitle className="text-base">Student Quiz Submissions</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {attemptsLoading ? (
+            Array.from({ length: 3 }).map((_, idx) => (
+              <div key={idx} className="rounded-lg border border-slate-100 bg-white px-3 py-2">
+                <SkeletonLoading className="h-4 w-56" />
+                <SkeletonLoading className="mt-1 h-3 w-64" />
+              </div>
+            ))
+          ) : studentAttempts.length === 0 ? (
+            <p className="text-sm text-zinc-500">No student submissions yet.</p>
+          ) : (
+            Object.values(
+              studentAttempts.reduce<Record<string, StudentAttemptSummary[]>>((acc, attempt) => {
+                const key = `${attempt.quizId}::${attempt.quizTitle}`;
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(attempt);
+                return acc;
+              }, {})
+            )
+              .slice(0, 12)
+              .map((group) => {
+                const first = group[0];
+                return (
+                  <details
+                    key={`${first.quizId}-${first.quizTitle}`}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <summary className="cursor-pointer list-none">
+                      <p className="text-sm font-medium truncate">{first.quizTitle}</p>
+                      <p className="text-xs text-zinc-500">
+                        {group.length} submission{group.length > 1 ? "s" : ""}
+                      </p>
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      {group.map((attempt) => (
+                        <div key={attempt.id} className="rounded border border-slate-100 p-2">
+                          <p className="text-xs text-zinc-600">
+                            {attempt.studentName} ({attempt.studentEmail}) • {attempt.correctAnswers}/
+                            {attempt.totalQuestions} • {attempt.scorePercent}%
+                          </p>
+                          <p className="text-xs text-zinc-500">
+                            Taken: {new Date(attempt.submittedAt).toLocaleDateString()}{" "}
+                            {new Date(attempt.submittedAt).toLocaleTimeString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                );
+              })
+          )}
+          <Button asChild variant="outline" className="w-full">
+            <Link href="/generate-quiz">Open Quiz Dashboard</Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card id="dashboard-quick-actions" className="border-indigo-200 bg-linear-to-r from-indigo-50 to-cyan-50 shadow-sm">
         <CardHeader>

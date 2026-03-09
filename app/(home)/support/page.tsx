@@ -37,7 +37,7 @@ export default function ContactPage() {
       setName("");
       setEmail("");
       setMessage("");
-    } catch (err) {
+    } catch {
       setError("Something went wrong. Please try again later.");
     } finally {
       setLoading(false);

@@ -47,7 +47,17 @@ export async function GET() {
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
       take: 5,
-      select: { id: true, title: true, createdAt: true },
+      select: {
+        id: true,
+        title: true,
+        createdAt: true,
+        shareSettings: {
+          select: {
+            isOpen: true,
+            expiresAt: true,
+          },
+        },
+      },
     }),
     prisma.lessonPlan.findMany({
       where: { userId: user.id },

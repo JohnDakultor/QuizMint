@@ -6,7 +6,9 @@ export type GenerationEventType =
   | "pptx_generated"
   | "export_generated"
   | "export_failed"
-  | "pause_clicked";
+  | "pause_clicked"
+  | "student_quiz_submitted"
+  | "quiz_submitted";
 
 type TrackGenerationEventInput = {
   userId?: string | null;

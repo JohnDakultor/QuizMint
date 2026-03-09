@@ -43,9 +43,8 @@ export function SourceIcons({
   variant = "icons",
   showTooltips = true,
 }: SourceIconsProps) {
-  if (!sources?.length) return null;
-
   const [expanded, setExpanded] = useState(false);
+  if (!sources?.length) return null;
   const isCompact = variant === "compact";
   const isPills = variant === "pills";
   const iconSize = Math.max(isCompact ? size - 6 : size, 18);

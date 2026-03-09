@@ -68,6 +68,7 @@ export async function GET(req: Request) {
     users,
     latestQuizUsers,
     latestLessonUsers,
+    latestLessonMaterialRows,
     latestSignups,
     activeUsersLast7DaysRows,
     generationEvents,
@@ -93,6 +94,7 @@ export async function GET(req: Request) {
         subscriptionStatus: true,
         quizUsage: true,
         lessonPlanUsage: true,
+        lessonMaterialUploadUsage: true,
         lastQuizAt: true,
         lastLessonPlanAt: true,
         createdAt: true,
@@ -120,6 +122,23 @@ export async function GET(req: Request) {
         lastLessonPlanAt: true,
       },
     }),
+    prisma.$queryRaw<
+      {
+        userId: string;
+        lastLessonMaterialUploadAt: Date;
+      }[]
+    >`
+      SELECT
+        "userId",
+        MAX("createdAt") AS "lastLessonMaterialUploadAt"
+      FROM "GenerationEvent"
+      WHERE "feature" = 'lesson_material_upload'
+        AND "status" = 'success'
+        AND "userId" IS NOT NULL
+      GROUP BY "userId"
+      ORDER BY "lastLessonMaterialUploadAt" DESC
+      LIMIT 10
+    `,
     prisma.user.findMany({
       orderBy: { createdAt: "desc" },
       take: 10,
@@ -270,6 +289,29 @@ export async function GET(req: Request) {
     email: sanitizeEmail(u.email),
   }));
 
+  const lessonMaterialUserIds = Array.from(
+    new Set(latestLessonMaterialRows.map((r) => r.userId).filter(Boolean))
+  );
+  const lessonMaterialUsers = lessonMaterialUserIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: lessonMaterialUserIds } },
+        select: { id: true, email: true, subscriptionPlan: true },
+      })
+    : [];
+  const lessonMaterialByUserId = new Map(lessonMaterialUsers.map((u) => [u.id, u]));
+  const safeLatestLessonMaterialUsers = latestLessonMaterialRows
+    .map((row) => {
+      const user = lessonMaterialByUserId.get(row.userId);
+      if (!user) return null;
+      return {
+        id: user.id,
+        email: sanitizeEmail(user.email),
+        subscriptionPlan: user.subscriptionPlan,
+        lastLessonMaterialUploadAt: row.lastLessonMaterialUploadAt,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
   const safeLatestSignups = latestSignups.map((u) => ({
     ...u,
     email: sanitizeEmail(u.email),
@@ -346,6 +388,7 @@ export async function GET(req: Request) {
     latestActivity: {
       quiz: safeLatestQuizUsers,
       lessonPlan: safeLatestLessonUsers,
+      lessonMaterialUpload: safeLatestLessonMaterialUsers,
     },
     latestSignups: safeLatestSignups,
     generationEvents: safeGenerationEvents,

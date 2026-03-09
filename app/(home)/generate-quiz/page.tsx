@@ -427,23 +427,23 @@
 
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   ArrowRight,
   BrainCircuit,
   ClipboardList,
   Copy,
-  FileDown,
+  Globe,
+  Link2,
   PauseCircle,
   Share2,
   Sparkles,
   X,
 } from "lucide-react";
 import FileUpload from "@/components/ui/file-upload";
-import { motion } from "framer-motion";
 import jsPDF from "jspdf";
 import { SourceIcons, SourceIcon } from "@/components/source-icons";
 import Tour from "@/components/ui/tour";
@@ -475,10 +475,14 @@ export default function Dashboard() {
   const [forceFreshGeneration, setForceFreshGeneration] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareTimerMinutes, setShareTimerMinutes] = useState(60);
+  const [shareOpen, setShareOpen] = useState<boolean | null>(null);
+  const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
   const liteMode = Boolean(user?.liteMode);
   const isPremiumAdaptiveEnabled =
     user?.subscriptionPlan === "premium" && user?.adaptiveLearning === true;
-  const quizRef = useRef<HTMLDivElement>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const attachRequestId = (message: string, data: any) =>
     data?.requestId ? `${message} (Ref: ${data.requestId})` : message;
@@ -497,7 +501,7 @@ export default function Dashboard() {
     fetchUser();
   }, []);
 
-  const loadAdaptiveSuggestions = async () => {
+  const loadAdaptiveSuggestions = useCallback(async () => {
     if (!isPremiumAdaptiveEnabled) {
       setAdaptiveSuggestions([]);
       return;
@@ -516,11 +520,11 @@ export default function Dashboard() {
     } catch {
       // ignore personalization failures
     }
-  };
+  }, [isPremiumAdaptiveEnabled]);
 
   useEffect(() => {
     void loadAdaptiveSuggestions();
-  }, [isPremiumAdaptiveEnabled]);
+  }, [loadAdaptiveSuggestions]);
 
   const tourSteps = [
     {
@@ -562,6 +566,14 @@ export default function Dashboard() {
       },
     },
     {
+      element: "#quiz-share-students",
+      popover: {
+        title: "Share To Students",
+        description:
+          "Open the share modal, set timer in minutes, then generate a student-facing quiz link.",
+      },
+    },
+    {
       element: "#quiz-output",
       popover: {
         title: "Your quiz",
@@ -581,6 +593,17 @@ export default function Dashboard() {
           setQuiz(data.quiz);
           setSources(Array.isArray(data.sources) ? data.sources : []);
           setLastLoaded(true);
+          if (data?.shareSettings) {
+            setShareOpen(Boolean(data.shareSettings.isOpen));
+            setShareExpiresAt(
+              typeof data.shareSettings.expiresAt === "string"
+                ? data.shareSettings.expiresAt
+                : null
+            );
+          } else {
+            setShareOpen(null);
+            setShareExpiresAt(null);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -655,6 +678,68 @@ export default function Dashboard() {
     await navigator.clipboard.writeText(url);
     setError("");
     setInfoMessage("Template link copied.");
+  };
+
+  const shareStudentQuizLink = async () => {
+    if (!quiz?.id) {
+      setError("");
+      setInfoMessage("Generate a quiz first, then create a student link.");
+      return;
+    }
+
+    setShareLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/quiz-share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quizId: quiz.id, durationMinutes: shareTimerMinutes }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setInfoMessage("");
+        setError(
+          attachRequestId(
+            data?.error || "Failed to create student share link.",
+            data
+          )
+        );
+        return;
+      }
+
+      const shareUrl = typeof data?.shareUrl === "string" ? data.shareUrl : "";
+      if (!shareUrl) {
+        setError("Share URL was not returned.");
+        return;
+      }
+      setShareOpen(true);
+      setShareExpiresAt(
+        typeof data?.shareSettings?.expiresAt === "string"
+          ? data.shareSettings.expiresAt
+          : null
+      );
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: quiz.title || "Quiz",
+            text: "Answer this quiz here:",
+            url: shareUrl,
+          });
+          setInfoMessage("Student quiz link shared.");
+          return;
+        } catch {
+          // fallback to clipboard
+        }
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      setInfoMessage("Student quiz link copied.");
+    } catch {
+      setError("Failed to create student share link.");
+    } finally {
+      setShareLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -858,6 +943,8 @@ export default function Dashboard() {
           setQuiz(data.quiz);
           setSources(Array.isArray(data.sources) ? data.sources : []);
           setLastLoaded(false);
+          setShareOpen(null);
+          setShareExpiresAt(null);
           setUploadedFile(null);
           setQuizProgress(100);
           await new Promise((resolve) => setTimeout(resolve, 120));
@@ -887,7 +974,7 @@ export default function Dashboard() {
       let data;
       try {
         data = JSON.parse(responseText);
-      } catch (e) {
+      } catch {
      
         throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
       }
@@ -961,6 +1048,8 @@ export default function Dashboard() {
           setQuiz(data.quiz);
           setSources(Array.isArray(data.sources) ? data.sources : []);
           setLastLoaded(false);
+          setShareOpen(null);
+          setShareExpiresAt(null);
           setForceFreshGeneration(false);
           void loadAdaptiveSuggestions();
           setAdUnlockInfo(null);
@@ -1248,6 +1337,16 @@ export default function Dashboard() {
               <Button size="sm" variant="outline" onClick={handleCopy}>
                 <Copy className="w-4 h-4 mr-1" /> Copy
               </Button>
+              <Button
+                id="quiz-share-students"
+                size="sm"
+                variant="outline"
+                onClick={() => setShowShareModal(true)}
+                disabled={shareLoading || !quiz}
+              >
+                <Link2 className="w-4 h-4 mr-1" />
+                Share To Students
+              </Button>
               <Button size="sm" onClick={handleDownloadPDF}>
                 PDF
               </Button>
@@ -1259,11 +1358,30 @@ export default function Dashboard() {
               </Button>
             </div>
 
-            {sources.length > 0 ? (
-              <div className="mt-3">
-                <SourceIcons sources={sources} variant="pills" />
+            {quiz && (
+              <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 p-2">
+                <div className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-zinc-600">
+                  <Globe className="h-3.5 w-3.5" />
+                  References
+                </div>
+                {sources.length > 0 ? (
+                  <SourceIcons sources={sources} variant="pills" />
+                ) : (
+                  <div className="text-xs text-zinc-500">
+                    No website reference detected for this quiz.
+                  </div>
+                )}
               </div>
-            ) : null}
+            )}
+            {quiz && (
+              <div className="mt-2 text-xs text-zinc-600">
+                Student Access:{" "}
+                <span className={shareOpen === false ? "text-red-600" : "text-green-700"}>
+                  {shareOpen === false ? "Closed" : "Open"}
+                </span>
+                {shareExpiresAt ? ` • Ends at ${new Date(shareExpiresAt).toLocaleString()}` : ""}
+              </div>
+            )}
           </CardHeader>
 
           <CardContent className="premium-scrollbar flex-1 max-h-112.5 overflow-y-auto space-y-4 pr-2">
@@ -1303,6 +1421,7 @@ export default function Dashboard() {
                 Your generated quiz will appear here
               </p>
             )}
+
           </CardContent>
         </Card>
       </section>
@@ -1328,6 +1447,50 @@ export default function Dashboard() {
             >
               Cancel
             </Button>
+          </div>
+        </div>
+      )}
+
+      {showShareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold">Share Quiz To Students</h3>
+            <p className="mt-1 text-sm text-zinc-600">
+              Set how long this quiz link stays available.
+            </p>
+            <div className="mt-4 space-y-2">
+              <label className="text-sm font-medium">Timer (minutes)</label>
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={shareTimerMinutes}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (!Number.isFinite(next)) return;
+                  setShareTimerMinutes(Math.min(1440, Math.max(5, Math.floor(next))));
+                }}
+                className="w-full rounded-md border px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowShareModal(false)}
+                disabled={shareLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  await shareStudentQuizLink();
+                  setShowShareModal(false);
+                }}
+                disabled={shareLoading || !quiz}
+              >
+                {shareLoading ? "Creating..." : "Create Share Link"}
+              </Button>
+            </div>
           </div>
         </div>
       )}

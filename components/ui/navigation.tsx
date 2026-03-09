@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -21,7 +21,10 @@ import icon from "@/public/icon.png";
 
 export default function Navigation() {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("sidebar-collapsed") === "true";
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<{
     username: string;
@@ -39,12 +42,6 @@ export default function Navigation() {
       ? "lessonplan-generator"
       : null;
 
-  /* Persist sidebar state */
-  useEffect(() => {
-    const saved = localStorage.getItem("sidebar-collapsed");
-    if (saved) setCollapsed(saved === "true");
-  }, []);
-
   useEffect(() => {
     localStorage.setItem("sidebar-collapsed", String(collapsed));
     document.documentElement.style.setProperty(
@@ -52,10 +49,6 @@ export default function Navigation() {
       collapsed ? "5rem" : "16rem"
     );
   }, [collapsed]);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
 
   /* Fetch user */
   useEffect(() => {
@@ -140,12 +133,12 @@ export default function Navigation() {
 
           {/* Help / Tour */}
           <button
-            onClick={() =>
-              tourId &&
+            onClick={() => {
+              if (!tourId) return;
               window.dispatchEvent(
                 new CustomEvent("start-tour", { detail: { id: tourId } })
-              )
-            }
+              );
+            }}
             className={`flex items-center px-3 py-2 rounded-lg
               text-white/90 hover:text-yellow-400 transition
               ${collapsed ? "justify-center" : "gap-3"}`}
@@ -182,7 +175,12 @@ export default function Navigation() {
   style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0) + 0.35rem)" }}
 >
   {mobilePrimaryTabs.map((tab) => (
-    <MobileIcon key={tab.href} {...tab} active={pathname === tab.href} />
+    <MobileIcon
+      key={tab.href}
+      {...tab}
+      active={pathname === tab.href}
+      onNavigate={() => setMobileMenuOpen(false)}
+    />
   ))}
 
   <button
@@ -230,10 +228,11 @@ export default function Navigation() {
       <button
         onClick={() => {
           setMobileMenuOpen(false);
-          tourId &&
+          if (tourId) {
             window.dispatchEvent(
               new CustomEvent("start-tour", { detail: { id: tourId } })
             );
+          }
         }}
         className="w-full text-left flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-zinc-100"
       >
@@ -257,13 +256,22 @@ export default function Navigation() {
 
 /* ================= Components ================= */
 
+type NavItemProps = {
+  href: string;
+  icon: ReactNode;
+  label: string;
+  active: boolean;
+  collapsed?: boolean;
+  onNavigate?: () => void;
+};
+
 function SidebarItem({
   href,
   icon,
   label,
   active,
   collapsed,
-}: any) {
+}: NavItemProps) {
   return (
     <Link
       href={href}
@@ -281,10 +289,11 @@ function SidebarItem({
   );
 }
 
-function MobileIcon({ href, icon, label, active }: any) {
+function MobileIcon({ href, icon, label, active, onNavigate }: NavItemProps) {
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={`
         flex flex-col items-center justify-center
         min-w-[56px] px-2 py-1

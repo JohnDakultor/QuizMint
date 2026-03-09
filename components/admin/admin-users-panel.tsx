@@ -25,6 +25,7 @@ type AdminUser = {
   subscriptionStatus: string | null;
   quizUsage: number;
   lessonPlanUsage: number;
+  lessonMaterialUploadUsage: number;
   lastQuizAt: string | null;
   lastLessonPlanAt: string | null;
   createdAt: string;
@@ -36,6 +37,7 @@ type LatestActivityUser = {
   subscriptionPlan: string | null;
   lastQuizAt?: string | null;
   lastLessonPlanAt?: string | null;
+  lastLessonMaterialUploadAt?: string | null;
   createdAt?: string | null;
 };
 
@@ -166,6 +168,7 @@ export default function AdminUsersPanel() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [latestQuizUsers, setLatestQuizUsers] = useState<LatestActivityUser[]>([]);
   const [latestLessonUsers, setLatestLessonUsers] = useState<LatestActivityUser[]>([]);
+  const [latestLessonMaterialUsers, setLatestLessonMaterialUsers] = useState<LatestActivityUser[]>([]);
   const [latestSignups, setLatestSignups] = useState<LatestActivityUser[]>([]);
   const [cohorts, setCohorts] = useState<CohortSummaryRow[]>([]);
   const [generationEvents, setGenerationEvents] = useState<AdminGenerationEvent[]>([]);
@@ -175,6 +178,7 @@ export default function AdminUsersPanel() {
   const [email, setEmail] = useState("");
   const [plan, setPlan] = useState<"free" | "pro" | "premium">("pro");
   const [updating, setUpdating] = useState(false);
+  const [revokingSessions, setRevokingSessions] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   async function loadData() {
@@ -197,6 +201,7 @@ export default function AdminUsersPanel() {
       setUsers(data.users || []);
       setLatestQuizUsers(data?.latestActivity?.quiz || []);
       setLatestLessonUsers(data?.latestActivity?.lessonPlan || []);
+      setLatestLessonMaterialUsers(data?.latestActivity?.lessonMaterialUpload || []);
       setLatestSignups(data?.latestSignups || []);
       setGenerationEvents(data?.generationEvents || []);
       setUnitEconomicsRows(data?.unitEconomics?.byPlanFeature || []);
@@ -245,6 +250,26 @@ export default function AdminUsersPanel() {
       setError(err.message || "Update failed");
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function revokeAllSessions() {
+    setRevokingSessions(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/users/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, action: "revoke_all" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to revoke sessions");
+      setMessage(`Revoked ${data.revokedCount} active session(s) for ${data.email}`);
+    } catch (err: any) {
+      setError(err.message || "Failed to revoke sessions");
+    } finally {
+      setRevokingSessions(false);
     }
   }
 
@@ -311,6 +336,13 @@ export default function AdminUsersPanel() {
           <Button onClick={updatePlan} disabled={updating || !email.trim()}>
             {updating ? "Updating..." : "Apply Plan"}
           </Button>
+          <Button
+            variant="secondary"
+            onClick={revokeAllSessions}
+            disabled={revokingSessions || !email.trim()}
+          >
+            {revokingSessions ? "Revoking..." : "Force Sign Out All Devices"}
+          </Button>
         </CardContent>
       </Card>
 
@@ -318,7 +350,7 @@ export default function AdminUsersPanel() {
         <CardHeader>
           <CardTitle>Latest Usage Activity</CardTitle>
         </CardHeader>
-        <CardContent className="grid md:grid-cols-2 gap-6">
+        <CardContent className="grid md:grid-cols-3 gap-6">
           <div>
             <h3 className="font-semibold mb-3">Latest Quiz Generation</h3>
             <div className="space-y-2 text-sm">
@@ -344,6 +376,24 @@ export default function AdminUsersPanel() {
                   <div className="truncate pr-3">{u.email}</div>
                   <div className="text-zinc-500 whitespace-nowrap">
                     {u.lastLessonPlanAt ? new Date(u.lastLessonPlanAt).toLocaleString() : "-"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h3 className="font-semibold mb-3">Latest File-&gt;PPTX Generation</h3>
+            <div className="space-y-2 text-sm">
+              {latestLessonMaterialUsers.length === 0 && (
+                <div className="text-zinc-500">No file-to-PPTX activity yet.</div>
+              )}
+              {latestLessonMaterialUsers.map((u) => (
+                <div key={u.id} className="flex items-center justify-between border rounded-md px-3 py-2">
+                  <div className="truncate pr-3">{u.email}</div>
+                  <div className="text-zinc-500 whitespace-nowrap">
+                    {u.lastLessonMaterialUploadAt
+                      ? new Date(u.lastLessonMaterialUploadAt).toLocaleString()
+                      : "-"}
                   </div>
                 </div>
               ))}
@@ -657,6 +707,7 @@ export default function AdminUsersPanel() {
                 <th className="py-2 text-left">Status</th>
                 <th className="py-2 text-left">Quiz Usage</th>
                 <th className="py-2 text-left">Lesson Usage</th>
+                <th className="py-2 text-left">File-&gt;PPTX Usage</th>
                 <th className="py-2 text-left">Last Quiz</th>
                 <th className="py-2 text-left">Last Lesson</th>
                 <th className="py-2 text-left">Created</th>
@@ -670,6 +721,7 @@ export default function AdminUsersPanel() {
                   <td className="py-2">{u.subscriptionStatus || "-"}</td>
                   <td className="py-2">{u.quizUsage}</td>
                   <td className="py-2">{u.lessonPlanUsage}</td>
+                  <td className="py-2">{u.lessonMaterialUploadUsage ?? 0}</td>
                   <td className="py-2">{u.lastQuizAt ? new Date(u.lastQuizAt).toLocaleString() : "-"}</td>
                   <td className="py-2">
                     {u.lastLessonPlanAt ? new Date(u.lastLessonPlanAt).toLocaleString() : "-"}
