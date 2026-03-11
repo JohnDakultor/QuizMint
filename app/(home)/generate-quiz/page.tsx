@@ -1,4 +1,4 @@
-// "use client";
+﻿// "use client";
 
 // import { Alert, AlertDescription } from "@/components/ui/alert";
 // import { Button } from "@/components/ui/button";
@@ -197,7 +197,7 @@
 //       q.options.forEach((opt: string, j: number) => {
 //         textToCopy += `   ${String.fromCharCode(97 + j)}) ${opt}\n`;
 //       });
-//       textToCopy += `   ✅ Answer: ${q.answer}\n\n`;
+//       textToCopy += `   âœ… Answer: ${q.answer}\n\n`;
 //     });
 //     await navigator.clipboard.writeText(textToCopy);
 //     alert("Copied formatted quiz to clipboard!");
@@ -260,7 +260,7 @@
 //           Ask any document or lesson in seconds
 //         </h1>
 //         <p className="text-lg text-zinc-600 dark:text-zinc-400 mb-8">
-//           Write instructions or upload a document — QuizMint’s AI will generate
+//           Write instructions or upload a document â€” QuizMintâ€™s AI will generate
 //           a quiz.
 //         </p>
 
@@ -319,7 +319,7 @@
 
 //                   {/* TITLE */}
 //                   <CardTitle className="text-xl font-semibold mb-3">
-//                     🧩 Generated Quiz
+//                     ðŸ§© Generated Quiz
 //                   </CardTitle>
 
 //                   {/* ACTION BUTTONS */}
@@ -362,16 +362,16 @@
 //                             ))}
 //                           </ul>
 //                           <p className="mt-2 text-sm text-green-600 dark:text-green-400">
-//                             ✅ Correct answer: <strong>{q.answer}</strong>
+//                             âœ… Correct answer: <strong>{q.answer}</strong>
 //                           </p>
 //                           {q.hint && (
 //                             <p className="mt-1 text-sm text-yellow-600 dark:text-yellow-400">
-//                               💡 Hint: {q.hint}
+//                               ðŸ’¡ Hint: {q.hint}
 //                             </p>
 //                           )}
 //                           {q.explanation && (
 //                             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-//                               📝 Explanation: {q.explanation}
+//                               ðŸ“ Explanation: {q.explanation}
 //                             </p>
 //                           )}
 //                         </div>
@@ -379,6 +379,7 @@
 //                     </div>
 //                   </div>
 //                 </CardContent>
+//          )}
 //               </Card>
 //             </motion.div>
 //           )}
@@ -411,7 +412,7 @@
 
 //       {uploadedFile && (
 //         <div className="mt-2 text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
-//           <span>✅ File uploaded: {uploadedFile.name}</span>
+//           <span>âœ… File uploaded: {uploadedFile.name}</span>
 //           <Button
 //             size="sm"
 //             variant="outline"
@@ -1358,33 +1359,10 @@ export default function Dashboard() {
               </Button>
             </div>
 
-            {quiz && (
-              <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 p-2">
-                <div className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-zinc-600">
-                  <Globe className="h-3.5 w-3.5" />
-                  References
-                </div>
-                {sources.length > 0 ? (
-                  <SourceIcons sources={sources} variant="pills" />
-                ) : (
-                  <div className="text-xs text-zinc-500">
-                    No website reference detected for this quiz.
-                  </div>
-                )}
-              </div>
-            )}
-            {quiz && (
-              <div className="mt-2 text-xs text-zinc-600">
-                Student Access:{" "}
-                <span className={shareOpen === false ? "text-red-600" : "text-green-700"}>
-                  {shareOpen === false ? "Closed" : "Open"}
-                </span>
-                {shareExpiresAt ? ` • Ends at ${new Date(shareExpiresAt).toLocaleString()}` : ""}
-              </div>
-            )}
+
           </CardHeader>
 
-          <CardContent className="premium-scrollbar flex-1 max-h-112.5 overflow-y-auto space-y-4 pr-2">
+          <CardContent className="premium-scrollbar flex-1 min-h-0 overflow-y-auto space-y-4 pr-2">
             {loading ? (
               <div className="space-y-3 pt-2">
                 <SkeletonLoading className="h-24 w-full" />
@@ -1411,7 +1389,7 @@ export default function Dashboard() {
                   </p>
                   {q.explanation && (
                     <p className="mt-1 text-sm text-zinc-500">
-                      📝 {q.explanation}
+                      Explanation: {q.explanation}
                     </p>
                   )}
                 </div>
@@ -1423,6 +1401,32 @@ export default function Dashboard() {
             )}
 
           </CardContent>
+          {quiz && (
+            <div className="shrink-0 border-t bg-zinc-50/70 p-3">
+              <details className="rounded-md border border-zinc-200 bg-zinc-50 p-2">
+                <summary className="cursor-pointer list-none text-xs font-medium text-zinc-600 inline-flex items-center gap-1">
+                  <Globe className="h-3.5 w-3.5" />
+                  References ({sources.length})
+                </summary>
+                <div className="mt-2 max-h-24 overflow-y-auto premium-scrollbar pr-1">
+                  {sources.length > 0 ? (
+                    <SourceIcons sources={sources} variant="pills" />
+                  ) : (
+                    <div className="text-xs text-zinc-500">
+                      No website reference detected for this quiz.
+                    </div>
+                  )}
+                </div>
+              </details>
+              <div className="mt-2 text-xs text-zinc-600">
+                Student Access:{" "}
+                <span className={shareOpen === false ? "text-red-600" : "text-green-700"}>
+                  {shareOpen === false ? "Closed" : "Open"}
+                </span>
+                {shareExpiresAt ? ` • Ends at ${new Date(shareExpiresAt).toLocaleString()}` : ""}
+              </div>
+            </div>
+          )}
         </Card>
       </section>
 
@@ -1497,3 +1501,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
