@@ -33,129 +33,116 @@
 
 import type { NextConfig } from "next";
 
-// const ContentSecurityPolicy = `
-//   default-src 'self';
+const IS_PROD =
+  process.env.VERCEL_ENV === "production" ||
+  process.env.APP_ENV === "production" ||
+  process.env.NODE_ENV === "production";
 
-//   script-src
-//     'self'
-//     'unsafe-inline'
-//     'unsafe-eval'
-//     https://www.paypal.com
-//     https://pagead2.googlesyndication.com
-//     https://partner.googleadservices.com
-//     https://accounts.google.com
-//     https://apis.google.com
-//     https://ep2.adtrafficquality.google;
+function buildCsp() {
+  // Keep this list explicit; avoid wildcard domains in production.
+  const scriptSrc = [
+    "'self'",
+    "'unsafe-inline'",
+    ...(IS_PROD ? [] : ["'unsafe-eval'"]),
+    "https://accounts.google.com",
+    "https://apis.google.com",
+    "https://www.gstatic.com",
+    "https://www.googletagmanager.com",
+    "https://pagead2.googlesyndication.com",
+    "https://partner.googleadservices.com",
+    "https://googleads.g.doubleclick.net",
+    "https://ep1.adtrafficquality.google",
+    "https://ep2.adtrafficquality.google",
+    "https://quge5.com",
+    "https://*.quge5.com",
+    "https://5gvci.com",
+    "https://*.5gvci.com",
+    "https://www.paypal.com",
+    "https://www.sandbox.paypal.com",
+    "https://www.paypalobjects.com",
+    "https://checkout-v2.paymongo.com",
+    "https://js.stripe.com",
+    "blob:",
+  ];
 
-//   style-src
-//     'self'
-//     'unsafe-inline'
-//     https://accounts.google.com/gsi;
+  const styleSrc = [
+    "'self'",
+    "'unsafe-inline'",
+    "https://accounts.google.com",
+    "https://fonts.googleapis.com",
+  ];
 
-//   img-src
-//     'self'
-//     data:
-//     https://*.gstatic.com
-//     https://*.google.com
-//     https://lh3.googleusercontent.com;
+  const imgSrc = [
+    "'self'",
+    "data:",
+    "blob:",
+    "https://lh3.googleusercontent.com",
+    "https://*.gstatic.com",
+    "https://*.google.com",
+    "https://pagead2.googlesyndication.com",
+    "https://googleads.g.doubleclick.net",
+    "https://quge5.com",
+    "https://*.quge5.com",
+    "https://5gvci.com",
+    "https://*.5gvci.com",
+  ];
 
-//   font-src
-//     'self'
-//     data:;
+  const connectSrc = [
+    "'self'",
+    "https://accounts.google.com",
+    "https://www.googleapis.com",
+    "https://www.paypal.com",
+    "https://www.sandbox.paypal.com",
+    "https://api.paymongo.com",
+    "https://checkout-v2.paymongo.com",
+    "https://api.stripe.com",
+    "https://ep1.adtrafficquality.google",
+    "https://ep2.adtrafficquality.google",
+    "https://quge5.com",
+    "https://*.quge5.com",
+    "https://5gvci.com",
+    "https://*.5gvci.com",
+    ...(IS_PROD ? [] : ["ws://localhost:3000", "ws://127.0.0.1:3000"]),
+  ];
 
-//   connect-src
-//     'self'
-//     https://accounts.google.com
-//     https:;
+  const frameSrc = [
+    "'self'",
+    "https://accounts.google.com",
+    "https://www.paypal.com",
+    "https://www.sandbox.paypal.com",
+    "https://checkout-v2.paymongo.com",
+    "https://js.stripe.com",
+    "https://pagead2.googlesyndication.com",
+    "https://googleads.g.doubleclick.net",
+    "https://quge5.com",
+    "https://*.quge5.com",
+    "https://5gvci.com",
+    "https://*.5gvci.com",
+    "blob:",
+  ];
 
-//   frame-src
-//     https://www.paypal.com
-//     https://pagead2.googlesyndication.com
-//     https://googleads.g.doubleclick.net
-//     https://accounts.google.com
-//     https://ep2.adtrafficquality.google;
+  const directives = [
+    `default-src 'self'`,
+    `script-src ${scriptSrc.join(" ")}`,
+    `style-src ${styleSrc.join(" ")}`,
+    `img-src ${imgSrc.join(" ")}`,
+    `font-src 'self' data: https://fonts.gstatic.com https://*.gstatic.com`,
+    `connect-src ${connectSrc.join(" ")}`,
+    `frame-src ${frameSrc.join(" ")}`,
+    `child-src ${frameSrc.join(" ")}`,
+    `object-src 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+    `media-src 'self'`,
+    `worker-src 'self' blob:`,
+    `manifest-src 'self'`,
+    `frame-ancestors 'self'`,
+  ];
 
-//   frame-ancestors 'self';
-//   object-src 'none';
-//   base-uri 'self';
-//   form-action 'self';
-//   media-src 'self';
-//   worker-src 'self';
-//   manifest-src 'self';
-// `;
-const ContentSecurityPolicy = `
-  default-src 'self' https://*.google.com https://*.gstatic.com https://ep2.adtrafficquality.google https://*.5gvci.com https://*.quge5.com;
-  
-  script-src
-    'self'
-    'unsafe-inline'
-    'unsafe-eval'
-    https://*.google.com
-    https://*.gstatic.com
-    https://ep2.adtrafficquality.google
-    https://ep1.adtrafficquality.google
-    https://accounts.google.com
-    https://apis.google.com
-    https://www.gstatic.com
-    https://pagead2.googlesyndication.com
-    https://partner.googleadservices.com
-    https://www.googletagmanager.com
-    https://googleads.g.doubleclick.net
-    https://*.5gvci.com
-    https://*.quge5.com
-    blob:;
-  
-  style-src
-    'self'
-    'unsafe-inline'
-    https://*.google.com
-    https://*.gstatic.com
-    https://accounts.google.com
-    https://fonts.googleapis.com;
-  
-  img-src
-    'self'
-    data:
-    blob:
-    https://*;
-  
-  font-src
-    'self'
-    data:
-    https://*.gstatic.com
-    https://fonts.gstatic.com;
-  
-  connect-src
-    'self'
-    https://*
-    https://*.5gvci.com
-    https://*.quge5.com
-    ws://localhost:3000
-    wss://localhost:3000
-    https://ep2.adtrafficquality.google
-    https://ep1.adtrafficquality.google;
-  
-  frame-src
-    'self'
-    https://*
-    https://*.5gvci.com
-    https://*.quge5.com
-    blob:;
-  
-  child-src
-    'self'
-    https://*
-    https://*.5gvci.com
-    https://*.quge5.com
-    blob:;
-  
-  object-src 'none';
-  base-uri 'self';
-  form-action 'self';
-  media-src 'self' https://*;
-  worker-src 'self' blob:;
-  manifest-src 'self';
-`;
+  return directives.join("; ");
+}
+
+const ContentSecurityPolicy = buildCsp();
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["pdfkit", "fontkit"],
@@ -179,6 +166,10 @@ const nextConfig: NextConfig = {
           {
             key: "X-Frame-Options",
             value: "SAMEORIGIN",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
           },
         ],
       },

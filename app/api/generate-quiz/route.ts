@@ -1,325 +1,7 @@
-
-
-// // // app/api/generate-quiz/route.ts
-// import { NextRequest, NextResponse } from "next/server";
-// import { getServerSession } from "next-auth";
-// import { authOptions } from "@/lib/auth-option";
-// import { prisma } from "@/lib/prisma";
-// import { stripe } from "@/lib/stripe";
-// import { Stripe } from "stripe";
-// import fetch from "node-fetch";
-// import * as cheerio from "cheerio";
-// import { getSubtitles } from "youtube-captions-scraper";
-
-// import ytdl from "ytdl-core";
-// import axios from "axios";
-// import { XMLParser } from "fast-xml-parser";
-// import { generateQuizAI } from "@/lib/ai";
-
-// import { fetchTranscript } from "@/lib/youtube-transcript";
-
-// interface YouTubeSnippet {
-//   title: string;
-//   description: string;
-// }
-
-// interface YouTubeAPIResponse {
-//   items?: { snippet?: YouTubeSnippet }[];
-// }
-
-// const COOLDOWN_HOURS = 3;
-// const FREE_QUIZ_LIMIT = 3;
-
-// // Helper to check if input is URL
-// function isURL(str: string) {
-//   try {
-//     new URL(str);
-//     return true;
-//   } catch {
-//     return false;
-//   }
-// }
-
-// // Extract text from a web page
-// async function extractTextFromURL(url: string) {
-//   try {
-//     const res = await fetch(url);
-//     const html = await res.text();
-//     const $ = cheerio.load(html);
-//     return $("p")
-//       .map((i: number, el: cheerio.Element) => $(el).text())
-//       .get()
-//       .join("\n\n");
-//   } catch (err) {
-//     console.error("❌ Failed to fetch page content:", err);
-//     return "";
-//   }
-// }
-
-// // Transform Youtube Data
-// async function transformYoutubeData(data: any[]) {
-//   let text = "";
-
-//   data.forEach((item: any) => {
-//     text += item.text + "\n";
-//   });
-//   return {
-//     data: data,
-//     text: text.trim(),
-//   };
-// }
-
-// // Extract YouTube transcript
-// // Extract YouTube transcript
-// async function extractYouTubeTranscript(videoId: string) {
-//   try {
-//     const transcript = await fetchTranscript(videoId);
-
-//     // 🔹 DEBUG LOGS
-//     console.log("✅ Raw transcript array:", transcript); // full array
-//     transcript.forEach((line, i) => {});
-
-//     // Transform to text string for AI
-//     const transformData = await transformYoutubeData(transcript);
-//     console.log("✅ Transformed text for AI:", transformData.text);
-
-//     return transformData.text;
-//   } catch (err) {
-//     console.error("❌ Failed to extract YouTube transcript:", err);
-//     return "";
-//   }
-// }
-
-
-
-// async function fetchYouTubeMetadata(videoId: string) {
-//   const res = await fetch(
-//     `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${process.env.YT_API_KEY}`
-//   );
-
-//   if (!res.ok) {
-//     throw new Error(`YouTube API error: ${res.status}`);
-//   }
-
-//   // Cast the unknown JSON to our interface
-//   const data = (await res.json()) as YouTubeAPIResponse;
-
-//   const snippet = data.items?.[0]?.snippet;
-
-//   return {
-//     title: snippet?.title || "",
-//     description: snippet?.description || "",
-//   };
-// }
-
-// export async function POST(req: NextRequest) {
-//   try {
-//     const session = await getServerSession(authOptions);
-//     if (!session?.user?.email)
-//       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-//     const user = await prisma.user.findUnique({
-//       where: { email: session.user.email },
-//     });
-//     if (!user)
-//       return NextResponse.json({ error: "User not found" }, { status: 404 });
-
-//     const now = new Date();
-//     const subscriptionPlan = user.subscriptionPlan || "free";
-//     const isFree = subscriptionPlan === "free";
-//     const isProOrPremium =
-//       user.subscriptionPlan === "pro" || user.subscriptionPlan === "premium";
-
-//     if (isFree && user.quizUsage >= FREE_QUIZ_LIMIT) {
-//       if (user.lastQuizAt) {
-//         const hoursSinceLastQuiz =
-//           (now.getTime() - new Date(user.lastQuizAt).getTime()) /
-//           1000 /
-//           60 /
-//           60;
-//         if (hoursSinceLastQuiz < COOLDOWN_HOURS) {
-//           const nextFreeAt = new Date(
-//             new Date(user.lastQuizAt).getTime() +
-//               COOLDOWN_HOURS * 60 * 60 * 1000
-//           );
-//           return NextResponse.json(
-//             {
-//               error: "Free limit reached. Come back later.",
-//               nextFreeAt,
-//               quizUsage: user.quizUsage,
-//             },
-//             { status: 403 }
-//           );
-//         }
-
-//         // Reset usage after cooldown
-//         await prisma.user.update({
-//           where: { id: user.id },
-//           data: { quizUsage: 0 },
-//         });
-//         user.quizUsage = 0;
-//       }
-//     }
-
-//     // Parse body
-//     const body = await req.json();
-//     const requestedDifficulty = typeof body.difficulty === "string" ? body.difficulty.toLowerCase() : undefined;
-//     const requestedAdaptive = typeof body.adaptiveLearning === "boolean" ? body.adaptiveLearning : undefined;
-//     let text = body.text?.trim();
-//     if (!text)
-//       return NextResponse.json({ error: "No input provided" }, { status: 400 });
-
-//     // Determine content source
-//     let content = text;
-
-//     if (isURL(content)) {
-//       if (content.includes("youtube.com") || content.includes("youtu.be")) {
-//         // Premium check
-//         if (isFree) {
-//           return NextResponse.json(
-//             { error: "YouTube link generation is premium only" },
-//             { status: 403 }
-//           );
-//         }
-
-//         // Extract video ID correctly
-//         let videoId: string | undefined;
-//         try {
-//           const urlObj = new URL(content);
-//           if (urlObj.hostname.includes("youtu.be")) {
-//             videoId = urlObj.pathname.split("/").pop()?.split("?")[0]; // remove query string
-//           } else {
-//             videoId = urlObj.searchParams.get("v") || undefined;
-//           }
-//         } catch (err) {
-//           return NextResponse.json(
-//             { error: "Invalid YouTube URL" },
-//             { status: 400 }
-//           );
-//         }
-
-//         if (!videoId) {
-//           return NextResponse.json(
-//             { error: "Could not extract video ID" },
-//             { status: 400 }
-//           );
-//         }
-
-//         // Try fetching transcript
-//         let extractedText = await extractYouTubeTranscript(videoId);
-
-//         // Fallback: use video title + description if transcript is empty
-//         if (!extractedText?.trim()) {
-//           try {
-//             const { title, description } = await fetchYouTubeMetadata(videoId);
-//             extractedText = `${title}\n\n${description}`;
-//           } catch (err) {
-//             console.warn("Fallback metadata fetch failed:", err);
-//             extractedText = `⚠️ Limited content: only video ID ${videoId} available.`;
-//           }
-//         }
-
-//         content = extractedText;
-//       } else {
-//         content = await extractTextFromURL(content);
-//       }
-//     }
-
-//     if (!content?.trim())
-//       return NextResponse.json(
-//         { error: "Content Not Available" },
-//         { status: 400 }
-//       );
-
-//     if (content.length > 8000) content = content.slice(0, 8000);
-
-//     const validDifficulties = new Set(["easy", "medium", "hard"]);
-//     const chosenDifficulty =
-//       isProOrPremium && requestedDifficulty && validDifficulties.has(requestedDifficulty)
-//         ? requestedDifficulty
-//         : user.aiDifficulty || "easy";
-//     const safeDifficulty = isFree ? "easy" : chosenDifficulty;
-
-//     const canUseAdaptive = user.subscriptionPlan === "premium";
-//     const chosenAdaptive =
-//       canUseAdaptive && typeof requestedAdaptive === "boolean"
-//         ? requestedAdaptive
-//         : user.adaptiveLearning ?? false;
-//     const safeAdaptive = canUseAdaptive ? chosenAdaptive : false;
-
-//     if (isProOrPremium && (requestedDifficulty || typeof requestedAdaptive === "boolean")) {
-//       await prisma.user.update({
-//         where: { id: user.id },
-//         data: {
-//           aiDifficulty: safeDifficulty,
-//           adaptiveLearning: safeAdaptive,
-//         },
-//       });
-//     }
-
-//     const quiz = await generateQuizAI(
-//       content,
-//       safeDifficulty,
-//       safeAdaptive,
-//       isProOrPremium,
-//       ""
-//     );
-
-//     // Sanitize questions
-//     const safeQuestions = quiz.questions.map((q: any) => ({
-//       question: q.question,
-//       options: q.options,
-//       answer: q.answer,
-//       explanation: safeAdaptive ? q.explanation ?? null : null,
-//       hint: safeAdaptive ? q.hint ?? null : null,
-//     }));
-
-//     const savedQuiz = await prisma.quiz.create({
-//       data: {
-//         title: quiz.title,
-//         instructions: quiz.instructions,
-//         userId: user.id,
-//         questions: { create: safeQuestions },
-//       },
-//       include: { questions: true },
-//     });
-
-//     if (isFree) {
-//       await prisma.user.update({
-//         where: { id: user.id },
-//         data: { quizUsage: user.quizUsage + 1, lastQuizAt: now },
-//       });
-//     }
-
-//     return NextResponse.json({
-//       message: "Quiz generated successfully",
-//       quiz: savedQuiz,
-//       quizUsage: isFree ? user.quizUsage + 1 : null,
-//       remaining: isFree ? FREE_QUIZ_LIMIT - (user.quizUsage + 1) : null,
-//     });
-//   } catch (err: any) {
-//     console.error("Server error:", err);
-//     return NextResponse.json(
-//       { error: err.message || "Internal server error" },
-//       { status: 500 }
-//     );
-//   }
-// }
-
-
-
-
-
-
-
-
-// app/api/generate-quiz/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-import fetch from "node-fetch";
-import * as cheerio from "cheerio";
 import { generateQuizAIWithMeta } from "@/lib/ai";
 import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
 import { semanticCacheStore } from "@/lib/rag/semanticCache";
@@ -328,19 +10,20 @@ import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { buildPromptProfile } from "@/lib/adaptive-personalization";
-import { extractKeywordTokens } from "@/lib/adaptive-personalization";
-import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
-
-import { fetchTranscript } from "@/lib/youtube-transcript";
-
-interface YouTubeSnippet {
-  title: string;
-  description: string;
-}
-
-interface YouTubeAPIResponse {
-  items?: { snippet?: YouTubeSnippet }[];
-}
+import { checkFeatureBurstLimitDistributed } from "@/lib/abuse-guard";
+import { createAsyncGenerationJob } from "@/lib/async-generation-jobs";
+import { dispatchAsyncGenerationJob } from "@/lib/async-job-dispatch";
+import { log } from "@/lib/logger";
+import {
+  buildBalancedContentWindow,
+  chunkText,
+  extractTextFromURL,
+  extractYouTubeTranscript,
+  fetchYouTubeMetadata,
+  isURL,
+  normalizeQuestionCountInput,
+} from "@/lib/quiz-source-service";
+import { buildQuizAdaptiveGuidance } from "@/lib/quiz-adaptive-service";
 
 const COOLDOWN_HOURS = 3;
 const FREE_QUIZ_LIMIT = 3;
@@ -369,166 +52,6 @@ function buildAdaptiveProfileInput(input: {
   return parts.join("\n\n");
 }
 
-function chunkText(text: string, chunkSize = 1200, overlap = 200) {
-  const cleaned = normalizeForEmbedding(text);
-  if (!cleaned) return [];
-  const chunks: string[] = [];
-  let start = 0;
-  while (start < cleaned.length) {
-    const end = Math.min(start + chunkSize, cleaned.length);
-    chunks.push(cleaned.slice(start, end));
-    if (end === cleaned.length) break;
-    start = Math.max(end - overlap, 0);
-  }
-  return chunks;
-}
-
-function buildBalancedContentWindow(text: string, maxChars = 8000): string {
-  if (!text || text.length <= maxChars) return text;
-
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (clean.length <= maxChars) return clean;
-
-  const part = Math.floor(maxChars / 3);
-  const top = clean.slice(0, part);
-  const midStart = Math.max(Math.floor(clean.length / 2) - Math.floor(part / 2), 0);
-  const middle = clean.slice(midStart, midStart + part);
-  const bottom = clean.slice(Math.max(clean.length - part, 0));
-
-  return `${top}\n\n${middle}\n\n${bottom}`.slice(0, maxChars);
-}
-
-// Helper to check if input is URL
-function isURL(str: string) {
-  try {
-    new URL(str);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// Extract text from a web page (blogs/articles/news)
-async function extractTextFromURL(
-  url: string,
-): Promise<{ text: string; title: string }> {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml",
-      },
-    });
-    if (!res.ok) {
-      throw new Error(`URL fetch failed: ${res.status}`);
-    }
-
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    $("script, style, noscript, iframe, svg, nav, footer, header, aside, form").remove();
-
-    const title =
-      $('meta[property="og:title"]').attr("content")?.trim() ||
-      $("title").first().text().trim() ||
-      $("h1").first().text().trim() ||
-      "";
-
-    const selectors = [
-      "article p",
-      "main p",
-      '[role="main"] p',
-      ".post-content p",
-      ".entry-content p",
-      ".article-content p",
-      ".content p",
-    ];
-
-    let text = "";
-    for (const selector of selectors) {
-      const candidate = $(selector)
-        .map((_: number, el: cheerio.Element) => $(el).text().trim())
-        .get()
-        .filter(Boolean)
-        .join("\n\n");
-      if (candidate.length > text.length) text = candidate;
-    }
-
-    if (!text) {
-      text = $("p")
-        .map((_: number, el: cheerio.Element) => $(el).text().trim())
-        .get()
-        .filter(Boolean)
-        .join("\n\n");
-    }
-
-    if (!text) {
-      text = $("main, article, body")
-        .first()
-        .text()
-        .replace(/\s+/g, " ")
-        .trim();
-    }
-
-    return { text, title };
-  } catch (err) {
-    console.error("Failed to fetch page content:", err);
-    return { text: "", title: "" };
-  }
-}
-
-// Transform Youtube Data
-async function transformYoutubeData(data: Array<{ text?: string }>) {
-  let text = "";
-
-  data.forEach((item) => {
-    text += item.text + "\n";
-  });
-  return {
-    data: data,
-    text: text.trim(),
-  };
-}
-
-// Extract YouTube transcript
-async function extractYouTubeTranscript(videoId: string) {
-  try {
-    const transcript = await fetchTranscript(videoId);
-
-    // 🔹 DEBUG LOGS
-    console.log("✅ Raw transcript array:", transcript); // full array
-
-    // Transform to text string for AI
-    const transformData = await transformYoutubeData(transcript);
-    console.log("✅ Transformed text for AI:", transformData.text);
-
-    return transformData.text;
-  } catch (err) {
-    console.error("❌ Failed to extract YouTube transcript:", err);
-    return "";
-  }
-}
-
-async function fetchYouTubeMetadata(videoId: string) {
-  const res = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${process.env.YT_API_KEY}`
-  );
-
-  if (!res.ok) {
-    throw new Error(`YouTube API error: ${res.status}`);
-  }
-
-  // Cast the unknown JSON to our interface
-  const data = (await res.json()) as YouTubeAPIResponse;
-
-  const snippet = data.items?.[0]?.snippet;
-
-  return {
-    title: snippet?.title || "",
-    description: snippet?.description || "",
-  };
-}
-
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   let eventUserId: string | null = null;
@@ -551,13 +74,26 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email)
-      return apiError(401, "Unauthorized", requestId);
+    const internalSecret =
+      process.env.GENERATION_JOB_INTERNAL_SECRET ||
+      process.env.INTERNAL_API_SECRET ||
+      "";
+    const isInternalTrusted =
+      Boolean(internalSecret) &&
+      req.headers.get("x-generation-job-secret") === internalSecret;
+    const internalUserId = req.headers.get("x-async-user-id");
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
+    let user = null as Awaited<ReturnType<typeof prisma.user.findUnique>>;
+    if (isInternalTrusted && internalUserId) {
+      user = await prisma.user.findUnique({ where: { id: internalUserId } });
+    } else {
+      const session = await getServerSession(authOptions);
+      if (!session?.user?.email)
+        return apiError(401, "Unauthorized", requestId);
+      user = await prisma.user.findUnique({
+        where: { email: session.user.email },
+      });
+    }
     if (!user)
       return apiError(404, "User not found", requestId);
     eventUserId = user.id;
@@ -565,9 +101,8 @@ export async function POST(req: NextRequest) {
     const liteMode = Boolean((user as { liteMode?: boolean }).liteMode);
 
 
-    console.log("User found:", {
+    log.info("quiz_request_user", {
       id: user.id,
-      email: user.email,
       subscriptionPlan: user.subscriptionPlan,
       aiDifficulty: user.aiDifficulty,
       adaptiveLearning: user.adaptiveLearning,
@@ -581,7 +116,7 @@ export async function POST(req: NextRequest) {
     const isProOrPremium =
       user.subscriptionPlan === "pro" || user.subscriptionPlan === "premium";
 
-    const burstCheck = checkFeatureBurstLimit({
+    const burstCheck = await checkFeatureBurstLimitDistributed({
       userId: user.id,
       plan: user.subscriptionPlan,
       feature: "quiz_generate",
@@ -652,11 +187,39 @@ export async function POST(req: NextRequest) {
 
     // Parse body
     const body = await req.json();
+    const isAsyncInternal = req.headers.get("x-async-internal") === "1";
+    const queueRequested =
+      body?.async === true || body?.async === "true" || body?.queue === true;
+    if (queueRequested && !isAsyncInternal) {
+      const queued = await createAsyncGenerationJob({
+        userId: user.id,
+        type: "quiz_generate",
+        request: { body },
+        requestId,
+      });
+      if (!queued) return apiError(500, "Failed to queue generation job", requestId);
+      const dispatched = await dispatchAsyncGenerationJob(req, queued.id);
+      return NextResponse.json(
+        {
+          ok: true,
+          queued: true,
+          jobId: queued.id,
+          status: queued.status,
+          dispatched,
+          requestId,
+        },
+        {
+          status: 202,
+          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+        }
+      );
+    }
     
     // Safely get requested values with defaults
     const requestedDifficulty = body.difficulty && typeof body.difficulty === "string" 
       ? body.difficulty.toLowerCase().trim() 
       : undefined;
+    const requestedItemCount = normalizeQuestionCountInput(body.numberOfItems);
     
     const requestedAdaptive = typeof body.adaptiveLearning === "boolean" 
       ? body.adaptiveLearning 
@@ -668,6 +231,9 @@ export async function POST(req: NextRequest) {
     const text = body.text?.trim();
     if (!text)
       return apiError(400, "No input provided", requestId);
+    const itemCountInstruction = requestedItemCount
+      ? `Generate exactly ${requestedItemCount} questions.`
+      : "";
 
     // Determine content source
     let content = text;
@@ -708,7 +274,7 @@ export async function POST(req: NextRequest) {
             sourceTitle = title;
             extractedText = `${title}\n\n${description}`;
           } catch (err) {
-            console.warn("Fallback metadata fetch failed:", err);
+            log.warn("youtube_metadata_fallback_failed", { videoId, err });
             extractedText = `⚠️ Limited content: only video ID ${videoId} available.`;
           }
         } else {
@@ -726,10 +292,11 @@ export async function POST(req: NextRequest) {
         const extracted = await extractTextFromURL(content);
         content = extracted.text;
         sourceTitle = extracted.title;
-        const preview = (content || "").replace(/\s+/g, " ").trim().slice(0, 600);
-        console.log(
-          `[url-extract] url=${targetUrl} title="${sourceTitle || ""}" chars=${content?.length || 0} preview="${preview}"`,
-        );
+        log.debug("url_extracted", {
+          url: targetUrl,
+          title: sourceTitle || null,
+          chars: content?.length || 0,
+        });
       }
     }
 
@@ -775,94 +342,7 @@ export async function POST(req: NextRequest) {
     const effectiveDifficulty = safeDifficulty;
 
     if (safeAdaptive) {
-      const recentHistory = await prisma.generationEvent.findMany({
-        where: {
-          userId: user.id,
-          eventType: "quiz_generated",
-          status: "success",
-          OR: [{ feature: "quiz" }, { feature: "quiz_file_upload" }],
-        },
-        orderBy: { createdAt: "desc" },
-        take: 25,
-        select: { metadata: true },
-      });
-
-      const topicFrequency = new Map<string, number>();
-      for (const row of recentHistory) {
-        if (!row.metadata || typeof row.metadata !== "object" || Array.isArray(row.metadata)) {
-          continue;
-        }
-        const meta = row.metadata as Record<string, unknown>;
-        const topic = typeof meta.promptTopic === "string" ? meta.promptTopic.trim() : "";
-        if (topic) {
-          topicFrequency.set(topic, (topicFrequency.get(topic) ?? 0) + 1);
-        }
-      }
-
-      const frequentTopics = Array.from(topicFrequency.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([topic]) => topic);
-
-      const attemptRows = await prisma.$queryRaw<
-        Array<{ scorePercent: number; result: unknown; title: string }>
-      >`
-        SELECT s."scorePercent", s."result", q."title"
-        FROM "StudentQuizAttempt" s
-        JOIN "Quiz" q ON q."id" = s."quizId"
-        WHERE q."userId" = ${user.id}
-        ORDER BY s."submittedAt" DESC
-        LIMIT 120
-      `;
-
-      const lowScoreTopics: string[] = [];
-      const missedAnswerTerms: string[] = [];
-      for (const row of attemptRows) {
-        if ((row.scorePercent ?? 0) < 60) {
-          const profile = buildPromptProfile(row.title || "");
-          if (profile.topic) lowScoreTopics.push(profile.topic);
-        }
-        const details = Array.isArray(row.result)
-          ? (row.result as Array<Record<string, unknown>>)
-          : [];
-        for (const detail of details) {
-          if (detail?.correct === false) {
-            const selected =
-              typeof detail.selected === "string" ? detail.selected.trim() : "";
-            if (selected) {
-              missedAnswerTerms.push(...extractKeywordTokens(selected, 3));
-            }
-          }
-        }
-      }
-
-      const topLowTopics = Array.from(new Set(lowScoreTopics)).slice(0, 3);
-      const topMissedTerms = Array.from(new Set(missedAnswerTerms)).slice(0, 5);
-
-      if (frequentTopics.length > 0 || topLowTopics.length > 0 || topMissedTerms.length > 0) {
-        const guidanceLines = [
-          "Teacher Intent Personalization:",
-        ];
-        if (frequentTopics.length > 0) {
-          guidanceLines.push(
-            `- Teacher frequently generates quizzes on: ${frequentTopics.join(", ")}.`
-          );
-        }
-        if (topLowTopics.length > 0) {
-          guidanceLines.push(
-            `- Student outcomes indicate remediation focus on: ${topLowTopics.join(", ")}.`
-          );
-        }
-        if (topMissedTerms.length > 0) {
-          guidanceLines.push(
-            `- Common wrong-answer terms seen in submissions: ${topMissedTerms.join(", ")}.`
-          );
-        }
-        guidanceLines.push(
-          "- Keep requested topic primary, but adapt examples and distractors to address these learning gaps."
-        );
-        adaptiveGuidance = guidanceLines.join("\n");
-      }
+      adaptiveGuidance = await buildQuizAdaptiveGuidance(user.id);
     }
 
     // Update user preferences only if they're different
@@ -888,8 +368,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    console.log("Request body received:", {
-      text: body.text?.substring(0, 100) + "...",
+    log.debug("quiz_request_body", {
+      textChars: typeof body.text === "string" ? body.text.length : 0,
       difficulty: body.difficulty,
       adaptiveLearning: body.adaptiveLearning,
       adaptiveGuidanceEnabled: Boolean(adaptiveGuidance),
@@ -926,7 +406,7 @@ export async function POST(req: NextRequest) {
           stageMs.ingest = Date.now() - ingestStartedAt;
           webDebug = webResult.debug;
         } catch (webErr) {
-          console.warn("Web RAG ingestion failed:", webErr);
+          log.warn("quiz_rag_web_ingest_failed", { namespace, err: webErr });
         }
       }
     } else if (isUrlInput) {
@@ -989,7 +469,16 @@ export async function POST(req: NextRequest) {
     ensureNotAborted();
 
     const aiStartedAt = Date.now();
-    const composedUserPrompt = [text, adaptiveGuidance].filter(Boolean).join("\n\n");
+    const composedUserPrompt = [
+      text,
+      itemCountInstruction,
+      adaptiveGuidance,
+      requestedItemCount
+        ? "STRICT QUESTION COUNT: Follow the requested number of items exactly."
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     const aiResult = cachedResponse
       ? null
       : await generateQuizAIWithMeta(
@@ -1025,7 +514,7 @@ export async function POST(req: NextRequest) {
         ) {
           throw cacheErr;
         }
-        console.warn("Semantic cache store failed:", cacheErr);
+        log.warn("quiz_semantic_cache_store_failed", { namespace, err: cacheErr });
       }
     }
 
@@ -1069,12 +558,34 @@ export async function POST(req: NextRequest) {
       include: { questions: true },
     });
 
+    let nextQuizUsage: number | null = null;
     if (isFree) {
       ensureNotAborted();
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { quizUsage: user.quizUsage + 1, lastQuizAt: now, lastActiveAt: now },
-      });
+      const updatedUsageRows = await prisma.$queryRaw<Array<{ quizUsage: number | null }>>`
+        UPDATE "User"
+        SET
+          "quizUsage" = CASE
+            WHEN "lastQuizAt" IS NULL OR "lastQuizAt" <= (NOW() - INTERVAL '3 hours') THEN 1
+            ELSE COALESCE("quizUsage", 0) + 1
+          END,
+          "lastQuizAt" = NOW(),
+          "lastActiveAt" = NOW()
+        WHERE id = ${user.id}
+          AND (
+            "lastQuizAt" IS NULL
+            OR "lastQuizAt" <= (NOW() - INTERVAL '3 hours')
+            OR COALESCE("quizUsage", 0) < ${FREE_QUIZ_LIMIT}
+          )
+        RETURNING COALESCE("quizUsage", 0) AS "quizUsage"
+      `;
+      if (!updatedUsageRows[0]) {
+        return apiError(
+          403,
+          "Free limit reached. Come back later.",
+          requestId
+        );
+      }
+      nextQuizUsage = Number(updatedUsageRows[0].quizUsage || 0);
     } else {
       ensureNotAborted();
       await prisma.user.update({
@@ -1095,6 +606,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         liteMode,
         difficulty: effectiveDifficulty,
+        requestedItemCount,
         sourceMode: sourceMode ?? "none",
         sourceCount: (sources ?? []).length,
         sources: normalizedSources,
@@ -1130,8 +642,11 @@ export async function POST(req: NextRequest) {
               sourceCount: (sources ?? []).length,
             },
           }),
-      quizUsage: isFree ? user.quizUsage + 1 : null,
-      remaining: isFree ? FREE_QUIZ_LIMIT - (user.quizUsage + 1) : null,
+      quizUsage: isFree ? nextQuizUsage : null,
+      remaining:
+        isFree && nextQuizUsage !== null
+          ? Math.max(FREE_QUIZ_LIMIT - nextQuizUsage, 0)
+          : null,
       cache: {
         hit: Boolean(cachedResponse),
         stored: cacheStored,

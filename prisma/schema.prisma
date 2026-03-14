@@ -53,6 +53,7 @@ model User {
   lessonPlanExports  LessonPlanExport[]
   winbackEmails      WinbackEmailLog[]
   loginSessions      UserLoginSession[]
+  asyncGenerationJobs AsyncGenerationJob[]
 }
 
 model UserPolicyAcceptance {
@@ -332,4 +333,25 @@ model StudentQuizTake {
 
   @@unique([quizId, takeSessionId])
   @@index([quizId, submittedAt])
+}
+
+model AsyncGenerationJob {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String
+  status      String   @default("queued") // queued | processing | completed | failed
+  request     Json
+  result      Json?
+  error       String?
+  attemptCount Int     @default(0)
+  requestId   String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([type, createdAt])
 }

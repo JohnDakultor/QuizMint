@@ -91,7 +91,7 @@ import { getServerSession } from "next-auth";
 import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
 import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
 import { semanticCacheStore } from "@/lib/rag/semanticCache";
-import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
+import { checkFeatureBurstLimitDistributed } from "@/lib/abuse-guard";
 import { trackGenerationEvent } from "@/lib/generation-events";
 import { buildPromptProfile } from "@/lib/adaptive-personalization";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
@@ -127,6 +127,12 @@ function enforceDefaultQuestionCount(prompt: string, defaultCount = 10) {
   return `${trimmed}\n\n${defaultRule}`;
 }
 
+function normalizeQuestionCountInput(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(50, Math.max(1, Math.floor(n)));
+}
+
 export async function POST(req: Request) {
   const startedAt = Date.now();
   let eventUserId: string | null = null;
@@ -145,7 +151,7 @@ export async function POST(req: Request) {
     eventUserId = user.id;
     eventPlan = user.subscriptionPlan || "free";
 
-    const burstCheck = checkFeatureBurstLimit({
+    const burstCheck = await checkFeatureBurstLimitDistributed({
       userId: user.id,
       plan: user.subscriptionPlan,
       feature: "quiz_file_upload_generate",
@@ -166,6 +172,9 @@ export async function POST(req: Request) {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const prompt = (formData.get("prompt") as string) || "";
+    const requestedItemCount = normalizeQuestionCountInput(
+      formData.get("numberOfItems")
+    );
 
     const difficulty = user.aiDifficulty || "easy";
     const adaptiveLearning = user.adaptiveLearning ?? false;
@@ -274,7 +283,10 @@ content = meaningfulText;  // override to pass to AI
     }
 
     // --- RAG-ENHANCED GENERATION ---
-    const basePrompt = enforceDefaultQuestionCount(prompt || "", 10);
+    const basePrompt = enforceDefaultQuestionCount(
+      prompt || "",
+      requestedItemCount ?? 10
+    );
 
     const { enhancedPrompt, cachedResponse, sources, ragMeta, sourceMode } =
       await enhancePromptWithRAG({

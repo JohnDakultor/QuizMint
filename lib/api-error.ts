@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { log } from "@/lib/logger";
 
 export function createRequestId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -13,7 +14,7 @@ export function apiError(
   requestId: string,
   extra?: Record<string, unknown>
 ) {
-  console.warn(`[api-error] requestId=${requestId} status=${status} error=${error}`);
+  log.warn("api_error", { requestId, status, error, extra });
   return NextResponse.json(
     {
       error,
@@ -31,5 +32,5 @@ export function apiError(
 }
 
 export function logApiError(requestId: string, context: string, err: unknown) {
-  console.error(`[${context}] requestId=${requestId}`, err);
+  log.error("api_exception", { requestId, context, err });
 }

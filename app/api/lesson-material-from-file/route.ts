@@ -11,7 +11,10 @@ import {
   generateLessonPlanPptAIWithMeta,
   type LessonPlanPptAIMeta,
 } from "@/lib/lesson-plan-ppt-ai";
-import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
+import { checkFeatureBurstLimitDistributed } from "@/lib/abuse-guard";
+import { createAsyncGenerationJob } from "@/lib/async-generation-jobs";
+import { dispatchAsyncGenerationJob } from "@/lib/async-job-dispatch";
+import { log } from "@/lib/logger";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import fs from "fs/promises";
@@ -24,6 +27,7 @@ export const runtime = "nodejs";
 const FREE_UPLOAD_LIMIT = 3;
 const RESET_HOURS = 3;
 const MIN_CONTENT_CHARS = 120;
+const MAX_QUEUED_UPLOAD_BYTES = 2 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = new Set([
   "txt",
   "docx",
@@ -207,14 +211,14 @@ async function extractTextFromPdf(arrayBuffer: ArrayBuffer): Promise<string> {
       message.includes("Setting up fake worker failed") ||
       message.includes("pdf.worker.mjs");
     if (isWorkerIssue) {
-      console.info(
-        "[lesson-material-from-file] pdfjs worker unavailable in server bundle; using fallback parser."
-      );
+      log.info("lesson_material_pdf_worker_unavailable", {
+        message: "pdfjs worker unavailable in server bundle; using fallback parser",
+      });
     } else {
-      console.warn(
-        "[lesson-material-from-file] pdfjs parse failed; using fallback parser.",
-        message
-      );
+      log.warn("lesson_material_pdf_parse_failed", {
+        message: "pdfjs parse failed; using fallback parser",
+        err: message,
+      });
     }
   }
 
@@ -287,23 +291,43 @@ export async function POST(req: NextRequest) {
   let metaForEvent: LessonPlanPptAIMeta | null = null;
 
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) return apiError(401, "Unauthorized", requestId);
+    const internalSecret =
+      process.env.GENERATION_JOB_INTERNAL_SECRET ||
+      process.env.INTERNAL_API_SECRET ||
+      "";
+    const isInternalTrusted =
+      Boolean(internalSecret) &&
+      req.headers.get("x-generation-job-secret") === internalSecret;
+    const internalUserId = req.headers.get("x-async-user-id");
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        id: true,
-        subscriptionPlan: true,
-        liteMode: true,
-      },
-    });
+    let user: { id: string; subscriptionPlan: string | null; liteMode: boolean | null } | null = null;
+    if (isInternalTrusted && internalUserId) {
+      user = await prisma.user.findUnique({
+        where: { id: internalUserId },
+        select: {
+          id: true,
+          subscriptionPlan: true,
+          liteMode: true,
+        },
+      });
+    } else {
+      const session = await getServerSession(authOptions);
+      if (!session?.user?.email) return apiError(401, "Unauthorized", requestId);
+      user = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        select: {
+          id: true,
+          subscriptionPlan: true,
+          liteMode: true,
+        },
+      });
+    }
 
     if (!user) return apiError(404, "User not found", requestId);
     eventUserId = user.id;
     eventPlan = String(user.subscriptionPlan || "free").toLowerCase();
 
-    const burstCheck = checkFeatureBurstLimit({
+    const burstCheck = await checkFeatureBurstLimitDistributed({
       userId: user.id,
       plan: user.subscriptionPlan,
       feature: "lesson_material_upload",
@@ -384,6 +408,55 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const isAsyncInternal = req.headers.get("x-async-internal") === "1";
+    const asyncField = String(formData.get("async") || formData.get("queue") || "").toLowerCase();
+    const queueRequested =
+      asyncField === "true" || asyncField === "1" || asyncField === "yes";
+    if (queueRequested && !isAsyncInternal) {
+      const arrayBuffer = await file.arrayBuffer();
+      if (arrayBuffer.byteLength > MAX_QUEUED_UPLOAD_BYTES) {
+        return apiError(
+          413,
+          `Queued upload is limited to ${Math.floor(MAX_QUEUED_UPLOAD_BYTES / (1024 * 1024))}MB.`,
+          requestId
+        );
+      }
+      const queued = await createAsyncGenerationJob({
+        userId: user.id,
+        type: "lesson_material_upload",
+        request: {
+          fields: {
+            topic: String(formData.get("topic") || ""),
+            subject: String(formData.get("subject") || ""),
+            grade: String(formData.get("grade") || ""),
+            duration: String(formData.get("duration") || ""),
+          },
+          file: {
+            name: file.name,
+            type: file.type || "application/octet-stream",
+            base64: Buffer.from(arrayBuffer).toString("base64"),
+          },
+        },
+        requestId,
+      });
+      if (!queued) return apiError(500, "Failed to queue generation job", requestId);
+      const dispatched = await dispatchAsyncGenerationJob(req, queued.id);
+      return NextResponse.json(
+        {
+          ok: true,
+          queued: true,
+          jobId: queued.id,
+          status: queued.status,
+          dispatched,
+          requestId,
+        },
+        {
+          status: 202,
+          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+        }
+      );
+    }
+
     const extracted = await extractFileText(file, ext);
     const cleanText = normalizeExtractedText(extracted);
     extractedTextLength = cleanText.length;
@@ -423,12 +496,49 @@ export async function POST(req: NextRequest) {
 
     let nextUsage = currentUploadUsage;
     if (isFree) {
-      await prisma.$executeRaw`
+      const updatedRows = await prisma.$queryRaw<
+        Array<{ lessonMaterialUploadUsage: number | null }>
+      >`
         UPDATE "User"
-        SET "lessonMaterialUploadUsage" = COALESCE("lessonMaterialUploadUsage", 0) + 1,
-            "lastLessonMaterialUploadAt" = NOW()
+        SET
+          "lessonMaterialUploadUsage" = CASE
+            WHEN "lastLessonMaterialUploadAt" IS NULL OR "lastLessonMaterialUploadAt" <= (NOW() - INTERVAL '3 hours') THEN 1
+            ELSE COALESCE("lessonMaterialUploadUsage", 0) + 1
+          END,
+          "lastLessonMaterialUploadAt" = NOW()
         WHERE id = ${user.id}
+          AND (
+            "lastLessonMaterialUploadAt" IS NULL
+            OR "lastLessonMaterialUploadAt" <= (NOW() - INTERVAL '3 hours')
+            OR COALESCE("lessonMaterialUploadUsage", 0) < ${FREE_UPLOAD_LIMIT}
+          )
+        RETURNING COALESCE("lessonMaterialUploadUsage", 0) AS "lessonMaterialUploadUsage"
       `;
+      if (!updatedRows[0]) {
+        const ttlRows = await prisma.$queryRaw<
+          Array<{ secondsUntilReset: number | null }>
+        >`
+          SELECT
+            CASE
+              WHEN "lastLessonMaterialUploadAt" IS NULL THEN ${RESET_HOURS * 60 * 60}
+              ELSE CEIL(EXTRACT(EPOCH FROM (("lastLessonMaterialUploadAt" + INTERVAL '3 hours') - NOW())))
+            END::int AS "secondsUntilReset"
+          FROM "User"
+          WHERE id = ${user.id}
+          LIMIT 1
+        `;
+        const resetInSeconds = Math.max(
+          Number(ttlRows?.[0]?.secondsUntilReset || 0),
+          0
+        );
+        return apiError(
+          403,
+          "Free upload limit reached. You can generate up to 3 lesson materials from uploaded files.",
+          requestId,
+          { usage: usagePayload(FREE_UPLOAD_LIMIT, resetInSeconds) }
+        );
+      }
+
       const nextRows = await prisma.$queryRaw<
         Array<{
           lessonMaterialUploadUsage: number | null;

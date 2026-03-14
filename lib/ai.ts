@@ -151,6 +151,7 @@
 // }
 
 import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
+import { log } from "@/lib/logger";
 
 interface OpenRouterResponse {
   choices: { message: { content: string } }[];
@@ -473,7 +474,7 @@ JSON SCHEMA (MUST MATCH EXACTLY):
     }
   }
 
-  console.log("🤖 AI Raw Response:", raw.substring(0, 500)); // Add logging
+  log.debug("quiz_ai_raw_response", { rawChars: raw.length, preview: raw.substring(0, 300) });
 
   let parsed: any | null = null;
   try {
@@ -491,7 +492,7 @@ JSON SCHEMA (MUST MATCH EXACTLY):
     if (aiCall.cost) {
       estimatedCostUsd += aiCall.cost.estimatedCostUsd;
     }
-    console.log("🤖 AI Raw Response (fallback):", raw.substring(0, 500));
+    log.debug("quiz_ai_raw_response_fallback", { rawChars: raw.length, preview: raw.substring(0, 300) });
     parsed = safeExtractJSON(raw);
   }
 
@@ -551,7 +552,7 @@ JSON SCHEMA (MUST MATCH EXACTLY):
 
   if (!parsed) throw new Error("AI did not return valid JSON");
 
-  console.log("🤖 AI Parsed Response:", {
+  log.info("quiz_ai_parsed_response", {
     title: parsed.title,
     questionCount: parsed.questions?.length || 0,
     hasQuestions: !!parsed.questions && parsed.questions.length > 0
@@ -766,7 +767,7 @@ function safeExtractJSON(raw: string) {
         }
       }
     } catch (innerErr) {
-      console.error("Failed to extract JSON from AI response");
+      log.warn("quiz_ai_json_extract_failed");
     }
     throw new Error("No valid JSON found in response");
   }

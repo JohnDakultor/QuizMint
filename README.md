@@ -37,3 +37,8 @@ A lightweight, AI-driven webapp for instant quiz generation, created by **John D
 git clone https://github.com/johndashultor/QuizMint.git
 cd quizmint
 npm install
+
+## Documentation
+
+- Scalability audit and million-user readiness plan:
+  - `docs/SCALABILITY_AUDIT_2026-03-11.md`

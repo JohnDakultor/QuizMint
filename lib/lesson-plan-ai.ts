@@ -1,5 +1,6 @@
 // lib/lesson-plan-ai.ts - FIXED VERSION
 import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
+import { log } from "@/lib/logger";
 
 interface LessonPlanInput {
   topic: string;
@@ -42,7 +43,12 @@ export async function generateLessonPlanAIWithMeta(
   input: LessonPlanInput,
   options?: { liteMode?: boolean }
 ): Promise<LessonPlanAIResult> {
-  console.log("Generating lesson plan for:", input);
+  log.info("lesson_ai_generate_start", {
+    topic: input.topic,
+    subject: input.subject,
+    grade: input.grade,
+    days: input.days,
+  });
   
   const systemPrompt = `You are Quizmints AI, a highly experienced DepEd-aligned lesson plan generator. You have 20+ years of teaching experience and create comprehensive, practical lesson plans that teachers can implement immediately.
 
@@ -214,7 +220,7 @@ Return ONLY valid JSON, no other text.`;
     const maxRetries = 2;
 
     while (true) {
-      console.log("Calling OpenRouter API with model:", modelName, "attempt:", attempt + 1);
+      log.debug("lesson_ai_call_model", { modelName, attempt: attempt + 1 });
 
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -250,7 +256,7 @@ Return ONLY valid JSON, no other text.`;
           await delay(500 * attempt);
           continue;
         }
-        console.error("OpenRouter API Error:", res.status, responseText);
+        log.error("lesson_ai_provider_error", { status: res.status, responseText });
         throw new Error(`API request failed: ${res.status} ${responseText}`);
       }
 
@@ -297,7 +303,7 @@ Return ONLY valid JSON, no other text.`;
       }
     } catch (primaryErr) {
       if (fallbackModel && fallbackModel !== model) {
-        console.warn("Primary lesson model failed, trying fallback:", fallbackModel);
+        log.warn("lesson_ai_primary_failed_using_fallback", { fallbackModel });
         fallbackUsed = true;
         const aiCall = await callOpenRouter(fallbackModel);
         raw = aiCall.raw;
@@ -313,21 +319,20 @@ Return ONLY valid JSON, no other text.`;
         throw primaryErr;
       }
     }
-    console.log("OpenRouter response received");
+    log.debug("lesson_ai_response_received");
     
     if (!raw) {
-      console.error("Empty response from AI");
+      log.error("lesson_ai_empty_response");
       throw new Error("Empty response from AI");
     }
 
-    console.log("Raw response length:", raw.length);
-    console.log("First 500 chars:", raw.substring(0, 500));
+    log.debug("lesson_ai_raw_response", { rawChars: raw.length, preview: raw.substring(0, 300) });
 
     const lessonPlan = safeExtractJSON(raw);
     
     // Validate the lesson plan structure
     if (!lessonPlan.days || !Array.isArray(lessonPlan.days) || lessonPlan.days.length === 0) {
-      console.error("Invalid lesson plan structure - no days array");
+      log.error("lesson_ai_invalid_structure_no_days");
       throw new Error("Generated lesson plan has invalid structure");
     }
     
@@ -346,7 +351,7 @@ Return ONLY valid JSON, no other text.`;
     };
     
   } catch (error: any) {
-    console.error("Error in generateLessonPlanAI:", error.message);
+    log.error("lesson_ai_generate_error", { error });
     // Return a minimal valid structure instead of falling back completely
     return {
       lessonPlan: createMinimalValidLessonPlan(input),
@@ -373,7 +378,7 @@ function safeExtractJSON(raw: string) {
   try {
     return JSON.parse(raw);
   } catch (error: any) {
-    console.warn("Direct JSON parsing failed:", error?.message);
+    log.warn("lesson_ai_direct_json_parse_failed", { error });
     try {
       const cleaned = raw
         .replace(/```json/gi, "")
@@ -392,8 +397,10 @@ function safeExtractJSON(raw: string) {
         return attemptJSONRepair(balancedJson);
       }
     } catch (repairError: any) {
-      console.error("JSON parsing failed:", repairError?.message || repairError);
-      console.error("Raw response sample:", raw.substring(0, 500));
+      log.error("lesson_ai_json_repair_failed", {
+        repairError,
+        preview: raw.substring(0, 300),
+      });
       throw new Error("No valid JSON found in response");
     }
   }
@@ -486,7 +493,11 @@ function extractBalancedJSONObject(input: string) {
 }
 
 function createMinimalValidLessonPlan(input: LessonPlanInput) {
-  console.log("Creating minimal valid lesson plan for:", input);
+  log.warn("lesson_ai_fallback_minimal_plan", {
+    topic: input.topic,
+    subject: input.subject,
+    grade: input.grade,
+  });
   
   const days = [];
   for (let i = 0; i < input.days; i++) {

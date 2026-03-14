@@ -6,7 +6,7 @@ import { generateLessonPlanPptx } from "@/lib/generate-lesson-plan-pptx";
 import type { PptDeck } from "@/lib/lesson-plan-ppt-ai";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
-import { checkFeatureBurstLimit } from "@/lib/abuse-guard";
+import { checkFeatureBurstLimitDistributed } from "@/lib/abuse-guard";
 
 const PROVIDER_ISSUE_MESSAGE =
   "Server issue - we're fixing it. Please try again in a few minutes.";
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       return apiError(404, "User not found", requestId);
     }
 
-    const burstCheck = checkFeatureBurstLimit({
+    const burstCheck = await checkFeatureBurstLimitDistributed({
       userId: user.id,
       plan: user.subscriptionPlan,
       feature: "lesson_pptx_download",
