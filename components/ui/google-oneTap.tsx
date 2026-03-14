@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { signIn } from "next-auth/react";
+import { resolveClientCallbackUrl } from "@/lib/app-url";
 
 declare global {
   interface Window {
@@ -33,7 +34,10 @@ export default function GoogleOneTap() {
             if (!data.success) throw new Error(data.error || "Failed to create user");
 
             // ✅ Optional: then sign in via NextAuth
-            await signIn("google", { credential: response.credential, callbackUrl: "/home" });
+            await signIn("google", {
+              credential: response.credential,
+              callbackUrl: resolveClientCallbackUrl("/home"),
+            });
           } catch (err) {
             console.error("Google One Tap error:", err);
           }

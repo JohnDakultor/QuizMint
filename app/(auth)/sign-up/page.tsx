@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import GoogleOneTap from "@/components/ui/google-oneTap";
 import { useRecaptcha } from "@/components/ui/use-recaptcha";
+import { resolveClientCallbackUrl } from "@/lib/app-url";
 
 function getPasswordStrength(password: string) {
   let score = 0;
@@ -45,7 +46,7 @@ export default function SignUp() {
     setError("");
     setLoading(true);
     try {
-      await signIn("google", { callbackUrl: "/home" });
+      await signIn("google", { callbackUrl: resolveClientCallbackUrl("/home") });
     } catch (err: any) {
       setError(err?.message || "Google sign up failed.");
       setLoading(false);

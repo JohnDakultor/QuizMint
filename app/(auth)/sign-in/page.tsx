@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, getSession } from "next-auth/react";
 import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
+import { resolveClientCallbackUrl } from "@/lib/app-url";
 
 import GoogleOneTap from "@/components/ui/google-oneTap";
 import { useRecaptcha } from "@/components/ui/use-recaptcha";
@@ -46,7 +47,9 @@ function SignInContent() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/home";
+  const callbackUrl = resolveClientCallbackUrl(
+    searchParams.get("callbackUrl") || "/home"
+  );
   const { getToken } = useRecaptcha();
 
   const handleGoogleSignIn = async () => {

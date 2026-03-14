@@ -241,7 +241,30 @@ export async function POST(req: NextRequest) {
 
     const contentPrepStartedAt = Date.now();
     if (isURL(content)) {
-      if (content.includes("youtube.com") || content.includes("youtu.be")) {
+      if (liteMode) {
+        try {
+          const urlObj = new URL(content);
+          const host = urlObj.hostname.replace(/^www\./, "");
+          const pathParts = urlObj.pathname
+            .split("/")
+            .filter(Boolean)
+            .slice(-2);
+          const titleHint = decodeURIComponent(pathParts.join(" "))
+            .replace(/[-_]+/g, " ")
+            .trim();
+          sourceTitle = titleHint || host;
+          content = [
+            `Source URL: ${text}`,
+            sourceTitle ? `Title hint: ${sourceTitle}` : "",
+            "Lite mode is enabled, so deep URL extraction was skipped.",
+            "Generate a concise quiz from the available URL context and the user's instructions.",
+          ]
+            .filter(Boolean)
+            .join("\n");
+        } catch {
+          content = `Source URL: ${text}\nLite mode is enabled, so deep URL extraction was skipped.`;
+        }
+      } else if (content.includes("youtube.com") || content.includes("youtu.be")) {
         // Premium check
         if (isFree) {
           return apiError(403, "YouTube link generation is premium only", requestId);

@@ -85,6 +85,31 @@ function getSessionLimitByPlan(plan: string | null | undefined): number {
   return sanitize(freeLimit);
 }
 
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+function resolveAuthAppBaseUrl(baseUrl: string): string {
+  const configured =
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    baseUrl;
+  return trimTrailingSlash(configured);
+}
+
+function resolveCookieDomain(): string | undefined {
+  const fromEnv = process.env.NEXTAUTH_COOKIE_DOMAIN?.trim();
+  if (fromEnv) return fromEnv;
+  if (
+    process.env.NODE_ENV !== "production" &&
+    process.env.ENABLE_LOCAL_SUBDOMAIN_AUTH === "1"
+  ) {
+    return ".localhost";
+  }
+  if (process.env.NODE_ENV === "production") return ".quizmintai.com";
+  return undefined;
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     // Email/password login
@@ -130,12 +155,48 @@ export const authOptions: NextAuthOptions = {
     maxAge: 60 * 60 * 8,
     updateAge: 60 * 15,
   },
+  cookies: {
+    sessionToken: {
+      name:
+        process.env.NODE_ENV === "production"
+          ? "__Secure-next-auth.session-token"
+          : "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+        ...(resolveCookieDomain() ? { domain: resolveCookieDomain() } : {}),
+      },
+    },
+  },
 
   pages: {
     signIn: "/sign-in",
   },
 
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      const appBaseUrl = resolveAuthAppBaseUrl(baseUrl);
+
+      if (url.startsWith("/")) {
+        return `${appBaseUrl}${url}`;
+      }
+
+      try {
+        const target = new URL(url);
+        const appHost = new URL(appBaseUrl).host;
+        const baseHost = new URL(baseUrl).host;
+
+        if (target.host === appHost || target.host === baseHost) {
+          return `${appBaseUrl}${target.pathname}${target.search}${target.hash}`;
+        }
+      } catch {
+        // Fallback below
+      }
+
+      return `${appBaseUrl}/home`;
+    },
     async jwt({ token, user }) {
       // Add user info from login to token
       if (user) {

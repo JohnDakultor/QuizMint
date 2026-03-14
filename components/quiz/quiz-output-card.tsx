@@ -59,7 +59,7 @@ export function QuizOutputCard(props: {
 
       <CardHeader className="relative pb-3">
         <div className="flex flex-wrap gap-2 mt-3">
-          <Button size="sm" variant="outline" onClick={onCopy}>
+          <Button id="quiz-copy-output" size="sm" variant="outline" onClick={onCopy}>
             <Copy className="w-4 h-4 mr-1" /> Copy
           </Button>
           <Button
@@ -72,13 +72,13 @@ export function QuizOutputCard(props: {
             <Link2 className="w-4 h-4 mr-1" />
             Share To Students
           </Button>
-          <Button size="sm" onClick={onDownloadPDF}>
+          <Button id="quiz-download-pdf" size="sm" onClick={onDownloadPDF}>
             PDF
           </Button>
-          <Button size="sm" onClick={onDownloadWord}>
+          <Button id="quiz-download-word" size="sm" onClick={onDownloadWord}>
             Word
           </Button>
-          <Button size="sm" onClick={onDownloadPPT}>
+          <Button id="quiz-download-ppt" size="sm" onClick={onDownloadPPT}>
             PPT
           </Button>
         </div>
@@ -115,7 +115,7 @@ export function QuizOutputCard(props: {
 
       {quiz && (
         <div className="shrink-0 border-t bg-zinc-50/70 p-3">
-          <details className="rounded-md border border-zinc-200 bg-zinc-50 p-2">
+          <details id="quiz-references" className="rounded-md border border-zinc-200 bg-zinc-50 p-2">
             <summary className="cursor-pointer list-none text-xs font-medium text-zinc-600 inline-flex items-center gap-1">
               <Globe className="h-3.5 w-3.5" />
               References ({sources.length})

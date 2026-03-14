@@ -30,7 +30,6 @@ type QuizInputCardProps = {
   infoMessage: string;
   error: string;
   adUnlockInfo: AdUnlockInfo;
-  liteMode: boolean;
   uploadedFile: File | null;
   setUploadedFile: (file: File | null) => void;
   onPaste: () => void;
@@ -54,7 +53,6 @@ export function QuizInputCard(props: QuizInputCardProps) {
     infoMessage,
     error,
     adUnlockInfo,
-    liteMode,
     uploadedFile,
     setUploadedFile,
     onPaste,
@@ -79,6 +77,33 @@ export function QuizInputCard(props: QuizInputCardProps) {
       </div>
 
       <CardContent className="space-y-2.5 flex flex-col p-4 flex-1">
+        {(loading || infoMessage || error) && (
+          <div className="space-y-2">
+            {loading && <LoadingProgress label="Generating quiz..." percent={quizProgress} />}
+
+            {infoMessage && (
+              <Alert className="border-blue-300 bg-blue-50 text-blue-900">
+                <AlertDescription>{infoMessage}</AlertDescription>
+              </Alert>
+            )}
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <div>{error}</div>
+                    {adUnlockInfo?.nextFreeAt && (
+                      <div className="text-sm text-muted-foreground">
+                        Free limit resets at {new Date(adUnlockInfo.nextFreeAt).toLocaleTimeString()}
+                      </div>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        )}
+
         <div className="relative">
           <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded border border-zinc-300 bg-white px-1.5 py-1 shadow-xs">
             <label htmlFor="quiz-item-count" className="text-[10px] font-medium text-zinc-600">
@@ -161,30 +186,7 @@ export function QuizInputCard(props: QuizInputCardProps) {
           </Button>
         </div>
 
-        {loading && <LoadingProgress label="Generating quiz..." percent={quizProgress} />}
-
-        {infoMessage && (
-          <Alert className="border-blue-300 bg-blue-50 text-blue-900">
-            <AlertDescription>{infoMessage}</AlertDescription>
-          </Alert>
-        )}
-
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>
-              <div className="space-y-2">
-                <div>{error}</div>
-                {adUnlockInfo?.nextFreeAt && (
-                  <div className="text-sm text-muted-foreground">
-                    Free limit resets at {new Date(adUnlockInfo.nextFreeAt).toLocaleTimeString()}
-                  </div>
-                )}
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {adUnlockInfo && !liteMode && (
+        {adUnlockInfo && (
           <AdUnlockButton
             cooldownUntil={adUnlockInfo.nextAdResetAt || adUnlockInfo.nextFreeAt}
             remaining={adUnlockInfo.remaining}

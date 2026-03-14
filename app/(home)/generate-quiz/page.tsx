@@ -684,7 +684,6 @@ export default function Dashboard() {
           infoMessage={infoMessage}
           error={error}
           adUnlockInfo={adUnlockInfo}
-          liteMode={liteMode}
           uploadedFile={uploadedFile}
           setUploadedFile={setUploadedFile}
           onPaste={handlePaste}

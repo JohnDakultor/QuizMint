@@ -359,7 +359,7 @@ export default function Account() {
                   Lite Mode (All Plans)
                 </div>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Reduces transitions and UI overhead for low-bandwidth or low-performance environments.
+                  Reduces animations and also uses lighter AI generation paths (lower tokens and less retrieval) for low-bandwidth or low-performance environments.
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer shrink-0">

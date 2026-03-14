@@ -1,5 +1,29 @@
 export const quizTourSteps = [
   {
+    element: "#quiz-litemode-badge",
+    popover: {
+      title: "Lite Mode",
+      description:
+        "This badge shows if Lite Mode is active. Lite Mode uses lower-cost generation settings.",
+    },
+  },
+  {
+    element: "#quiz-adaptive-toggle",
+    popover: {
+      title: "Adaptive Suggestions",
+      description:
+        "Premium users can toggle adaptive suggestions based on past quiz generation patterns.",
+    },
+  },
+  {
+    element: "#quiz-item-count",
+    popover: {
+      title: "Number of items",
+      description:
+        "Set how many questions to generate. The value is sent directly to quiz generation.",
+    },
+  },
+  {
     element: "#quiz-input",
     popover: {
       title: "Paste or type",
@@ -43,6 +67,43 @@ export const quizTourSteps = [
       title: "Share To Students",
       description:
         "Open the share modal, set timer in minutes, then generate a student-facing quiz link.",
+    },
+  },
+  {
+    element: "#quiz-copy-output",
+    popover: {
+      title: "Copy Output",
+      description:
+        "Copy the full generated quiz (questions and answers) to your clipboard.",
+    },
+  },
+  {
+    element: "#quiz-download-pdf",
+    popover: {
+      title: "Download PDF",
+      description: "Export the current quiz as a PDF file.",
+    },
+  },
+  {
+    element: "#quiz-download-word",
+    popover: {
+      title: "Download Word",
+      description: "Export the quiz as a Word (.docx) file.",
+    },
+  },
+  {
+    element: "#quiz-download-ppt",
+    popover: {
+      title: "Download PPT",
+      description: "Export the quiz as a PowerPoint (.pptx) file.",
+    },
+  },
+  {
+    element: "#quiz-references",
+    popover: {
+      title: "References",
+      description:
+        "See website/source references used by generation when available.",
     },
   },
   {

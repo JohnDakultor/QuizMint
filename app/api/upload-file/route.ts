@@ -178,6 +178,7 @@ export async function POST(req: Request) {
 
     const difficulty = user.aiDifficulty || "easy";
     const adaptiveLearning = user.adaptiveLearning ?? false;
+    const liteMode = Boolean(user.liteMode);
 
     let content = "";
 
@@ -259,40 +260,59 @@ content = meaningfulText;  // override to pass to AI
     const title = file?.name || "Uploaded file";
     const sourceType = file?.name.split(".").pop()?.toLowerCase() || "file";
 
-    const chunks = chunkText(content);
-    if (chunks.length > 0) {
-      // Replace previous chunks for this namespace (keeps RAG focused)
-      await prisma.$executeRaw`
-        DELETE FROM "Document" WHERE namespace = ${namespace}
-      `;
-
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const embedding = await embed(chunk);
-        await prisma.$executeRaw`
-          INSERT INTO "Document" (
-            id, namespace, "sourceUrl", title, "sourceType",
-            "chunkIndex", content, embedding, "createdAt", "updatedAt"
-          )
-          VALUES (
-            gen_random_uuid(), ${namespace}, ${null}, ${title}, ${sourceType},
-            ${i}, ${chunk}, ${embedding}::vector, now(), now()
-          )
-        `;
-      }
-    }
-
     // --- RAG-ENHANCED GENERATION ---
     const basePrompt = enforceDefaultQuestionCount(
       prompt || "",
       requestedItemCount ?? 10
     );
+    let enhancedPrompt = basePrompt;
+    let cachedResponse: string | null = null;
+    let sources: Array<{ url: string; title?: string }> = [];
+    let ragMeta:
+      | {
+          promptForCache: string;
+          embedding: number[];
+          namespace: string;
+        }
+      | null = null;
+    let sourceMode: "semantic_cache" | "documents" | "none" = "none";
 
-    const { enhancedPrompt, cachedResponse, sources, ragMeta, sourceMode } =
-      await enhancePromptWithRAG({
+    if (!liteMode) {
+      const chunks = chunkText(content);
+      if (chunks.length > 0) {
+        // Replace previous chunks for this namespace (keeps RAG focused)
+        await prisma.$executeRaw`
+          DELETE FROM "Document" WHERE namespace = ${namespace}
+        `;
+
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          const embedding = await embed(chunk);
+          await prisma.$executeRaw`
+            INSERT INTO "Document" (
+              id, namespace, "sourceUrl", title, "sourceType",
+              "chunkIndex", content, embedding, "createdAt", "updatedAt"
+            )
+            VALUES (
+              gen_random_uuid(), ${namespace}, ${null}, ${title}, ${sourceType},
+              ${i}, ${chunk}, ${embedding}::vector, now(), now()
+            )
+          `;
+        }
+      }
+
+      const ragResult = await enhancePromptWithRAG({
         finalPrompt: basePrompt,
         namespace,
       });
+      enhancedPrompt = ragResult.enhancedPrompt;
+      cachedResponse = ragResult.cachedResponse ?? null;
+      sources = ragResult.sources ?? [];
+      ragMeta = ragResult.ragMeta ?? null;
+      sourceMode = ragResult.sourceMode ?? "none";
+    } else {
+      enhancedPrompt = `${basePrompt}\n\nDocument content:\n${content}`;
+    }
 
     // --- GENERATE QUIZ ---
     const quiz = cachedResponse
@@ -303,9 +323,10 @@ content = meaningfulText;  // override to pass to AI
           adaptiveLearning,
           true,
           basePrompt,
+          { liteMode },
         );
 
-    if (ragMeta && !cachedResponse) {
+    if (!liteMode && ragMeta && !cachedResponse) {
       try {
         await semanticCacheStore(
           ragMeta.promptForCache,
@@ -403,6 +424,7 @@ content = meaningfulText;  // override to pass to AI
         sourceCount: (sources ?? []).length,
         sources: normalizedSources,
         cacheHit: Boolean(cachedResponse),
+        liteMode,
         fileName: file?.name ?? null,
         fileType: sourceType,
       },
@@ -411,12 +433,16 @@ content = meaningfulText;  // override to pass to AI
     return NextResponse.json({
       message: "Quiz generated",
       quiz: savedQuiz,
-      sources: sources ?? [],
-      sourceTrace: {
-        mode: sourceMode ?? "none",
-        fromCache: Boolean(cachedResponse),
-        sourceCount: (sources ?? []).length,
-      },
+      ...(liteMode
+        ? {}
+        : {
+            sources: sources ?? [],
+            sourceTrace: {
+              mode: sourceMode ?? "none",
+              fromCache: Boolean(cachedResponse),
+              sourceCount: (sources ?? []).length,
+            },
+          }),
       requestId,
     });
   } catch (err: unknown) {
