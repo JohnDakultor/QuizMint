@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Script from "next/script";
 import { Providers } from "./recaptcha-provider";
+import GAPageView from "@/components/analytics/ga-pageview";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,6 +31,7 @@ export default function RootLayout({
   const adProvider = (process.env.NEXT_PUBLIC_AD_PROVIDER || "adsense").toLowerCase();
   const monetagScriptSrc = process.env.NEXT_PUBLIC_MONETAG_SCRIPT_SRC || "";
   const monetagZone = process.env.NEXT_PUBLIC_MONETAG_ZONE || "";
+  const gaId = process.env.NEXT_PUBLIC_GA_ID || "";
 
   return (
     <html lang="en">
@@ -54,12 +56,32 @@ export default function RootLayout({
             strategy="afterInteractive"
           />
         )}
+        {gaId && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                window.gtag = gtag;
+                gtag('js', new Date());
+                gtag('config', '${gaId}', { send_page_view: false });
+              `}
+            </Script>
+          </>
+        )}
 
         <Script
           src="https://accounts.google.com/gsi/client"
           strategy="afterInteractive"
         />
-        <Providers>{children}</Providers>
+        <Providers>
+          <GAPageView />
+          {children}
+        </Providers>
       </body>
     </html>
   );

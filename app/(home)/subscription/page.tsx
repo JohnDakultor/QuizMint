@@ -347,6 +347,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { trackGaEvent } from "@/lib/ga-client";
 
 type CurrencyData = {
   country: string;
@@ -507,6 +508,12 @@ export default function Subscription() {
 
   // Stripe checkout redirect (coming soon)
   const handleStripe = async (plan: "pro" | "premium") => {
+    trackGaEvent("subscription_click", {
+      action: "checkout_start",
+      plan,
+      method: "stripe",
+      location: "subscription_page",
+    });
     setLoading(true);
     setSelectedPlan(plan);
     try {
@@ -531,6 +538,12 @@ export default function Subscription() {
 
   // Handle PayPal subscription
   const handlePayPalSubscription = async (planType: "pro" | "premium") => {
+    trackGaEvent("subscription_click", {
+      action: "checkout_start",
+      plan: planType,
+      method: "paypal",
+      location: "subscription_page",
+    });
     setLoading(true);
     setSelectedPlan(planType);
 
@@ -600,6 +613,12 @@ export default function Subscription() {
     }
 
     setLoading(true);
+    trackGaEvent("subscription_click", {
+      action: "proceed_payment",
+      plan: planToSubscribe,
+      method: selectedPaymentMethod,
+      location: "subscription_modal",
+    });
 
     switch (selectedPaymentMethod) {
       case "stripe":
@@ -662,6 +681,11 @@ export default function Subscription() {
                     : "bg-blue-600 hover:bg-blue-700 text-white"
                 }`}
                 onClick={() => {
+                  trackGaEvent("subscription_click", {
+                    action: "open_payment_modal",
+                    plan: plan.id,
+                    location: "subscription_page",
+                  });
                   setPlanToSubscribe(plan.id);
                   setShowPaymentModal(true);
                 }}

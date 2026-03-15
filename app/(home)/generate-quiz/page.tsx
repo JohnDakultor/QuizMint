@@ -12,6 +12,7 @@ import { QuizShareModal } from "@/components/quiz/quiz-share-modal";
 import { QuizPageHeader } from "@/components/quiz/quiz-page-header";
 import { AdaptiveSuggestionsPanel } from "@/components/quiz/adaptive-suggestions-panel";
 import { QuizSubscribeModal } from "@/components/quiz/subscribe-modal";
+import { trackGaEvent } from "@/lib/ga-client";
 
 export default function Dashboard() {
   const searchParams = useSearchParams();
@@ -445,6 +446,12 @@ export default function Dashboard() {
 
   const generateQuizFromPrompt = async () => {
     if (!prompt.trim() && !uploadedFile) return;
+    trackGaEvent("quiz_generate", {
+      action: "start",
+      source: uploadedFile ? "file_upload" : "prompt",
+      number_of_items: numberOfItems,
+      lite_mode: liteMode,
+    });
     setLoading(true);
     setQuiz(null);
     setError("");
@@ -477,6 +484,11 @@ export default function Dashboard() {
         const data = await res.json();
 
         if (!res.ok) {
+          trackGaEvent("quiz_generate", {
+            action: "error",
+            source: "file_upload",
+            http_status: res.status,
+          });
           if (res.status === 429) {
             setError("");
             setInfoMessage(
@@ -495,6 +507,14 @@ export default function Dashboard() {
             )
           );
         } else {
+          trackGaEvent("quiz_generate", {
+            action: "success",
+            source: "file_upload",
+            question_count: Array.isArray(data?.quiz?.questions)
+              ? data.quiz.questions.length
+              : 0,
+            source_count: Array.isArray(data?.sources) ? data.sources.length : 0,
+          });
           setQuiz(data.quiz);
           setSources(Array.isArray(data.sources) ? data.sources : []);
           setLastLoaded(false);
@@ -551,6 +571,11 @@ export default function Dashboard() {
       }
 
       if (!requestSucceeded) {
+        trackGaEvent("quiz_generate", {
+          action: "error",
+          source: "prompt",
+          http_status: res.status,
+        });
         if (res.status === 429) {
           setError("");
           setInfoMessage(
@@ -617,6 +642,14 @@ export default function Dashboard() {
         } else {
           
           setQuiz(data.quiz);
+          trackGaEvent("quiz_generate", {
+            action: "success",
+            source: "prompt",
+            question_count: Array.isArray(data?.quiz?.questions)
+              ? data.quiz.questions.length
+              : 0,
+            source_count: Array.isArray(data?.sources) ? data.sources.length : 0,
+          });
           setSources(Array.isArray(data.sources) ? data.sources : []);
           setLastLoaded(false);
           setShareOpen(null);
@@ -630,6 +663,10 @@ export default function Dashboard() {
       }
     }
   } catch (err: any) {
+    trackGaEvent("quiz_generate", {
+      action: err?.name === "AbortError" ? "aborted" : "error",
+      source: uploadedFile ? "file_upload" : "prompt",
+    });
     if (err?.name === "AbortError") {
       setError("");
       setInfoMessage("Generation paused.");
@@ -722,6 +759,10 @@ export default function Dashboard() {
         open={showSubscribeModal}
         onClose={() => setShowSubscribeModal(false)}
         onSubscribe={() => {
+          trackGaEvent("subscription_click", {
+            source: "quiz_subscribe_modal",
+            location: "generate_quiz",
+          });
           window.location.href = "/subscription";
         }}
       />

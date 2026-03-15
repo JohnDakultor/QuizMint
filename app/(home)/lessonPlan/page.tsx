@@ -924,6 +924,7 @@ import { LessonPlanInputForm } from "@/components/lesson-plan/input-form";
 import { LessonPlanOutputPanel } from "@/components/lesson-plan/output-panel";
 import { LessonPlanDaySections } from "@/components/lesson-plan/day-sections";
 import { FourAsPhaseCard, SpecificActivityCard } from "@/components/lesson-plan/activity-cards";
+import { trackGaEvent } from "@/lib/ga-client";
 
 const FREE_PLAN_LIMIT = 3;
 const LESSON_EXPORT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -1426,6 +1427,13 @@ export default function LessonPlanPage() {
 
   async function generateLessonPlan(formData: FormData) {
     const formObj = Object.fromEntries(formData.entries());
+    trackGaEvent("lesson_plan_generate", {
+      action: "start",
+      topic: String(formObj.topic || "").slice(0, 80),
+      days: Number(formObj.days || 0),
+      minutes_per_day: Number(formObj.minutesPerDay || 0),
+      lite_mode: liteMode,
+    });
     setFormDataObject(formObj);
 
     setLoading(true);
@@ -1463,6 +1471,10 @@ export default function LessonPlanPage() {
       }
       
       if (!res.ok) {
+        trackGaEvent("lesson_plan_generate", {
+          action: "error",
+          http_status: res.status,
+        });
         if (res.status === 429) {
           setError(null);
           setInfoMessage(
@@ -1507,6 +1519,13 @@ export default function LessonPlanPage() {
       }
       
       setLessonPlan(data.lessonPlan);
+      trackGaEvent("lesson_plan_generate", {
+        action: "success",
+        day_count: Array.isArray(data?.lessonPlan?.days)
+          ? data.lessonPlan.days.length
+          : 0,
+        source_count: Array.isArray(data?.sources) ? data.sources.length : 0,
+      });
       setUsageInfo(data.usage);
       setLessonSources(Array.isArray(data.sources) ? data.sources : []);
       setLessonSourceTrace(
@@ -1527,6 +1546,9 @@ export default function LessonPlanPage() {
       await new Promise((resolve) => setTimeout(resolve, 120));
       
     } catch (err: any) {
+      trackGaEvent("lesson_plan_generate", {
+        action: err?.name === "AbortError" ? "aborted" : "error",
+      });
       if (err?.name === "AbortError") {
         setError("Generation paused.");
         return;
