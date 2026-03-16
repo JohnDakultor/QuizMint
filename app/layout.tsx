@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
 import Script from "next/script";
 import { Providers } from "./recaptcha-provider";
@@ -79,7 +80,9 @@ export default function RootLayout({
           strategy="afterInteractive"
         />
         <Providers>
-          <GAPageView />
+          <Suspense fallback={null}>
+            <GAPageView />
+          </Suspense>
           {children}
         </Providers>
       </body>
