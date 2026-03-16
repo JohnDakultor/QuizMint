@@ -1,7 +1,25 @@
 import { prisma } from "@/lib/prisma";
 import { buildPromptProfile, extractKeywordTokens } from "@/lib/adaptive-personalization";
 
-export async function buildQuizAdaptiveGuidance(userId: string): Promise<string> {
+function hasTokenOverlap(a: string[], b: string[]) {
+  if (!a.length || !b.length) return false;
+  const setA = new Set(a.map((t) => t.toLowerCase()));
+  return b.some((t) => setA.has(t.toLowerCase()));
+}
+
+export async function buildQuizAdaptiveGuidance(
+  userId: string,
+  currentPrompt: string
+): Promise<string> {
+  const currentProfile = buildPromptProfile(currentPrompt || "");
+  const currentTokens = [
+    ...extractKeywordTokens(currentPrompt || "", 12),
+    ...extractKeywordTokens(currentProfile.topic || "", 6),
+    ...currentProfile.keywords,
+  ]
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+
   const recentHistory = await prisma.generationEvent.findMany({
     where: {
       userId,
@@ -65,24 +83,51 @@ export async function buildQuizAdaptiveGuidance(userId: string): Promise<string>
   const topLowTopics = Array.from(new Set(lowScoreTopics)).slice(0, 3);
   const topMissedTerms = Array.from(new Set(missedAnswerTerms)).slice(0, 5);
 
-  if (frequentTopics.length === 0 && topLowTopics.length === 0 && topMissedTerms.length === 0) {
+  const relevantFrequentTopics =
+    currentTokens.length === 0
+      ? frequentTopics.slice(0, 3)
+      : frequentTopics.filter((topic) =>
+          hasTokenOverlap(extractKeywordTokens(topic, 8), currentTokens)
+        );
+
+  const relevantLowTopics =
+    currentTokens.length === 0
+      ? topLowTopics.slice(0, 3)
+      : topLowTopics.filter((topic) =>
+          hasTokenOverlap(extractKeywordTokens(topic, 8), currentTokens)
+        );
+
+  const relevantMissedTerms =
+    currentTokens.length === 0
+      ? topMissedTerms.slice(0, 5)
+      : topMissedTerms.filter((term) => hasTokenOverlap([term], currentTokens));
+
+  if (
+    relevantFrequentTopics.length === 0 &&
+    relevantLowTopics.length === 0 &&
+    relevantMissedTerms.length === 0
+  ) {
     return "";
   }
 
   const guidanceLines = ["Teacher Intent Personalization:"];
-  if (frequentTopics.length > 0) {
-    guidanceLines.push(`- Teacher frequently generates quizzes on: ${frequentTopics.join(", ")}.`);
-  }
-  if (topLowTopics.length > 0) {
-    guidanceLines.push(`- Student outcomes indicate remediation focus on: ${topLowTopics.join(", ")}.`);
-  }
-  if (topMissedTerms.length > 0) {
+  if (relevantFrequentTopics.length > 0) {
     guidanceLines.push(
-      `- Common wrong-answer terms seen in submissions: ${topMissedTerms.join(", ")}.`
+      `- Teacher frequently generates quizzes on related topics: ${relevantFrequentTopics.join(", ")}.`
+    );
+  }
+  if (relevantLowTopics.length > 0) {
+    guidanceLines.push(
+      `- Student outcomes indicate remediation focus on related areas: ${relevantLowTopics.join(", ")}.`
+    );
+  }
+  if (relevantMissedTerms.length > 0) {
+    guidanceLines.push(
+      `- Common wrong-answer terms in this same topic area: ${relevantMissedTerms.join(", ")}.`
     );
   }
   guidanceLines.push(
-    "- Keep requested topic primary, but adapt examples and distractors to address these learning gaps."
+    "- Keep requested topic primary and ignore unrelated past topics, terms, or examples."
   );
   return guidanceLines.join("\n");
 }

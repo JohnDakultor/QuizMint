@@ -52,6 +52,12 @@ function buildAdaptiveProfileInput(input: {
   return parts.join("\n\n");
 }
 
+function normalizeMixCountInput(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(50, Math.max(0, Math.floor(n)));
+}
+
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   let eventUserId: string | null = null;
@@ -220,6 +226,24 @@ export async function POST(req: NextRequest) {
       ? body.difficulty.toLowerCase().trim() 
       : undefined;
     const requestedItemCount = normalizeQuestionCountInput(body.numberOfItems);
+    const rawQuestionMix =
+      body?.questionMix && typeof body.questionMix === "object"
+        ? body.questionMix
+        : null;
+    const parsedQuestionMix = rawQuestionMix
+      ? {
+          mcq: normalizeMixCountInput(rawQuestionMix.mcq),
+          trueFalse: normalizeMixCountInput(rawQuestionMix.trueFalse),
+          fillBlank: normalizeMixCountInput(rawQuestionMix.fillBlank),
+          shortAnswer: normalizeMixCountInput(rawQuestionMix.shortAnswer),
+        }
+      : null;
+    const questionMixTotal = parsedQuestionMix
+      ? (parsedQuestionMix.mcq || 0) +
+        (parsedQuestionMix.trueFalse || 0) +
+        (parsedQuestionMix.fillBlank || 0) +
+        (parsedQuestionMix.shortAnswer || 0)
+      : 0;
     
     const requestedAdaptive = typeof body.adaptiveLearning === "boolean" 
       ? body.adaptiveLearning 
@@ -231,9 +255,37 @@ export async function POST(req: NextRequest) {
     const text = body.text?.trim();
     if (!text)
       return apiError(400, "No input provided", requestId);
+    if (parsedQuestionMix && questionMixTotal <= 0) {
+      return apiError(400, "Question mix is invalid.", requestId);
+    }
+    if (
+      parsedQuestionMix &&
+      requestedItemCount &&
+      questionMixTotal !== requestedItemCount
+    ) {
+      return apiError(
+        400,
+        "Question mix must equal the total number of items.",
+        requestId
+      );
+    }
+    if (questionMixTotal > 50) {
+      return apiError(400, "Question mix cannot exceed 50 items.", requestId);
+    }
     const itemCountInstruction = requestedItemCount
       ? `Generate exactly ${requestedItemCount} questions.`
       : "";
+    const questionMixInstruction =
+      parsedQuestionMix && questionMixTotal > 0
+        ? [
+            "Use this exact question type distribution:",
+            `- MCQ: ${parsedQuestionMix.mcq}`,
+            `- True/False: ${parsedQuestionMix.trueFalse}`,
+            `- Fill in the Blank: ${parsedQuestionMix.fillBlank}`,
+            `- Short Answer: ${parsedQuestionMix.shortAnswer}`,
+            "Do not deviate from these counts.",
+          ].join("\n")
+        : "";
 
     // Determine content source
     let content = text;
@@ -365,7 +417,7 @@ export async function POST(req: NextRequest) {
     const effectiveDifficulty = safeDifficulty;
 
     if (safeAdaptive) {
-      adaptiveGuidance = await buildQuizAdaptiveGuidance(user.id);
+      adaptiveGuidance = await buildQuizAdaptiveGuidance(user.id, text);
     }
 
     // Update user preferences only if they're different
@@ -495,6 +547,7 @@ export async function POST(req: NextRequest) {
     const composedUserPrompt = [
       text,
       itemCountInstruction,
+      questionMixInstruction,
       adaptiveGuidance,
       requestedItemCount
         ? "STRICT QUESTION COUNT: Follow the requested number of items exactly."
@@ -510,7 +563,7 @@ export async function POST(req: NextRequest) {
           safeAdaptive,
           isProOrPremium,
           composedUserPrompt,
-          { liteMode }
+          { liteMode, questionMix: parsedQuestionMix }
         );
     const quiz = cachedResponse ? JSON.parse(cachedResponse) : aiResult!.quiz;
     if (!cachedResponse) {
@@ -630,6 +683,7 @@ export async function POST(req: NextRequest) {
         liteMode,
         difficulty: effectiveDifficulty,
         requestedItemCount,
+        questionMix: parsedQuestionMix,
         sourceMode: sourceMode ?? "none",
         sourceCount: (sources ?? []).length,
         sources: normalizedSources,
