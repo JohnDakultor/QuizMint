@@ -24,7 +24,6 @@ import {
   normalizeQuestionCountInput,
 } from "@/lib/quiz-source-service";
 import { buildQuizAdaptiveGuidance } from "@/lib/quiz-adaptive-service";
-import type { GamifiedMode } from "@/lib/quiz-question-types";
 
 const COOLDOWN_HOURS = 3;
 const FREE_QUIZ_LIMIT = 3;
@@ -270,12 +269,6 @@ export async function POST(req: NextRequest) {
         ? body.adaptiveLearning.toLowerCase() === "true"
         : undefined);
     const forceFreshGeneration = Boolean(body.forceFreshGeneration === true || body.forceFresh === true);
-    const gamifiedModeRaw = typeof body?.gamifiedMode === "string" ? body.gamifiedMode.toLowerCase().trim() : "";
-    const gamifiedMode: GamifiedMode | null =
-      gamifiedModeRaw === "bingo" || gamifiedModeRaw === "sudoku" || gamifiedModeRaw === "puzzle"
-        ? (gamifiedModeRaw as GamifiedMode)
-        : null;
-    
     const text = body.text?.trim();
     if (!text)
       return apiError(400, "No input provided", requestId);
