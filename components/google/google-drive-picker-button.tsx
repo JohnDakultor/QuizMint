@@ -163,7 +163,7 @@ export function GoogleDrivePickerButton(props: {
             .setOAuthToken(accessToken)
             .addView(view)
             .setTitle("Select a Google Drive file")
-            .setCallback(async (data) => {
+            .setCallback(async (data: Record<string, unknown>) => {
               try {
                 if (data[googleSdk.picker.Response.ACTION] !== googleSdk.picker.Action.PICKED) {
                   return;
