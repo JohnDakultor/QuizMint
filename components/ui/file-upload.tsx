@@ -1,7 +1,12 @@
 import { useRef } from "react";
-import { FileUp } from "lucide-react"; // example icon
+import { FileUp } from "lucide-react";
+import { GoogleDrivePickerButton } from "@/components/google/google-drive-picker-button";
 
-export default function FileUpload({ onFileSelect }: { onFileSelect: (file: File) => void }) {
+export default function FileUpload({
+  onFileSelect,
+}: {
+  onFileSelect: (file: File) => void;
+}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleIconClick = () => {
@@ -16,23 +21,27 @@ export default function FileUpload({ onFileSelect }: { onFileSelect: (file: File
 
   return (
     <div>
-      {/* Hidden file input */}
       <input
         type="file"
         ref={fileInputRef}
         style={{ display: "none" }}
         onChange={handleFileChange}
-        accept=".txt,.docx,.pptx,.xlsx"
+        accept=".txt,.docx,.pdf,.ppt,.pptx,.xlsx,.csv,.md"
       />
 
-      {/* Icon button */}
-      <button
-        type="button"
-        onClick={handleIconClick}
-        className="p-2 rounded-full bg-blue-600 text-white hover:bg-blue-700"
-      >
-        <FileUp className="w-5 h-5" />
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={handleIconClick}
+          title="Upload local file"
+          aria-label="Upload local file"
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 text-[11px] font-medium text-blue-700 hover:bg-blue-100"
+        >
+          <FileUp className="h-3.5 w-3.5" />
+          Local
+        </button>
+        <GoogleDrivePickerButton onPicked={onFileSelect} />
+      </div>
     </div>
   );
 }
