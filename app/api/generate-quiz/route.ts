@@ -24,6 +24,7 @@ import {
   normalizeQuestionCountInput,
 } from "@/lib/quiz-source-service";
 import { buildQuizAdaptiveGuidance } from "@/lib/quiz-adaptive-service";
+import type { GamifiedMode } from "@/lib/quiz-question-types";
 
 const COOLDOWN_HOURS = 3;
 const FREE_QUIZ_LIMIT = 3;
@@ -56,6 +57,14 @@ function normalizeMixCountInput(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.min(50, Math.max(0, Math.floor(n)));
+}
+
+function stripInlineAnswerArtifacts(value: string) {
+  if (!value) return "";
+  return value
+    .replace(/\n?\s*answer\s*:\s*.*$/i, "")
+    .replace(/\n?\s*correct answer\s*:\s*.*$/i, "")
+    .trim();
 }
 
 export async function POST(req: NextRequest) {
@@ -236,13 +245,23 @@ export async function POST(req: NextRequest) {
           trueFalse: normalizeMixCountInput(rawQuestionMix.trueFalse),
           fillBlank: normalizeMixCountInput(rawQuestionMix.fillBlank),
           shortAnswer: normalizeMixCountInput(rawQuestionMix.shortAnswer),
+          matching: normalizeMixCountInput(rawQuestionMix.matching),
+          essayRubric: normalizeMixCountInput(rawQuestionMix.essayRubric),
+          worksheet: normalizeMixCountInput(
+            rawQuestionMix.worksheet ?? rawQuestionMix.worksheetMath
+          ),
+          gamified: normalizeMixCountInput(rawQuestionMix.gamified),
         }
       : null;
     const questionMixTotal = parsedQuestionMix
       ? (parsedQuestionMix.mcq || 0) +
         (parsedQuestionMix.trueFalse || 0) +
         (parsedQuestionMix.fillBlank || 0) +
-        (parsedQuestionMix.shortAnswer || 0)
+        (parsedQuestionMix.shortAnswer || 0) +
+        (parsedQuestionMix.matching || 0) +
+        (parsedQuestionMix.essayRubric || 0) +
+        (parsedQuestionMix.worksheet || 0) +
+        (parsedQuestionMix.gamified || 0)
       : 0;
     
     const requestedAdaptive = typeof body.adaptiveLearning === "boolean" 
@@ -251,6 +270,11 @@ export async function POST(req: NextRequest) {
         ? body.adaptiveLearning.toLowerCase() === "true"
         : undefined);
     const forceFreshGeneration = Boolean(body.forceFreshGeneration === true || body.forceFresh === true);
+    const gamifiedModeRaw = typeof body?.gamifiedMode === "string" ? body.gamifiedMode.toLowerCase().trim() : "";
+    const gamifiedMode: GamifiedMode | null =
+      gamifiedModeRaw === "bingo" || gamifiedModeRaw === "sudoku" || gamifiedModeRaw === "puzzle"
+        ? (gamifiedModeRaw as GamifiedMode)
+        : null;
     
     const text = body.text?.trim();
     if (!text)
@@ -283,6 +307,10 @@ export async function POST(req: NextRequest) {
             `- True/False: ${parsedQuestionMix.trueFalse}`,
             `- Fill in the Blank: ${parsedQuestionMix.fillBlank}`,
             `- Short Answer: ${parsedQuestionMix.shortAnswer}`,
+            `- Matching: ${parsedQuestionMix.matching}`,
+            `- Essay with Rubric: ${parsedQuestionMix.essayRubric}`,
+            `- Worksheet (subject-based): ${parsedQuestionMix.worksheet}`,
+            `- Gamified: ${parsedQuestionMix.gamified}`,
             "Do not deviate from these counts.",
           ].join("\n")
         : "";
@@ -563,7 +591,7 @@ export async function POST(req: NextRequest) {
           safeAdaptive,
           isProOrPremium,
           composedUserPrompt,
-          { liteMode, questionMix: parsedQuestionMix }
+          { liteMode }
         );
     const quiz = cachedResponse ? JSON.parse(cachedResponse) : aiResult!.quiz;
     if (!cachedResponse) {
@@ -614,9 +642,11 @@ export async function POST(req: NextRequest) {
       explanation?: string | null;
       hint?: string | null;
     }) => ({
-      question: q.question,
-      options: q.options,
-      answer: q.answer,
+      question: stripInlineAnswerArtifacts(String(q.question || "")),
+      options: Array.isArray(q.options)
+        ? q.options.map((opt) => stripInlineAnswerArtifacts(String(opt || ""))).filter(Boolean)
+        : [],
+      answer: stripInlineAnswerArtifacts(String(q.answer || "")),
       explanation: safeAdaptive ? q.explanation ?? null : null,
       hint: safeAdaptive ? q.hint ?? null : null,
     }));
