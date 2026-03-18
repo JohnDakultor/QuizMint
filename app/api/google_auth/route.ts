@@ -46,6 +46,7 @@
 import { NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
 import { prisma } from "@/lib/prisma";
+import { isLoginEmailAllowed } from "@/lib/auth-allowlist";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -61,6 +62,12 @@ export async function POST(req: Request) {
 
     const payload = ticket.getPayload();
     if (!payload?.email) return NextResponse.json({ success: false, error: "Invalid Google token" }, { status: 401 });
+    if (!isLoginEmailAllowed(payload.email)) {
+      return NextResponse.json(
+        { success: false, error: "AccessDenied" },
+        { status: 403 }
+      );
+    }
 
     // Upsert user
     const user = await prisma.user.upsert({

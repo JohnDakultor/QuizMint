@@ -70,6 +70,7 @@ import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
 import { headers } from "next/headers";
 import { randomUUID } from "crypto";
+import { isLoginEmailAllowed } from "@/lib/auth-allowlist";
 
 function getSessionLimitByPlan(plan: string | null | undefined): number {
   const normalized = String(plan || "free").toLowerCase();
@@ -176,6 +177,13 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
+    async signIn({ user }) {
+      const email = String(user?.email || "").trim().toLowerCase();
+      if (!isLoginEmailAllowed(email)) {
+        return "/sign-in?error=AccessDenied";
+      }
+      return true;
+    },
     async redirect({ url, baseUrl }) {
       const appBaseUrl = resolveAuthAppBaseUrl(baseUrl);
 
