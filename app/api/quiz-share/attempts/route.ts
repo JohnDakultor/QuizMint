@@ -7,7 +7,15 @@ import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 type AttemptDetail = {
   questionId: number;
   question: string;
-  questionType: "mcq" | "true_false" | "fill_blank" | "short_answer";
+  questionType:
+    | "mcq"
+    | "true_false"
+    | "fill_blank"
+    | "short_answer"
+    | "matching"
+    | "essay_rubric"
+    | "worksheet"
+    | "gamified";
   selected: string;
   correctAnswer: string;
   correct: boolean;

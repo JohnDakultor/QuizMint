@@ -16,6 +16,36 @@ type PickerDoc = {
   mimeType?: string;
 };
 
+type GooglePickerSdk = {
+  accounts?: {
+    oauth2?: {
+      initTokenClient: (opts: {
+        client_id: string;
+        scope: string;
+        callback: (resp: { access_token?: string; error?: string }) => void;
+        error_callback?: () => void;
+      }) => { requestAccessToken: (opts?: { prompt?: string }) => void };
+    };
+  };
+  picker?: {
+    Action: { PICKED: string };
+    Response: { ACTION: string; DOCUMENTS: string };
+    ViewId: { DOCS: string };
+    DocsView: new (viewId: string) => {
+      setIncludeFolders: (value: boolean) => unknown;
+      setSelectFolderEnabled: (value: boolean) => unknown;
+    };
+    PickerBuilder: new () => {
+      setDeveloperKey: (key: string) => unknown;
+      setOAuthToken: (token: string) => unknown;
+      addView: (view: unknown) => unknown;
+      setTitle: (title: string) => unknown;
+      setCallback: (cb: (data: Record<string, unknown>) => void) => unknown;
+      build: () => { setVisible: (value: boolean) => void };
+    };
+  };
+};
+
 declare global {
   interface Window {
     gapi?: {
@@ -139,7 +169,7 @@ export function GoogleDrivePickerButton(props: {
       await loadScriptOnce(GIS_SCRIPT);
       await waitForPickerApi();
 
-      const googleSdk = (window as any).google;
+      const googleSdk = (window as Window & { google?: GooglePickerSdk }).google;
       if (!googleSdk?.accounts?.oauth2 || !googleSdk?.picker) {
         throw new Error("Google SDK did not initialize correctly.");
       }

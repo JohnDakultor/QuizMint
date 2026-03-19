@@ -3,23 +3,31 @@ import { prisma } from "@/lib/prisma";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { verifyQuizShareToken } from "@/lib/quiz-share";
 import { randomUUID } from "crypto";
-
-function inferQuestionType(question: string, options: string[]) {
-  if (
-    options.length === 2 &&
-    options.some((opt) => opt.toLowerCase() === "true") &&
-    options.some((opt) => opt.toLowerCase() === "false")
-  ) {
-    return "true_false" as const;
-  }
-  if (options.length >= 2) return "mcq" as const;
-  if (question.includes("____")) return "fill_blank" as const;
-  return "short_answer" as const;
-}
+import { inferQuizQuestionType } from "@/lib/quiz-question-types";
 
 type RouteParams = {
   params: Promise<{ token: string }>;
 };
+
+function hashSeed(input: string) {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = (h << 5) - h + input.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h);
+}
+
+function seededShuffle<T>(arr: T[], seedInput: string) {
+  const out = [...arr];
+  let seed = hashSeed(seedInput) || 1;
+  for (let i = out.length - 1; i > 0; i--) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const j = seed % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 
 export async function GET(_req: NextRequest, { params }: RouteParams) {
   const requestId = createRequestId();
@@ -55,7 +63,38 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
 
     const cookieName = `quiz_take_${quiz.id}`;
     const existingTakeSessionId = _req.cookies.get(cookieName)?.value ?? "";
-    const takeSessionId = existingTakeSessionId || randomUUID();
+
+    let takeSessionId = existingTakeSessionId || randomUUID();
+    if (existingTakeSessionId) {
+      const existingTake = await prisma.studentQuizTake.findUnique({
+        where: {
+          quizId_takeSessionId: {
+            quizId: quiz.id,
+            takeSessionId: existingTakeSessionId,
+          },
+        },
+        select: { id: true },
+      });
+      // Shared devices are common in classrooms; rotate session ID after a completed submit.
+      if (existingTake) {
+        takeSessionId = randomUUID();
+      }
+    }
+
+    const shuffledQuestions = verified.shuffleQuestions
+      ? seededShuffle(
+          quiz.questions.map((q) => ({
+            ...q,
+            options: Array.isArray(q.options)
+              ? seededShuffle(q.options, `${takeSessionId}:${q.id}:opts`)
+              : [],
+          })),
+          `${takeSessionId}:${quiz.id}:questions`
+        )
+      : quiz.questions.map((q) => ({
+          ...q,
+          options: Array.isArray(q.options) ? q.options : [],
+        }));
 
     const response = NextResponse.json(
       {
@@ -65,16 +104,20 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
           title: quiz.title,
           instructions: quiz.instructions,
           createdAt: quiz.createdAt,
-          questions: quiz.questions.map((q) => ({
+          questions: shuffledQuestions.map((q) => ({
             id: q.id,
             question: q.question,
             options: q.options,
-            questionType: inferQuestionType(q.question, q.options),
+            questionType: inferQuizQuestionType(
+              q.question,
+              q.options
+            ),
           })),
         },
         availability: {
           isOpen: quiz.shareSettings?.isOpen ?? true,
           expiresAt: quiz.shareSettings?.expiresAt ?? null,
+          shuffleQuestions: verified.shuffleQuestions,
         },
         requestId,
       },
@@ -85,7 +128,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
         },
       }
     );
-    if (!existingTakeSessionId) {
+    if (!existingTakeSessionId || takeSessionId !== existingTakeSessionId) {
       response.cookies.set(cookieName, takeSessionId, {
         httpOnly: true,
         sameSite: "lax",

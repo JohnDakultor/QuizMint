@@ -7,6 +7,8 @@ export function QuizShareModal(props: {
   shareLoading: boolean;
   shareTimerMinutes: number;
   setShareTimerMinutes: (value: number) => void;
+  shareShuffleQuestions: boolean;
+  setShareShuffleQuestions: (value: boolean) => void;
   canSubmit: boolean;
   onClose: () => void;
   onSubmit: () => Promise<void>;
@@ -16,6 +18,8 @@ export function QuizShareModal(props: {
     shareLoading,
     shareTimerMinutes,
     setShareTimerMinutes,
+    shareShuffleQuestions,
+    setShareShuffleQuestions,
     canSubmit,
     onClose,
     onSubmit,
@@ -45,6 +49,14 @@ export function QuizShareModal(props: {
             className="w-full rounded-md border px-3 py-2 text-sm"
           />
         </div>
+        <label className="mt-3 flex items-center gap-2 rounded-md border bg-zinc-50 px-3 py-2 text-sm">
+          <input
+            type="checkbox"
+            checked={shareShuffleQuestions}
+            onChange={(e) => setShareShuffleQuestions(e.target.checked)}
+          />
+          Shuffle questions/options per student
+        </label>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={onClose} disabled={shareLoading}>
             Cancel

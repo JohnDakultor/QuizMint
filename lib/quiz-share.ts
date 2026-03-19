@@ -4,6 +4,7 @@ type QuizSharePayload = {
   q: number;
   iat: number;
   exp: number;
+  s?: 1;
 };
 
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
@@ -35,12 +36,17 @@ function sign(input: string) {
   return base64UrlEncode(createHmac("sha256", getSecret()).update(input).digest());
 }
 
-export function createQuizShareToken(quizId: number, ttlSeconds = DEFAULT_TTL_SECONDS) {
+export function createQuizShareToken(
+  quizId: number,
+  ttlSeconds = DEFAULT_TTL_SECONDS,
+  opts?: { shuffleQuestions?: boolean }
+) {
   const now = Math.floor(Date.now() / 1000);
   const payload: QuizSharePayload = {
     q: quizId,
     iat: now,
     exp: now + ttlSeconds,
+    ...(opts?.shuffleQuestions ? { s: 1 } : {}),
   };
   const payloadB64 = base64UrlEncode(JSON.stringify(payload));
   const signature = sign(payloadB64);
@@ -49,7 +55,7 @@ export function createQuizShareToken(quizId: number, ttlSeconds = DEFAULT_TTL_SE
 
 export function verifyQuizShareToken(
   token: string
-): { ok: true; quizId: number } | { ok: false; reason: string } {
+): { ok: true; quizId: number; shuffleQuestions: boolean } | { ok: false; reason: string } {
   const [payloadB64, signature] = token.split(".");
   if (!payloadB64 || !signature) return { ok: false, reason: "invalid_token" };
 
@@ -74,5 +80,5 @@ export function verifyQuizShareToken(
   const now = Math.floor(Date.now() / 1000);
   if (payload.exp < now) return { ok: false, reason: "expired" };
 
-  return { ok: true, quizId: payload.q };
+  return { ok: true, quizId: payload.q, shuffleQuestions: payload.s === 1 };
 }

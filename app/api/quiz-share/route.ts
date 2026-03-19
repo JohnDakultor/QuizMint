@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
     }
 
     const durationMinutes = clampDurationMinutes(body?.durationMinutes);
+    const shuffleQuestions = Boolean(body?.shuffleQuestions);
     const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000);
 
     await prisma.quizShareSettings.upsert({
@@ -56,7 +57,9 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const token = createQuizShareToken(quiz.id, durationMinutes * 60);
+    const token = createQuizShareToken(quiz.id, durationMinutes * 60, {
+      shuffleQuestions,
+    });
     const shareUrl = `${req.nextUrl.origin}/quiz/${encodeURIComponent(token)}`;
 
     return NextResponse.json(
@@ -68,6 +71,7 @@ export async function POST(req: NextRequest) {
           isOpen: true,
           expiresAt,
           durationMinutes,
+          shuffleQuestions,
         },
         requestId,
       },

@@ -152,6 +152,7 @@
 
 import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
 import { log } from "@/lib/logger";
+import type { GamifiedMode } from "@/lib/quiz-question-types";
 
 interface OpenRouterResponse {
   choices: { message: { content: string } }[];
@@ -171,9 +172,30 @@ type QuestionTypePlan = {
   includeMCQ: boolean;
   includeTrueFalse: boolean;
   includeFillBlank: boolean;
+  includeShortAnswer: boolean;
+  includeMatching: boolean;
+  includeEssayRubric: boolean;
+  includeWorksheet: boolean;
+  includeGamified: boolean;
   mcqTarget: number;
   trueFalseTarget: number;
   fillBlankTarget: number;
+  shortAnswerTarget: number;
+  matchingTarget: number;
+  essayRubricTarget: number;
+  worksheetTarget: number;
+  gamifiedTarget: number;
+};
+
+export type QuizQuestionMixInput = {
+  mcq?: number;
+  trueFalse?: number;
+  fillBlank?: number;
+  shortAnswer?: number;
+  matching?: number;
+  essayRubric?: number;
+  worksheet?: number;
+  gamified?: number;
 };
 
 export type QuizAIGenerationMeta = {
@@ -219,7 +241,11 @@ export async function generateQuizAIWithMeta(
   adaptiveLearning: boolean,
   isProOrPremium: boolean,
   userPrompt: string = "",
-  options?: { liteMode?: boolean }
+  options?: {
+    liteMode?: boolean;
+    questionMix?: QuizQuestionMixInput | null;
+    gamifiedMode?: GamifiedMode | null;
+  }
 ): Promise<QuizAIGenerationResult> {
   const difficultyPrompt =
     difficulty === "easy"
@@ -233,7 +259,7 @@ export async function generateQuizAIWithMeta(
     : "";
 
   const requestTopic = (userPrompt || text || "").trim();
-  const typePlan = buildQuestionTypePlan(requestTopic);
+  const typePlan = buildQuestionTypePlan(requestTopic, options?.questionMix ?? null);
   const hasRetrievedContext =
     /Context:/i.test(text) ||
     /User request:/i.test(text) ||
@@ -246,6 +272,7 @@ export async function generateQuizAIWithMeta(
      text.includes("make") || 
      text.includes("quiz about") ||
      text.split(' ').length < 100); // Short text is likely a prompt
+  const gamifiedMode = options?.gamifiedMode || "puzzle";
 
   const systemPrompt = `
 You are Quizmints AI, a quiz generator.
@@ -279,6 +306,11 @@ RULES:
   - Multiple choice (MCQ): ${typePlan.mcqTarget}
   - True/False: ${typePlan.trueFalseTarget}
   - Fill in the Blank: ${typePlan.fillBlankTarget}
+  - Short Answer: ${typePlan.shortAnswerTarget}
+  - Matching: ${typePlan.matchingTarget}
+  - Essay with Rubric: ${typePlan.essayRubricTarget}
+  - Worksheet (subject-based): ${typePlan.worksheetTarget}
+  - Gamified (Bingo/Sudoku/Puzzle): ${typePlan.gamifiedTarget}
 - For MCQ:
   - Exactly 4 options per question.
 - For True/False:
@@ -289,6 +321,27 @@ RULES:
   - Use a blank marker in the question like "____".
   - Options must be an empty array [].
   - Answer should be the exact missing word/phrase.
+- For Short Answer:
+  - Options must be an empty array [].
+  - Answer must be a concise expected answer key (1-2 lines max).
+  - Do NOT use "____" in the question.
+- For Matching:
+  - Options must be an empty array [].
+  - Question should clearly ask to match pairs.
+  - Answer must list key pairs in plain text lines (e.g., "A -> 1; B -> 2").
+- For Essay with Rubric:
+  - Options must be an empty array [].
+  - Question should be open-ended.
+  - Answer must provide a concise model response + scoring criteria hint.
+- For Worksheet (subject-based):
+  - Options must be an empty array [].
+  - Question can be math, science, chemistry, or other subject worksheet style.
+  - Answer must provide the expected final response (value, term, formula, or short result).
+- For Gamified:
+  - Can be MCQ-style with 4 options OR open-answer with options [].
+  - Keep puzzle/game context but still objectively answerable.
+  - Use the selected game style: ${gamifiedMode.toUpperCase()}.
+  - The question text MUST start with "Game Challenge [${gamifiedMode.toUpperCase()}]:" so renderer can detect it reliably.
 
 Difficulty: ${difficultyPrompt}
 ${adaptivePrompt}
@@ -327,6 +380,11 @@ JSON SCHEMA (MUST MATCH EXACTLY):
        - MCQ: ${typePlan.mcqTarget}
        - True/False: ${typePlan.trueFalseTarget}
        - Fill in the Blank: ${typePlan.fillBlankTarget}
+       - Short Answer: ${typePlan.shortAnswerTarget}
+       - Matching: ${typePlan.matchingTarget}
+       - Essay with Rubric: ${typePlan.essayRubricTarget}
+       - Worksheet (subject-based): ${typePlan.worksheetTarget}
+       - Gamified: ${typePlan.gamifiedTarget}
        ${userPrompt ? `User Instructions (must follow): ${userPrompt}` : ''}`
     : `Content to base quiz on:
        ${text}
@@ -337,6 +395,11 @@ JSON SCHEMA (MUST MATCH EXACTLY):
        - MCQ: ${typePlan.mcqTarget}
        - True/False: ${typePlan.trueFalseTarget}
        - Fill in the Blank: ${typePlan.fillBlankTarget}
+       - Short Answer: ${typePlan.shortAnswerTarget}
+       - Matching: ${typePlan.matchingTarget}
+       - Essay with Rubric: ${typePlan.essayRubricTarget}
+       - Worksheet (subject-based): ${typePlan.worksheetTarget}
+       - Gamified: ${typePlan.gamifiedTarget}
        ${userPrompt ? `User Instructions (must follow): ${userPrompt}` : ''}
        Primary Topic (must dominate output): ${requestTopic}`;
 
@@ -501,10 +564,17 @@ JSON SCHEMA (MUST MATCH EXACTLY):
   if (!meetsQuestionTypePlan(parsed, typePlan)) {
     const strictMixInstruction = `RETRY WITH STRICT COMPLIANCE:
 - Generate exactly ${typePlan.totalCount} questions.
-- Include exactly ${typePlan.mcqTarget} MCQ, ${typePlan.trueFalseTarget} True/False, and ${typePlan.fillBlankTarget} Fill in the Blank questions.
+- Include exactly ${typePlan.mcqTarget} MCQ, ${typePlan.trueFalseTarget} True/False, ${typePlan.fillBlankTarget} Fill in the Blank, and ${typePlan.shortAnswerTarget} Short Answer questions.
+- Include exactly ${typePlan.matchingTarget} Matching, ${typePlan.essayRubricTarget} Essay with Rubric, ${typePlan.worksheetTarget} Worksheet (subject-based), and ${typePlan.gamifiedTarget} Gamified questions.
 - MCQ must have exactly 4 options.
 - True/False must have exactly options ["True","False"] and answers only "True" or "False".
 - Fill in the Blank must include "____" in the question, use options [], and provide the missing term as answer.
+- Short Answer must use options [] and provide a concise answer key.
+- Matching must use options [] and provide pair mappings in answer text.
+- Essay with Rubric must use options [] and provide a concise model answer/rubric hint.
+- Worksheet (subject-based) must use options [] and provide the expected final answer.
+- Gamified can use 4 options or options [] but must be objectively gradable.
+- Gamified questions must include the prefix "Game Challenge [${gamifiedMode.toUpperCase()}]:" in the question text.
 - Return JSON only.`;
 
     try {
@@ -552,6 +622,48 @@ JSON SCHEMA (MUST MATCH EXACTLY):
 
   if (!parsed) throw new Error("AI did not return valid JSON");
 
+  if (!meetsQuestionTypePlan(parsed, typePlan)) {
+    let mergedQuestions = Array.isArray(parsed?.questions) ? [...parsed.questions] : [];
+
+    for (let i = 0; i < 2; i++) {
+      const { missing, totalMissing } = buildMissingMixFromQuestions(typePlan, mergedQuestions);
+      if (totalMissing <= 0) break;
+
+      const repairInstruction = `REPAIR MODE:
+Generate ONLY the missing questions to complete this exact remaining mix:
+- MCQ: ${missing.mcq}
+- True/False: ${missing.trueFalse}
+- Fill in the Blank: ${missing.fillBlank}
+- Short Answer: ${missing.shortAnswer}
+- Matching: ${missing.matching}
+- Essay with Rubric: ${missing.essayRubric}
+- Worksheet (subject-based): ${missing.worksheet}
+- Gamified: ${missing.gamified}
+Total missing: ${totalMissing}
+Return strict JSON with title, instructions, and questions array only.`;
+
+      try {
+        const repairCall = await callOpenRouter(fallbackModel, repairInstruction);
+        const supplement = safeExtractJSON(repairCall.raw);
+        if (supplement && Array.isArray(supplement.questions)) {
+          mergedQuestions = [...mergedQuestions, ...supplement.questions];
+        } else {
+          break;
+        }
+      } catch {
+        break;
+      }
+    }
+
+    parsed.questions = normalizeQuestionsToPlan(typePlan, mergedQuestions);
+  }
+
+  if (!meetsQuestionTypePlan(parsed, typePlan)) {
+    throw new Error(
+      `AI returned invalid question set. Expected ${typePlan.totalCount} questions with requested type mix.`
+    );
+  }
+
   log.info("quiz_ai_parsed_response", {
     title: parsed.title,
     questionCount: parsed.questions?.length || 0,
@@ -579,7 +691,11 @@ export async function generateQuizAI(
   adaptiveLearning: boolean,
   isProOrPremium: boolean,
   userPrompt: string = "",
-  options?: { liteMode?: boolean }
+  options?: {
+    liteMode?: boolean;
+    questionMix?: QuizQuestionMixInput | null;
+    gamifiedMode?: GamifiedMode | null;
+  }
 ) {
   const result = await generateQuizAIWithMeta(
     text,
@@ -654,25 +770,131 @@ function parseRequestedQuestionCount(normalizedRequest: string): number {
   return 10;
 }
 
-function buildQuestionTypePlan(request: string): QuestionTypePlan {
+function sanitizeMixValue(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.floor(n));
+}
+
+function buildQuestionTypePlan(
+  request: string,
+  explicitMix?: QuizQuestionMixInput | null
+): QuestionTypePlan {
   const normalized = request.toLowerCase().replace(/[^\w\s/.-]/g, " ");
   const requestedCount = parseRequestedQuestionCount(normalized);
+  const explicitMcq = sanitizeMixValue(explicitMix?.mcq);
+  const explicitTrueFalse = sanitizeMixValue(explicitMix?.trueFalse);
+  const explicitFillBlank = sanitizeMixValue(explicitMix?.fillBlank);
+  const explicitShortAnswer = sanitizeMixValue(explicitMix?.shortAnswer);
+  const explicitMatching = sanitizeMixValue(explicitMix?.matching);
+  const explicitEssayRubric = sanitizeMixValue(explicitMix?.essayRubric);
+  const explicitWorksheet = sanitizeMixValue(
+    explicitMix?.worksheet ?? (explicitMix as { worksheetMath?: number } | null)?.worksheetMath
+  );
+  const explicitGamified = sanitizeMixValue(explicitMix?.gamified);
+  const explicitTotal =
+    explicitMcq +
+    explicitTrueFalse +
+    explicitFillBlank +
+    explicitShortAnswer +
+    explicitMatching +
+    explicitEssayRubric +
+    explicitWorksheet +
+    explicitGamified;
+  const hasExplicitMix = explicitTotal > 0;
   const totalCount = Math.min(Math.max(requestedCount || 10, 1), 50);
+
+  if (hasExplicitMix) {
+    const cappedTotal = Math.min(explicitTotal, 50);
+    let remaining = cappedTotal;
+    const allocate = (v: number) => {
+      const value = Math.min(Math.max(v, 0), remaining);
+      remaining -= value;
+      return value;
+    };
+    const mcqTarget = allocate(explicitMcq);
+    const trueFalseTarget = allocate(explicitTrueFalse);
+    const fillBlankTarget = allocate(explicitFillBlank);
+    const shortAnswerTarget = allocate(explicitShortAnswer);
+    const matchingTarget = allocate(explicitMatching);
+    const essayRubricTarget = allocate(explicitEssayRubric);
+    const worksheetTarget = allocate(explicitWorksheet);
+    const gamifiedTarget = allocate(explicitGamified);
+    const distributed =
+      mcqTarget +
+      trueFalseTarget +
+      fillBlankTarget +
+      shortAnswerTarget +
+      matchingTarget +
+      essayRubricTarget +
+      worksheetTarget +
+      gamifiedTarget;
+    return {
+      totalCount: distributed,
+      includeMCQ: mcqTarget > 0,
+      includeTrueFalse: trueFalseTarget > 0,
+      includeFillBlank: fillBlankTarget > 0,
+      includeShortAnswer: shortAnswerTarget > 0,
+      includeMatching: matchingTarget > 0,
+      includeEssayRubric: essayRubricTarget > 0,
+      includeWorksheet: worksheetTarget > 0,
+      includeGamified: gamifiedTarget > 0,
+      mcqTarget,
+      trueFalseTarget,
+      fillBlankTarget,
+      shortAnswerTarget,
+      matchingTarget,
+      essayRubricTarget,
+      worksheetTarget,
+      gamifiedTarget,
+    };
+  }
 
   const includeTrueFalse =
     /true\s*\/\s*false|true\s*or\s*false|\bt\/f\b|\btrue false\b|\btruefalse\b|\btf\b/i.test(normalized);
   const includeFillBlank =
     /fill\s*in\s*the\s*blank|fill[-\s]*in[-\s]*the[-\s]*blanks|\bfib\b|blanks?|identification|identify|completion|complete the sentence|short answer/i.test(normalized);
+  const includeShortAnswer =
+    /\bshort answer\b|open[-\s]*ended|long answer|explain why/i.test(
+      normalized
+    );
+  const includeMatching = /\bmatching\b|match the following|pair the/i.test(normalized);
+  const includeEssayRubric = /\bessay\b|rubric|in your own words|justify/i.test(normalized);
+  const includeWorksheet =
+    /\bworksheet\b|solve|calculate|compute|balance equation|scientific method|experiment|hypothesis|lab/i.test(
+      normalized
+    );
+  const includeGamified = /\bgamified\b|bingo|sudoku|puzzle|game[-\s]*based/i.test(normalized);
   const requestedMixed =
     /\bmixed\b|\bmix\b|\bvaried\b|\bcombination\b|\ball types\b|\bdifferent types\b/i.test(normalized);
   const wantsTrueFalse = includeTrueFalse || requestedMixed;
   const wantsFillBlank = includeFillBlank || requestedMixed;
+  const wantsShortAnswer = includeShortAnswer || requestedMixed;
+  const wantsMatching = includeMatching || requestedMixed;
+  const wantsEssayRubric = includeEssayRubric || requestedMixed;
+  const wantsWorksheet = includeWorksheet || requestedMixed;
+  const wantsGamified = includeGamified || requestedMixed;
   const includeMCQ =
     /multiple\s*choice|\bmcq\b|objective type|choose the best answer|single answer/i.test(normalized) ||
     requestedMixed ||
-    (!wantsTrueFalse && !wantsFillBlank);
+    (!wantsTrueFalse &&
+      !wantsFillBlank &&
+      !wantsShortAnswer &&
+      !wantsMatching &&
+      !wantsEssayRubric &&
+      !wantsWorksheet &&
+      !wantsGamified);
 
-  const requestedTypeCount = [includeMCQ, wantsTrueFalse, wantsFillBlank].filter(Boolean).length;
+  const requestedTypeCount = [
+    includeMCQ,
+    wantsTrueFalse,
+    wantsFillBlank,
+    wantsShortAnswer,
+    wantsMatching,
+    wantsEssayRubric,
+    wantsWorksheet,
+    wantsGamified,
+  ].filter(Boolean).length;
   const activeTypeCount = Math.max(requestedTypeCount, 1);
   const base = Math.floor(totalCount / activeTypeCount);
   let remainder = totalCount - base * activeTypeCount;
@@ -686,20 +908,51 @@ function buildQuestionTypePlan(request: string): QuestionTypePlan {
   const mcqTarget = includeMCQ ? allocate() : 0;
   const trueFalseTarget = wantsTrueFalse ? allocate() : 0;
   const fillBlankTarget = wantsFillBlank ? allocate() : 0;
+  const shortAnswerTarget = wantsShortAnswer ? allocate() : 0;
+  const matchingTarget = wantsMatching ? allocate() : 0;
+  const essayRubricTarget = wantsEssayRubric ? allocate() : 0;
+  const worksheetTarget = wantsWorksheet ? allocate() : 0;
+  const gamifiedTarget = wantsGamified ? allocate() : 0;
 
   // Ensure exact total count (guard against rounding drift)
-  const assigned = mcqTarget + trueFalseTarget + fillBlankTarget;
+  const assigned =
+    mcqTarget +
+    trueFalseTarget +
+    fillBlankTarget +
+    shortAnswerTarget +
+    matchingTarget +
+    essayRubricTarget +
+    worksheetTarget +
+    gamifiedTarget;
   const drift = totalCount - assigned;
   const adjustedMcqTarget = mcqTarget + drift;
 
   return {
     totalCount,
-    includeMCQ: includeMCQ || (!wantsTrueFalse && !wantsFillBlank),
+    includeMCQ:
+      includeMCQ ||
+      (!wantsTrueFalse &&
+        !wantsFillBlank &&
+        !wantsShortAnswer &&
+        !wantsMatching &&
+        !wantsEssayRubric &&
+        !wantsWorksheet &&
+        !wantsGamified),
     includeTrueFalse: wantsTrueFalse,
     includeFillBlank: wantsFillBlank,
+    includeShortAnswer: wantsShortAnswer,
+    includeMatching: wantsMatching,
+    includeEssayRubric: wantsEssayRubric,
+    includeWorksheet: wantsWorksheet,
+    includeGamified: wantsGamified,
     mcqTarget: Math.max(0, adjustedMcqTarget),
     trueFalseTarget,
     fillBlankTarget,
+    shortAnswerTarget,
+    matchingTarget,
+    essayRubricTarget,
+    worksheetTarget,
+    gamifiedTarget,
   };
 }
 
@@ -724,6 +977,62 @@ function isFillBlankQuestion(question: any): boolean {
   return hasBlank && hasNoOptions && answer.length > 0;
 }
 
+function isShortAnswerQuestion(question: any): boolean {
+  const questionText = String(question?.question || "");
+  if (!questionText.trim()) return false;
+  const hasBlank = questionText.includes("____");
+  if (hasBlank) return false;
+  const options = Array.isArray(question?.options) ? question.options : null;
+  const hasNoOptions = Array.isArray(options) && options.length === 0;
+  const answer = String(question?.answer || "").trim();
+  return hasNoOptions && answer.length > 0;
+}
+
+function isMatchingQuestion(question: any): boolean {
+  const questionText = String(question?.question || "").toLowerCase();
+  const options = Array.isArray(question?.options) ? question.options : [];
+  const answer = String(question?.answer || "").trim();
+  return (
+    options.length === 0 &&
+    answer.length > 0 &&
+    /matching|match the following|pair/.test(questionText)
+  );
+}
+
+function isEssayRubricQuestion(question: any): boolean {
+  const questionText = String(question?.question || "").toLowerCase();
+  const options = Array.isArray(question?.options) ? question.options : [];
+  const answer = String(question?.answer || "").trim();
+  return (
+    options.length === 0 &&
+    answer.length > 0 &&
+    (/essay|in your own words|justify|reflect|explain/.test(questionText) ||
+      /rubric|criteria/.test(answer.toLowerCase()))
+  );
+}
+
+function isWorksheetQuestion(question: any): boolean {
+  const questionText = String(question?.question || "").toLowerCase();
+  const options = Array.isArray(question?.options) ? question.options : [];
+  const answer = String(question?.answer || "").trim();
+  return (
+    options.length === 0 &&
+    answer.length > 0 &&
+    (/solve|calculate|simplify|balance|equation|algebra|math|chem/.test(questionText) ||
+      /[0-9]\s*[\+\-\*\/\^]\s*[0-9]/.test(questionText))
+  );
+}
+
+function isGamifiedQuestion(question: any): boolean {
+  const questionText = String(question?.question || "").toLowerCase();
+  const options = Array.isArray(question?.options) ? question.options : [];
+  const answer = String(question?.answer || "").trim();
+  if (!answer) return false;
+  const hasGameSignal = /bingo|sudoku|puzzle|riddle|game|gamified/.test(questionText);
+  if (!hasGameSignal) return false;
+  return options.length === 0 || options.length === 4;
+}
+
 function meetsQuestionTypePlan(parsed: any, plan: QuestionTypePlan): boolean {
   const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
   if (questions.length !== plan.totalCount) return false;
@@ -731,11 +1040,26 @@ function meetsQuestionTypePlan(parsed: any, plan: QuestionTypePlan): boolean {
   let trueFalseCount = 0;
   let mcqCount = 0;
   let fillBlankCount = 0;
+  let shortAnswerCount = 0;
+  let matchingCount = 0;
+  let essayRubricCount = 0;
+  let worksheetCount = 0;
+  let gamifiedCount = 0;
   for (const q of questions) {
     if (isTrueFalseQuestion(q)) {
       trueFalseCount += 1;
     } else if (isFillBlankQuestion(q)) {
       fillBlankCount += 1;
+    } else if (isMatchingQuestion(q)) {
+      matchingCount += 1;
+    } else if (isEssayRubricQuestion(q)) {
+      essayRubricCount += 1;
+    } else if (isWorksheetQuestion(q)) {
+      worksheetCount += 1;
+    } else if (isGamifiedQuestion(q)) {
+      gamifiedCount += 1;
+    } else if (isShortAnswerQuestion(q)) {
+      shortAnswerCount += 1;
     } else if (Array.isArray(q?.options) && q.options.length === 4) {
       mcqCount += 1;
     }
@@ -744,8 +1068,129 @@ function meetsQuestionTypePlan(parsed: any, plan: QuestionTypePlan): boolean {
   return (
     trueFalseCount === plan.trueFalseTarget &&
     mcqCount === plan.mcqTarget &&
-    fillBlankCount === plan.fillBlankTarget
+    fillBlankCount === plan.fillBlankTarget &&
+    shortAnswerCount === plan.shortAnswerTarget &&
+    matchingCount === plan.matchingTarget &&
+    essayRubricCount === plan.essayRubricTarget &&
+    worksheetCount === plan.worksheetTarget &&
+    gamifiedCount === plan.gamifiedTarget
   );
+}
+
+type PlanTypeKey =
+  | "mcq"
+  | "true_false"
+  | "fill_blank"
+  | "short_answer"
+  | "matching"
+  | "essay_rubric"
+  | "worksheet"
+  | "gamified";
+
+function detectPlanType(question: any): PlanTypeKey {
+  if (isTrueFalseQuestion(question)) return "true_false";
+  if (isFillBlankQuestion(question)) return "fill_blank";
+  if (isMatchingQuestion(question)) return "matching";
+  if (isEssayRubricQuestion(question)) return "essay_rubric";
+  if (isWorksheetQuestion(question)) return "worksheet";
+  if (isGamifiedQuestion(question)) return "gamified";
+  if (isShortAnswerQuestion(question)) return "short_answer";
+  return "mcq";
+}
+
+function getTargetForType(plan: QuestionTypePlan, type: PlanTypeKey): number {
+  switch (type) {
+    case "mcq":
+      return plan.mcqTarget;
+    case "true_false":
+      return plan.trueFalseTarget;
+    case "fill_blank":
+      return plan.fillBlankTarget;
+    case "short_answer":
+      return plan.shortAnswerTarget;
+    case "matching":
+      return plan.matchingTarget;
+    case "essay_rubric":
+      return plan.essayRubricTarget;
+    case "worksheet":
+      return plan.worksheetTarget;
+    case "gamified":
+      return plan.gamifiedTarget;
+    default:
+      return 0;
+  }
+}
+
+function buildMissingMixFromQuestions(plan: QuestionTypePlan, questions: any[]) {
+  const counts: Record<PlanTypeKey, number> = {
+    mcq: 0,
+    true_false: 0,
+    fill_blank: 0,
+    short_answer: 0,
+    matching: 0,
+    essay_rubric: 0,
+    worksheet: 0,
+    gamified: 0,
+  };
+  for (const q of questions) {
+    counts[detectPlanType(q)] += 1;
+  }
+
+  const missing = {
+    mcq: Math.max(plan.mcqTarget - counts.mcq, 0),
+    trueFalse: Math.max(plan.trueFalseTarget - counts.true_false, 0),
+    fillBlank: Math.max(plan.fillBlankTarget - counts.fill_blank, 0),
+    shortAnswer: Math.max(plan.shortAnswerTarget - counts.short_answer, 0),
+    matching: Math.max(plan.matchingTarget - counts.matching, 0),
+    essayRubric: Math.max(plan.essayRubricTarget - counts.essay_rubric, 0),
+    worksheet: Math.max(plan.worksheetTarget - counts.worksheet, 0),
+    gamified: Math.max(plan.gamifiedTarget - counts.gamified, 0),
+  };
+  const totalMissing =
+    missing.mcq +
+    missing.trueFalse +
+    missing.fillBlank +
+    missing.shortAnswer +
+    missing.matching +
+    missing.essayRubric +
+    missing.worksheet +
+    missing.gamified;
+
+  return { missing, totalMissing };
+}
+
+function normalizeQuestionsToPlan(plan: QuestionTypePlan, questions: any[]) {
+  const buckets: Record<PlanTypeKey, any[]> = {
+    mcq: [],
+    true_false: [],
+    fill_blank: [],
+    short_answer: [],
+    matching: [],
+    essay_rubric: [],
+    worksheet: [],
+    gamified: [],
+  };
+  for (const q of questions) {
+    buckets[detectPlanType(q)].push(q);
+  }
+
+  const ordered: PlanTypeKey[] = [
+    "mcq",
+    "true_false",
+    "fill_blank",
+    "short_answer",
+    "matching",
+    "essay_rubric",
+    "worksheet",
+    "gamified",
+  ];
+  const out: any[] = [];
+  for (const key of ordered) {
+    const needed = getTargetForType(plan, key);
+    if (needed <= 0) continue;
+    out.push(...buckets[key].slice(0, needed));
+  }
+  return out;
 }
 
 function safeExtractJSON(raw: string) {

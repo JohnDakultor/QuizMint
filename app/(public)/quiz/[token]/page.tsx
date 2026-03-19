@@ -5,12 +5,21 @@ import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { StudentGamifiedQuestion } from "@/components/quiz/student-gamified-question";
 
 type SharedQuestion = {
   id: number;
   question: string;
   options: string[];
-  questionType: "mcq" | "true_false" | "fill_blank" | "short_answer";
+  questionType:
+    | "mcq"
+    | "true_false"
+    | "fill_blank"
+    | "short_answer"
+    | "matching"
+    | "essay_rubric"
+    | "worksheet"
+    | "gamified";
 };
 
 type SharedQuiz = {
@@ -27,7 +36,15 @@ type SubmitResult = {
   details: Array<{
     questionId: number;
     question: string;
-    questionType: "mcq" | "true_false" | "fill_blank" | "short_answer";
+    questionType:
+      | "mcq"
+      | "true_false"
+      | "fill_blank"
+      | "short_answer"
+      | "matching"
+      | "essay_rubric"
+      | "worksheet"
+      | "gamified";
     selected: string;
     correctAnswer: string;
     correct: boolean;
@@ -48,6 +65,8 @@ export default function StudentQuizPage() {
   const [error, setError] = useState("");
   const [showSubmittedDialog, setShowSubmittedDialog] = useState(false);
   const [closeCountdown, setCloseCountdown] = useState(5);
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState<number>(Date.now());
 
   useEffect(() => {
     const load = async () => {
@@ -64,6 +83,7 @@ export default function StudentQuizPage() {
           return;
         }
         setQuiz(data.quiz as SharedQuiz);
+        setSessionStartedAt(Date.now());
       } catch {
         setError("Failed to load shared quiz.");
       } finally {
@@ -77,6 +97,22 @@ export default function StudentQuizPage() {
     () => Object.values(answers).filter(Boolean).length,
     [answers]
   );
+  const progressPercent = quiz ? Math.round((answeredCount / quiz.questions.length) * 100) : 0;
+  const xp = answeredCount * 10;
+  const badge =
+    answeredCount >= 10
+      ? "Master"
+      : answeredCount >= 5
+      ? "Challenger"
+      : answeredCount >= 1
+      ? "Starter"
+      : "Ready";
+  const streak = quiz
+    ? quiz.questions.reduce((acc, q) => (answers[String(q.id)] ? acc + 1 : acc), 0)
+    : 0;
+  const elapsedSeconds = sessionStartedAt ? Math.max(0, Math.floor((nowTick - sessionStartedAt) / 1000)) : 0;
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = String(elapsedSeconds % 60).padStart(2, "0");
   const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(studentEmail.trim());
   const canSubmit =
     Boolean(studentName.trim()) &&
@@ -107,6 +143,12 @@ export default function StudentQuizPage() {
     }, 1000);
     return () => window.clearInterval(intervalId);
   }, [showSubmittedDialog]);
+
+  useEffect(() => {
+    if (!quiz || result) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [quiz, result]);
 
   const submitQuiz = async () => {
     if (!quiz) return;
@@ -161,6 +203,20 @@ export default function StudentQuizPage() {
                 <div className="mt-2 text-xs text-zinc-500">
                   {answeredCount}/{quiz.questions.length} answered
                 </div>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-zinc-200">
+                  <div
+                    className="h-full bg-linear-to-r from-blue-500 to-emerald-500 transition-all"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-zinc-600">
+                  <div className="rounded border bg-white px-2 py-1">XP: {xp}</div>
+                  <div className="rounded border bg-white px-2 py-1">Streak: {streak}</div>
+                  <div className="rounded border bg-white px-2 py-1">
+                    Time: {minutes}:{seconds}
+                  </div>
+                </div>
+                <div className="mt-2 text-[11px] text-emerald-700">Badge: {badge}</div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 rounded-md border bg-white p-4 md:grid-cols-2">
@@ -197,6 +253,14 @@ export default function StudentQuizPage() {
 
               <div className="space-y-4">
                 {quiz.questions.map((q, idx) => {
+                  const safeOptions = Array.isArray(q.options) ? q.options : [];
+                  const useChoiceMode =
+                    q.questionType === "mcq" ||
+                    q.questionType === "true_false" ||
+                    (q.questionType === "gamified" && safeOptions.length >= 2);
+                  const useLongTextMode =
+                    q.questionType === "matching" || q.questionType === "essay_rubric";
+                  const useShortInputMode = !useChoiceMode && !useLongTextMode;
                   return (
                     <div key={q.id} className="rounded-lg border bg-white p-4 shadow-xs">
                       <p className="font-medium">
@@ -204,11 +268,28 @@ export default function StudentQuizPage() {
                         <span className="ml-1 text-red-500">*</span>
                       </p>
                       <div className="mt-3 space-y-2">
-                        {(q.questionType === "mcq" || q.questionType === "true_false") &&
-                          q.options.map((opt, optIdx) => (
+                        {q.questionType === "gamified" && (
+                          <StudentGamifiedQuestion
+                            questionId={q.id}
+                            question={q.question}
+                            options={safeOptions}
+                            value={answers[String(q.id)] || ""}
+                            disabled={Boolean(result)}
+                            onChange={(next) =>
+                              setAnswers((prev) => ({
+                                ...prev,
+                                [String(q.id)]: next,
+                              }))
+                            }
+                          />
+                        )}
+                        {useChoiceMode && q.questionType !== "gamified" &&
+                          safeOptions.map((opt, optIdx) => (
                             <label
                               key={`${q.id}-${optIdx}`}
-                              className="flex cursor-pointer items-center gap-2 rounded border px-3 py-2 text-sm"
+                              className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-2 text-sm ${
+                                ""
+                              }`}
                             >
                               <input
                                 type="radio"
@@ -223,10 +304,14 @@ export default function StudentQuizPage() {
                               <span>{opt}</span>
                             </label>
                           ))}
-                        {(q.questionType === "fill_blank" || q.questionType === "short_answer") && (
+                        {useShortInputMode && q.questionType !== "gamified" && (
                           <input
                             type="text"
-                            placeholder="Type your answer"
+                            placeholder={
+                              q.questionType === "worksheet"
+                                ? "Enter your worksheet answer"
+                                : "Type your answer"
+                            }
                             value={answers[String(q.id)] || ""}
                             onChange={(e) =>
                               setAnswers((prev) => ({
@@ -235,6 +320,36 @@ export default function StudentQuizPage() {
                               }))
                             }
                             disabled={Boolean(result)}
+                            className="w-full rounded border px-3 py-2 text-sm"
+                          />
+                        )}
+                        {q.questionType === "matching" && (
+                          <textarea
+                            placeholder="Enter matches one per line, e.g. Term - Definition"
+                            value={answers[String(q.id)] || ""}
+                            onChange={(e) =>
+                              setAnswers((prev) => ({
+                                ...prev,
+                                [String(q.id)]: e.target.value,
+                              }))
+                            }
+                            disabled={Boolean(result)}
+                            rows={4}
+                            className="w-full rounded border px-3 py-2 text-sm"
+                          />
+                        )}
+                        {q.questionType === "essay_rubric" && (
+                          <textarea
+                            placeholder="Write your explanation in your own words"
+                            value={answers[String(q.id)] || ""}
+                            onChange={(e) =>
+                              setAnswers((prev) => ({
+                                ...prev,
+                                [String(q.id)]: e.target.value,
+                              }))
+                            }
+                            disabled={Boolean(result)}
+                            rows={5}
                             className="w-full rounded border px-3 py-2 text-sm"
                           />
                         )}

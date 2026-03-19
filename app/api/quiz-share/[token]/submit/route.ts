@@ -5,25 +5,11 @@ import { verifyQuizShareToken } from "@/lib/quiz-share";
 import { trackGenerationEvent } from "@/lib/generation-events";
 import { randomUUID } from "crypto";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { inferQuizQuestionType } from "@/lib/quiz-question-types";
 
 type RouteParams = {
   params: Promise<{ token: string }>;
 };
-
-type QuestionType = "mcq" | "true_false" | "fill_blank" | "short_answer";
-
-function inferQuestionType(question: string, options: string[]): QuestionType {
-  if (
-    options.length === 2 &&
-    options.some((opt) => opt.toLowerCase() === "true") &&
-    options.some((opt) => opt.toLowerCase() === "false")
-  ) {
-    return "true_false";
-  }
-  if (options.length >= 2) return "mcq";
-  if (question.includes("____")) return "fill_blank";
-  return "short_answer";
-}
 
 function normalizeForCompare(value: string) {
   return value
@@ -36,6 +22,105 @@ function normalizeForCompare(value: string) {
 
 function answersMatch(selected: string, expected: string) {
   return normalizeForCompare(selected) === normalizeForCompare(expected);
+}
+
+function shortAnswerMatches(selected: string, expected: string) {
+  const a = normalizeForCompare(selected);
+  const b = normalizeForCompare(expected);
+  if (!a || !b) return false;
+  if (a === b) return true;
+
+  // Accept close phrasing for opinion/explanation style items.
+  if (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a))) {
+    return true;
+  }
+
+  const stopwords = new Set([
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "to",
+    "of",
+    "and",
+    "or",
+    "in",
+    "on",
+    "for",
+    "with",
+    "by",
+    "from",
+    "that",
+    "this",
+    "it",
+    "as",
+    "at",
+  ]);
+  const toKeyTokens = (text: string) =>
+    text
+      .split(" ")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 2 && !stopwords.has(t));
+
+  const selectedTokens = toKeyTokens(a);
+  const expectedTokens = toKeyTokens(b);
+  if (selectedTokens.length === 0 || expectedTokens.length === 0) return false;
+
+  const selectedSet = new Set(selectedTokens);
+  const expectedSet = new Set(expectedTokens);
+  let overlap = 0;
+  expectedSet.forEach((token) => {
+    if (selectedSet.has(token)) overlap += 1;
+  });
+
+  const expectedCoverage = overlap / expectedSet.size;
+  const selectedCoverage = overlap / selectedSet.size;
+  return expectedCoverage >= 0.6 || selectedCoverage >= 0.6;
+}
+
+function parsePairs(value: string) {
+  return String(value || "")
+    .split(/\r?\n|;/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(/\s*(?:->|:|-|=)\s*/);
+      if (parts.length < 2) return null;
+      const left = normalizeForCompare(parts[0]);
+      const right = normalizeForCompare(parts.slice(1).join(" "));
+      if (!left || !right) return null;
+      return `${left}=>${right}`;
+    })
+    .filter((x): x is string => Boolean(x));
+}
+
+function matchingAnswersMatch(selected: string, expected: string) {
+  const selectedPairs = parsePairs(selected);
+  const expectedPairs = parsePairs(expected);
+  if (!selectedPairs.length || !expectedPairs.length) return shortAnswerMatches(selected, expected);
+  const selectedSet = new Set(selectedPairs);
+  const expectedSet = new Set(expectedPairs);
+  let overlap = 0;
+  expectedSet.forEach((pair) => {
+    if (selectedSet.has(pair)) overlap += 1;
+  });
+  return overlap / expectedSet.size >= 0.6;
+}
+
+function worksheetMatches(selected: string, expected: string) {
+  const a = normalizeForCompare(selected).replace(/\s+/g, "");
+  const b = normalizeForCompare(expected).replace(/\s+/g, "");
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const an = Number(a);
+  const bn = Number(b);
+  if (Number.isFinite(an) && Number.isFinite(bn)) {
+    return Math.abs(an - bn) <= 0.001;
+  }
+  return shortAnswerMatches(selected, expected);
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
@@ -92,33 +177,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     ) {
       return apiError(410, "Quiz timer has ended", requestId);
     }
-    const cookieName = `quiz_take_${quiz.id}`;
-    const takeSessionId = req.cookies.get(cookieName)?.value ?? "";
-    if (!takeSessionId) {
-      return apiError(400, "Session not initialized. Please reload the quiz page.", requestId);
-    }
-
-    try {
-      await prisma.studentQuizTake.create({
-        data: {
-          quizId: quiz.id,
-          takeSessionId,
-        },
-      });
-    } catch (err) {
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === "P2002"
-      ) {
-        return apiError(
-          409,
-          "Quiz already submitted from this device/session. Retake is not allowed.",
-          requestId
-        );
-      }
-      throw err;
-    }
-
     const existingRows = await prisma.$queryRaw<Array<{ count: number }>>`
       SELECT COUNT(*)::int AS count
       FROM "StudentQuizAttempt"
@@ -133,11 +191,48 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const cookieName = `quiz_take_${quiz.id}`;
+    let takeSessionId = req.cookies.get(cookieName)?.value ?? randomUUID();
+
+    try {
+      await prisma.studentQuizTake.create({
+        data: {
+          quizId: quiz.id,
+          takeSessionId,
+        },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        // Allow another student on the same browser/profile by rotating the session lock.
+        takeSessionId = randomUUID();
+        await prisma.studentQuizTake.create({
+          data: {
+            quizId: quiz.id,
+            takeSessionId,
+          },
+        });
+      } else {
+        throw err;
+      }
+    }
+
     const details = quiz.questions.map((q) => {
       const raw = answersInput[String(q.id)];
       const selected = typeof raw === "string" ? raw : "";
-      const questionType = inferQuestionType(q.question, q.options);
-      const correct = answersMatch(selected, q.answer);
+      const questionType = inferQuizQuestionType(q.question, q.options);
+      let correct = false;
+      if (questionType === "short_answer" || questionType === "essay_rubric") {
+        correct = shortAnswerMatches(selected, q.answer);
+      } else if (questionType === "matching") {
+        correct = matchingAnswersMatch(selected, q.answer);
+      } else if (questionType === "worksheet") {
+        correct = worksheetMatches(selected, q.answer);
+      } else {
+        correct = answersMatch(selected, q.answer);
+      }
       return {
         questionId: q.id,
         question: q.question,
@@ -204,7 +299,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       },
     });
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         ok: true,
         result: {
@@ -222,6 +317,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         },
       }
     );
+    response.cookies.set(cookieName, randomUUID(), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    });
+    return response;
   } catch (err) {
     logApiError(requestId, "quiz-share-submit", err);
     return apiError(500, "Failed to submit quiz", requestId);

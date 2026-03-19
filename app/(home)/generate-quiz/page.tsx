@@ -13,6 +13,7 @@ import { QuizPageHeader } from "@/components/quiz/quiz-page-header";
 import { AdaptiveSuggestionsPanel } from "@/components/quiz/adaptive-suggestions-panel";
 import { QuizSubscribeModal } from "@/components/quiz/subscribe-modal";
 import { trackGaEvent } from "@/lib/ga-client";
+import type { GamifiedMode } from "@/lib/quiz-question-types";
 
 export default function Dashboard() {
   const searchParams = useSearchParams();
@@ -38,10 +39,23 @@ export default function Dashboard() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareTimerMinutes, setShareTimerMinutes] = useState(60);
+  const [shareShuffleQuestions, setShareShuffleQuestions] = useState(false);
+  const [shareShuffleActive, setShareShuffleActive] = useState(false);
   const [shareOpen, setShareOpen] = useState<boolean | null>(null);
   const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [numberOfItems, setNumberOfItems] = useState(10);
+  const [questionMix, setQuestionMix] = useState({
+    mcq: 0,
+    trueFalse: 0,
+    fillBlank: 0,
+    shortAnswer: 0,
+    matching: 0,
+    essayRubric: 0,
+    worksheet: 0,
+    gamified: 0,
+  });
+  const [gamifiedMode, setGamifiedMode] = useState<GamifiedMode>("puzzle");
   const liteMode = Boolean(user?.liteMode);
   const isPremiumAdaptiveEnabled =
     user?.subscriptionPlan === "premium" && user?.adaptiveLearning === true;
@@ -142,9 +156,11 @@ export default function Dashboard() {
                 ? data.shareSettings.expiresAt
                 : null
             );
+            setShareShuffleActive(Boolean(data.shareSettings.shuffleQuestions));
           } else {
             setShareOpen(null);
             setShareExpiresAt(null);
+            setShareShuffleActive(false);
           }
         }
       } catch (err) {
@@ -235,7 +251,11 @@ export default function Dashboard() {
       const res = await fetch("/api/quiz-share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quizId: quiz.id, durationMinutes: shareTimerMinutes }),
+        body: JSON.stringify({
+          quizId: quiz.id,
+          durationMinutes: shareTimerMinutes,
+          shuffleQuestions: shareShuffleQuestions,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -260,6 +280,7 @@ export default function Dashboard() {
           ? data.shareSettings.expiresAt
           : null
       );
+      setShareShuffleActive(Boolean(data?.shareSettings?.shuffleQuestions));
 
       if (navigator.share) {
         try {
@@ -446,6 +467,19 @@ export default function Dashboard() {
 
   const generateQuizFromPrompt = async () => {
     if (!prompt.trim() && !uploadedFile) return;
+    const mixTotal =
+      questionMix.mcq +
+      questionMix.trueFalse +
+      questionMix.fillBlank +
+      questionMix.shortAnswer +
+      questionMix.matching +
+      questionMix.essayRubric +
+      questionMix.worksheet +
+      questionMix.gamified;
+    if (mixTotal > 0 && mixTotal !== numberOfItems) {
+      setError("Item mix total must match Number of Items.");
+      return;
+    }
     trackGaEvent("quiz_generate", {
       action: "start",
       source: uploadedFile ? "file_upload" : "prompt",
@@ -474,6 +508,15 @@ export default function Dashboard() {
         formData.append("difficulty", difficulty);
         formData.append("adaptiveLearning", adaptiveLearning.toString());
         formData.append("numberOfItems", String(numberOfItems));
+        formData.append("mixMcq", String(questionMix.mcq));
+        formData.append("mixTrueFalse", String(questionMix.trueFalse));
+        formData.append("mixFillBlank", String(questionMix.fillBlank));
+        formData.append("mixShortAnswer", String(questionMix.shortAnswer));
+        formData.append("mixMatching", String(questionMix.matching));
+        formData.append("mixEssayRubric", String(questionMix.essayRubric));
+        formData.append("mixWorksheet", String(questionMix.worksheet));
+        formData.append("mixGamified", String(questionMix.gamified));
+        formData.append("gamifiedMode", gamifiedMode);
 
         const res = await fetch("/api/upload-file", {
           method: "POST",
@@ -531,6 +574,8 @@ export default function Dashboard() {
           adaptiveLearning: adaptiveLearning, // This will always be a boolean
           forceFreshGeneration,
           numberOfItems,
+          questionMix: mixTotal > 0 ? questionMix : null,
+          gamifiedMode: questionMix.gamified > 0 ? gamifiedMode : undefined,
         };
 
     
@@ -707,6 +752,87 @@ export default function Dashboard() {
       />
 
       <section className="flex flex-col lg:flex-row gap-6 justify-center w-full">
+        <aside className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 lg:w-36">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-zinc-700">Item Mix</div>
+            <button
+              type="button"
+              onClick={() =>
+                setQuestionMix({
+                  mcq: 0,
+                  trueFalse: 0,
+                  fillBlank: 0,
+                  shortAnswer: 0,
+                  matching: 0,
+                  essayRubric: 0,
+                  worksheet: 0,
+                  gamified: 0,
+                })
+              }
+              className="h-6 rounded border border-zinc-300 bg-white px-2 text-[10px] font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="space-y-2">
+            {[
+              { key: "mcq", label: "MCQ" },
+              { key: "trueFalse", label: "T/F" },
+              { key: "fillBlank", label: "Fill" },
+              { key: "shortAnswer", label: "Short" },
+              { key: "matching", label: "Match" },
+              { key: "essayRubric", label: "Essay" },
+              { key: "worksheet", label: "Worksheet" },
+              { key: "gamified", label: "Game" },
+            ].map((entry) => (
+              <label key={entry.key} className="flex items-center justify-between gap-2 text-xs text-zinc-700">
+                <span>{entry.label}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={questionMix[entry.key as keyof typeof questionMix]}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    const safe = Number.isFinite(next) ? Math.min(50, Math.max(0, Math.floor(next))) : 0;
+                    setQuestionMix({
+                      ...questionMix,
+                      [entry.key]: safe,
+                    });
+                  }}
+                  className="h-7 w-14 rounded border border-zinc-300 bg-white px-1 text-center text-xs text-zinc-900 outline-none"
+                />
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 rounded border border-zinc-200 bg-white px-2 py-1 text-center text-xs text-zinc-600">
+            {questionMix.mcq +
+              questionMix.trueFalse +
+              questionMix.fillBlank +
+              questionMix.shortAnswer +
+              questionMix.matching +
+              questionMix.essayRubric +
+              questionMix.worksheet +
+              questionMix.gamified}
+            {" / "}
+            {numberOfItems}
+          </div>
+          {questionMix.gamified > 0 && (
+            <div className="mt-2">
+              <label className="mb-1 block text-[11px] font-medium text-zinc-700">Game Type</label>
+              <select
+                value={gamifiedMode}
+                onChange={(e) => setGamifiedMode(e.target.value as GamifiedMode)}
+                className="h-8 w-full rounded border border-zinc-300 bg-white px-2 text-xs text-zinc-900"
+              >
+                <option value="puzzle">Puzzle Quiz</option>
+                <option value="bingo">Bingo Challenge</option>
+                <option value="sudoku">Sudoku-style Logic</option>
+              </select>
+            </div>
+          )}
+        </aside>
+
         <QuizInputCard
           prompt={prompt}
           setPrompt={(value) => {
@@ -742,10 +868,12 @@ export default function Dashboard() {
           lastLoaded={lastLoaded}
           shareOpen={shareOpen}
           shareExpiresAt={shareExpiresAt}
+          shareShuffleActive={shareShuffleActive}
           shareLoading={shareLoading}
           onClearQuiz={() => {
             setQuiz(null);
             setLastLoaded(false);
+            setShareShuffleActive(false);
           }}
           onCopy={handleCopy}
           onOpenShareModal={() => setShowShareModal(true)}
@@ -772,6 +900,8 @@ export default function Dashboard() {
         shareLoading={shareLoading}
         shareTimerMinutes={shareTimerMinutes}
         setShareTimerMinutes={setShareTimerMinutes}
+        shareShuffleQuestions={shareShuffleQuestions}
+        setShareShuffleQuestions={setShareShuffleQuestions}
         canSubmit={Boolean(quiz)}
         onClose={() => setShowShareModal(false)}
         onSubmit={async () => {

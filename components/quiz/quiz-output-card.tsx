@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import SkeletonLoading from "@/components/ui/skeleton-loading";
 import { SourceIcon, SourceIcons } from "@/components/source-icons";
-import { ClipboardList, Copy, Globe, Link2, X } from "lucide-react";
+import { ClipboardList, Copy, Gamepad2, Globe, Link2, X } from "lucide-react";
+import { inferQuizQuestionType } from "@/lib/quiz-question-types";
 
 export function QuizOutputCard(props: {
   loading: boolean;
@@ -13,6 +14,7 @@ export function QuizOutputCard(props: {
   lastLoaded: boolean;
   shareOpen: boolean | null;
   shareExpiresAt: string | null;
+  shareShuffleActive: boolean;
   shareLoading: boolean;
   onClearQuiz: () => void;
   onCopy: () => void;
@@ -28,6 +30,7 @@ export function QuizOutputCard(props: {
     lastLoaded,
     shareOpen,
     shareExpiresAt,
+    shareShuffleActive,
     shareLoading,
     onClearQuiz,
     onCopy,
@@ -94,11 +97,41 @@ export function QuizOutputCard(props: {
         ) : quiz ? (
           quiz.questions.map((q: any, i: number) => (
             <div key={i} className="p-4 rounded-lg border bg-white dark:bg-zinc-900">
+              {(() => {
+                const questionType = inferQuizQuestionType(
+                  String(q?.question || ""),
+                  Array.isArray(q?.options) ? q.options : []
+                );
+                const typeLabel =
+                  questionType === "true_false"
+                    ? "True/False"
+                    : questionType === "fill_blank"
+                    ? "Fill Blank"
+                    : questionType === "short_answer"
+                    ? "Short Answer"
+                    : questionType === "essay_rubric"
+                    ? "Essay Rubric"
+                    : questionType === "matching"
+                    ? "Matching"
+                    : questionType === "worksheet"
+                    ? "Worksheet"
+                    : questionType === "gamified"
+                    ? "Gamified"
+                    : "MCQ";
+                return (
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-600">
+                      {questionType === "gamified" && <Gamepad2 className="h-3 w-3" />}
+                      {typeLabel}
+                    </span>
+                  </div>
+                );
+              })()}
               <p className="font-semibold mb-2">
                 {i + 1}. {q.question}
               </p>
               <ul className="ml-4 list-disc space-y-1">
-                {q.options.map((opt: string, j: number) => (
+                {(Array.isArray(q.options) ? q.options : []).map((opt: string, j: number) => (
                   <li key={j}>{opt}</li>
                 ))}
               </ul>
@@ -134,6 +167,11 @@ export function QuizOutputCard(props: {
               {shareOpen === false ? "Closed" : "Open"}
             </span>
             {shareExpiresAt ? ` • Ends at ${new Date(shareExpiresAt).toLocaleString()}` : ""}
+            {shareShuffleActive ? (
+              <span className="ml-2 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                Shuffle: ON
+              </span>
+            ) : null}
           </div>
         </div>
       )}

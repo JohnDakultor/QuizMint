@@ -27,6 +27,7 @@ import { buildQuizAdaptiveGuidance } from "@/lib/quiz-adaptive-service";
 
 const COOLDOWN_HOURS = 3;
 const FREE_QUIZ_LIMIT = 3;
+type LocalGamifiedMode = "bingo" | "sudoku" | "puzzle";
 
 function hashString(input: string) {
   let hash = 0;
@@ -56,6 +57,52 @@ function normalizeMixCountInput(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.min(50, Math.max(0, Math.floor(n)));
+}
+
+function hasQuestionTypeIntent(prompt: string): boolean {
+  const p = String(prompt || "").toLowerCase();
+  return /mcq|multiple\s*choice|true\s*\/?\s*false|fill\s*in\s*the\s*blank|short\s*answer|matching|match\s*the\s*following|essay|rubric|worksheet|gamified|bingo|sudoku|puzzle|mix|mixed/i.test(
+    p
+  );
+}
+
+function buildQuizCacheKey(input: {
+  difficulty: string;
+  adaptiveLearning: boolean;
+  requestedItemCount: number | null;
+  questionMix: {
+    mcq?: number;
+    trueFalse?: number;
+    fillBlank?: number;
+    shortAnswer?: number;
+    matching?: number;
+    essayRubric?: number;
+    worksheet?: number;
+    gamified?: number;
+  } | null;
+  gamifiedMode: string | null;
+}): string {
+  const mix = input.questionMix
+    ? {
+        mcq: input.questionMix.mcq ?? 0,
+        trueFalse: input.questionMix.trueFalse ?? 0,
+        fillBlank: input.questionMix.fillBlank ?? 0,
+        shortAnswer: input.questionMix.shortAnswer ?? 0,
+        matching: input.questionMix.matching ?? 0,
+        essayRubric: input.questionMix.essayRubric ?? 0,
+        worksheet: input.questionMix.worksheet ?? 0,
+        gamified: input.questionMix.gamified ?? 0,
+      }
+    : null;
+
+  return JSON.stringify({
+    v: 2,
+    difficulty: input.difficulty,
+    adaptiveLearning: input.adaptiveLearning,
+    requestedItemCount: input.requestedItemCount ?? 10,
+    gamifiedMode: input.gamifiedMode ?? "puzzle",
+    questionMix: mix,
+  });
 }
 
 function stripInlineAnswerArtifacts(value: string) {
@@ -234,6 +281,7 @@ export async function POST(req: NextRequest) {
       ? body.difficulty.toLowerCase().trim() 
       : undefined;
     const requestedItemCount = normalizeQuestionCountInput(body.numberOfItems);
+    const defaultItemCount = requestedItemCount ?? 10;
     const rawQuestionMix =
       body?.questionMix && typeof body.questionMix === "object"
         ? body.questionMix
@@ -251,7 +299,28 @@ export async function POST(req: NextRequest) {
           ),
           gamified: normalizeMixCountInput(rawQuestionMix.gamified),
         }
+      : !hasQuestionTypeIntent(body?.text)
+      ? {
+          mcq: defaultItemCount,
+          trueFalse: 0,
+          fillBlank: 0,
+          shortAnswer: 0,
+          matching: 0,
+          essayRubric: 0,
+          worksheet: 0,
+          gamified: 0,
+        }
       : null;
+    const gamifiedModeRaw =
+      typeof body?.gamifiedMode === "string"
+        ? body.gamifiedMode.toLowerCase().trim()
+        : "";
+    const gamifiedMode: LocalGamifiedMode | null =
+      gamifiedModeRaw === "bingo" ||
+      gamifiedModeRaw === "sudoku" ||
+      gamifiedModeRaw === "puzzle"
+        ? (gamifiedModeRaw as LocalGamifiedMode)
+        : null;
     const questionMixTotal = parsedQuestionMix
       ? (parsedQuestionMix.mcq || 0) +
         (parsedQuestionMix.trueFalse || 0) +
@@ -547,9 +616,17 @@ export async function POST(req: NextRequest) {
     let sourceMode: string | null = null;
     if (!liteMode) {
       const ragStartedAt = Date.now();
+      const cacheKey = buildQuizCacheKey({
+        difficulty: effectiveDifficulty,
+        adaptiveLearning: safeAdaptive,
+        requestedItemCount,
+        questionMix: parsedQuestionMix,
+        gamifiedMode,
+      });
       const ragResult = await enhancePromptWithRAG({
         finalPrompt: content,
         namespace,
+        cacheKey,
         topK: isPromptOnly ? 5 : 5,
       });
       enhancedPrompt = ragResult.enhancedPrompt;
@@ -584,7 +661,7 @@ export async function POST(req: NextRequest) {
           safeAdaptive,
           isProOrPremium,
           composedUserPrompt,
-          { liteMode }
+          { liteMode, questionMix: parsedQuestionMix, gamifiedMode }
         );
     const quiz = cachedResponse ? JSON.parse(cachedResponse) : aiResult!.quiz;
     if (!cachedResponse) {

@@ -96,8 +96,48 @@ import { trackGenerationEvent } from "@/lib/generation-events";
 import { buildPromptProfile } from "@/lib/adaptive-personalization";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { logDebug, logWarn } from "@/lib/logger";
+import type { GamifiedMode } from "@/lib/quiz-question-types";
 
 export const runtime = "nodejs";
+
+function buildQuizCacheKey(input: {
+  difficulty: string;
+  adaptiveLearning: boolean;
+  requestedItemCount: number | null;
+  questionMix: {
+    mcq?: number;
+    trueFalse?: number;
+    fillBlank?: number;
+    shortAnswer?: number;
+    matching?: number;
+    essayRubric?: number;
+    worksheet?: number;
+    gamified?: number;
+  } | null;
+  gamifiedMode: string | null;
+}): string {
+  const mix = input.questionMix
+    ? {
+        mcq: input.questionMix.mcq ?? 0,
+        trueFalse: input.questionMix.trueFalse ?? 0,
+        fillBlank: input.questionMix.fillBlank ?? 0,
+        shortAnswer: input.questionMix.shortAnswer ?? 0,
+        matching: input.questionMix.matching ?? 0,
+        essayRubric: input.questionMix.essayRubric ?? 0,
+        worksheet: input.questionMix.worksheet ?? 0,
+        gamified: input.questionMix.gamified ?? 0,
+      }
+    : null;
+
+  return JSON.stringify({
+    v: 2,
+    difficulty: input.difficulty,
+    adaptiveLearning: input.adaptiveLearning,
+    requestedItemCount: input.requestedItemCount ?? 10,
+    gamifiedMode: input.gamifiedMode ?? "puzzle",
+    questionMix: mix,
+  });
+}
 
 function chunkText(text: string, chunkSize = 1200, overlap = 200) {
   const cleaned = normalizeForEmbedding(text);
@@ -131,6 +171,20 @@ function normalizeQuestionCountInput(value: unknown): number | null {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   return Math.min(50, Math.max(1, Math.floor(n)));
+}
+
+function normalizeMixCountInput(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(50, Math.max(0, Math.floor(n)));
+}
+
+function stripInlineAnswerArtifacts(value: string) {
+  if (!value) return "";
+  return value
+    .replace(/\n?\s*answer\s*:\s*.*$/i, "")
+    .replace(/\n?\s*correct answer\s*:\s*.*$/i, "")
+    .trim();
 }
 
 export async function POST(req: Request) {
@@ -175,10 +229,46 @@ export async function POST(req: Request) {
     const requestedItemCount = normalizeQuestionCountInput(
       formData.get("numberOfItems")
     );
+    const questionMix = {
+      mcq: normalizeMixCountInput(formData.get("mixMcq")),
+      trueFalse: normalizeMixCountInput(formData.get("mixTrueFalse")),
+      fillBlank: normalizeMixCountInput(formData.get("mixFillBlank")),
+      shortAnswer: normalizeMixCountInput(formData.get("mixShortAnswer")),
+      matching: normalizeMixCountInput(formData.get("mixMatching")),
+      essayRubric: normalizeMixCountInput(formData.get("mixEssayRubric")),
+      worksheet: normalizeMixCountInput(
+        formData.get("mixWorksheet") ?? formData.get("mixWorksheetMath")
+      ),
+      gamified: normalizeMixCountInput(formData.get("mixGamified")),
+    };
+    const gamifiedModeRaw = String(formData.get("gamifiedMode") || "").toLowerCase().trim();
+    const gamifiedMode: GamifiedMode | null =
+      gamifiedModeRaw === "bingo" || gamifiedModeRaw === "sudoku" || gamifiedModeRaw === "puzzle"
+        ? (gamifiedModeRaw as GamifiedMode)
+        : null;
+    const questionMixTotal =
+      questionMix.mcq +
+      questionMix.trueFalse +
+      questionMix.fillBlank +
+      questionMix.shortAnswer +
+      questionMix.matching +
+      questionMix.essayRubric +
+      questionMix.worksheet +
+      questionMix.gamified;
 
     const difficulty = user.aiDifficulty || "easy";
     const adaptiveLearning = user.adaptiveLearning ?? false;
     const liteMode = Boolean(user.liteMode);
+    if (questionMixTotal > 50) {
+      return apiError(400, "Question mix cannot exceed 50 items.", requestId);
+    }
+    if (
+      requestedItemCount &&
+      questionMixTotal > 0 &&
+      questionMixTotal !== requestedItemCount
+    ) {
+      return apiError(400, "Question mix must equal the total number of items.", requestId);
+    }
 
     let content = "";
 
@@ -263,7 +353,7 @@ content = meaningfulText;  // override to pass to AI
     // --- RAG-ENHANCED GENERATION ---
     const basePrompt = enforceDefaultQuestionCount(
       prompt || "",
-      requestedItemCount ?? 10
+      requestedItemCount ?? (questionMixTotal > 0 ? questionMixTotal : 10)
     );
     let enhancedPrompt = basePrompt;
     let cachedResponse: string | null = null;
@@ -301,9 +391,17 @@ content = meaningfulText;  // override to pass to AI
         }
       }
 
+      const cacheKey = buildQuizCacheKey({
+        difficulty,
+        adaptiveLearning,
+        requestedItemCount,
+        questionMix: questionMixTotal > 0 ? questionMix : null,
+        gamifiedMode,
+      });
       const ragResult = await enhancePromptWithRAG({
         finalPrompt: basePrompt,
         namespace,
+        cacheKey,
       });
       enhancedPrompt = ragResult.enhancedPrompt;
       cachedResponse = ragResult.cachedResponse ?? null;
@@ -317,14 +415,18 @@ content = meaningfulText;  // override to pass to AI
     // --- GENERATE QUIZ ---
     const quiz = cachedResponse
       ? JSON.parse(cachedResponse)
-      : await generateQuizAI(
-          enhancedPrompt,
-          difficulty,
-          adaptiveLearning,
-          true,
-          basePrompt,
-          { liteMode },
-        );
+        : await generateQuizAI(
+            enhancedPrompt,
+            difficulty,
+            adaptiveLearning,
+            true,
+            basePrompt,
+            {
+              liteMode,
+              questionMix: questionMixTotal > 0 ? questionMix : null,
+              gamifiedMode,
+            },
+          );
 
     if (!liteMode && ragMeta && !cachedResponse) {
       try {
@@ -358,9 +460,13 @@ content = meaningfulText;  // override to pass to AI
         explanation?: string | null;
         hint?: string | null;
       }) => ({
-        question: q.question ?? "",
-        options: Array.isArray(q.options) ? q.options : [],
-        answer: q.answer ?? "",
+        question: stripInlineAnswerArtifacts(String(q.question ?? "")),
+        options: Array.isArray(q.options)
+          ? q.options
+              .map((opt) => stripInlineAnswerArtifacts(String(opt ?? "")))
+              .filter(Boolean)
+          : [],
+        answer: stripInlineAnswerArtifacts(String(q.answer ?? "")),
         explanation: adaptiveLearning ? (q.explanation ?? null) : null,
         hint: adaptiveLearning ? (q.hint ?? null) : null,
       })),
