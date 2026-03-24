@@ -146,7 +146,7 @@ function getAccentPalette(tone?: EditablePptSlide["accentTone"]) {
   }
 }
 
-function toVisualItems(slide: EditablePptSlide) {
+function toVisualItems(slide: EditablePptSlide): Array<{ id: string; prompt: string; imageData?: string }> {
   if (Array.isArray(slide.visualItems) && slide.visualItems.length > 0) {
     return slide.visualItems.filter((item) => item?.id);
   }
@@ -157,6 +157,7 @@ function toVisualItems(slide: EditablePptSlide) {
   return prompts.map((prompt, index) => ({
     id: `auto-${index + 1}`,
     prompt,
+    imageData: slide.imageData || "",
   }));
 }
 
