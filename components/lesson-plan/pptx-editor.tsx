@@ -2559,7 +2559,7 @@ function SlideThumbnail({
     <button
       type="button"
       onClick={onClick}
-      className={`group flex h-[236px] min-h-[236px] max-h-[236px] w-[188px] shrink-0 flex-col rounded-2xl border p-3 text-left transition lg:w-full ${
+      className={`group flex h-59 min-h-59 max-h-59 w-47 shrink-0 flex-col rounded-2xl border p-3 text-left transition lg:w-full ${
         active
           ? "border-blue-500 bg-white shadow-[0_0_0_2px_rgba(59,130,246,0.14),0_12px_28px_rgba(15,23,42,0.10)] dark:border-cyan-400 dark:bg-slate-800/90"
           : "border-slate-200/90 bg-white hover:border-blue-300 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900/60"
