@@ -15,6 +15,12 @@ import { QuizSubscribeModal } from "@/components/quiz/subscribe-modal";
 import { trackGaEvent } from "@/lib/ga-client";
 import type { GamifiedMode } from "@/lib/quiz-question-types";
 
+function cleanAnswerMeta(value: unknown) {
+  return String(value || "")
+    .replace(/\n?__QMETA_V1__[A-Za-z0-9+/=]+$/g, "")
+    .trim();
+}
+
 export default function Dashboard() {
   const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState("");
@@ -331,13 +337,13 @@ export default function Dashboard() {
     let textToCopy = `${quiz.title}\n\n${quiz.instructions}\n\n`;
     quiz.questions.forEach((q: any, i: number) => {
       textToCopy += `${i + 1}. ${q.question}\n`;
-      q.options.forEach((opt: string, j: number) => {
+      (Array.isArray(q.options) ? q.options : []).forEach((opt: string, j: number) => {
         textToCopy += `   ${String.fromCharCode(97 + j)}) ${opt}\n`;
       });
-      textToCopy += `    Answer: ${q.answer}\n\n`;
+      textToCopy += `    Answer: ${cleanAnswerMeta(q.answer)}\n\n`;
     });
     await navigator.clipboard.writeText(textToCopy);
-    alert("Copied formatted quiz to clipboard!");
+    setInfoMessage("Copied formatted quiz to clipboard.");
   };
 
   const buildQuizPdfBlob = (): Blob | null => {
@@ -376,10 +382,10 @@ export default function Dashboard() {
 
     quiz.questions.forEach((q: any, i: number) => {
       addLine(`${i + 1}. ${q.question ?? ""}`, 0, "bold");
-      q.options.forEach((opt: string, j: number) =>
+      (Array.isArray(q.options) ? q.options : []).forEach((opt: string, j: number) =>
         addLine(`   ${String.fromCharCode(97 + j)}) ${opt ?? ""}`, 0),
       );
-      addLine(`   Answer: ${q.answer ?? ""}`, 0, "italic");
+      addLine(`   Answer: ${cleanAnswerMeta(q.answer)}`, 0, "italic");
       y += 10;
     });
 
@@ -405,15 +411,22 @@ export default function Dashboard() {
       return setShowSubscribeModal(true);
 
     try {
+      const exportQuiz = {
+        ...quiz,
+        questions: (Array.isArray(quiz.questions) ? quiz.questions : []).map((q: any) => ({
+          ...q,
+          answer: cleanAnswerMeta(q.answer),
+        })),
+      };
       const res = await fetch("/api/download-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quiz, format: "word" }),
+        body: JSON.stringify({ quiz: exportQuiz, format: "word" }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Failed to download Word file");
+        setError(data.error || "Failed to download Word file");
         return;
       }
 
@@ -428,7 +441,7 @@ export default function Dashboard() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("Error downloading Word file");
+      setError("Error downloading Word file");
     }
   };
 
@@ -438,15 +451,22 @@ export default function Dashboard() {
       return setShowSubscribeModal(true);
 
     try {
+      const exportQuiz = {
+        ...quiz,
+        questions: (Array.isArray(quiz.questions) ? quiz.questions : []).map((q: any) => ({
+          ...q,
+          answer: cleanAnswerMeta(q.answer),
+        })),
+      };
       const res = await fetch("/api/download-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quiz, format: "ppt" }),
+        body: JSON.stringify({ quiz: exportQuiz, format: "ppt" }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Failed to download PPT file");
+        setError(data.error || "Failed to download PPT file");
         return;
       }
 
@@ -461,7 +481,7 @@ export default function Dashboard() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("Error downloading PPT file");
+      setError("Error downloading PPT file");
     }
   };
 
@@ -732,7 +752,7 @@ export default function Dashboard() {
   }, [infoMessage]);
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 bg-transparent">
       {!liteMode && <Tour steps={quizTourSteps} tourId="home-quiz" />}
       <QuizPageHeader
         isPremiumAdaptiveEnabled={isPremiumAdaptiveEnabled}
@@ -752,10 +772,15 @@ export default function Dashboard() {
       />
 
       <section className="flex flex-col lg:flex-row gap-6 justify-center w-full">
-        <aside className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 lg:w-36">
+        <aside
+          id="quiz-item-mix"
+          className="relative overflow-hidden rounded-2xl border border-amber-200/70 bg-linear-to-b from-amber-50 via-white to-zinc-50 p-3 shadow-[0_10px_30px_-18px_rgba(245,158,11,0.75)] lg:w-56 dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800"
+        >
+          <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-amber-300/25 blur-2xl" />
           <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-zinc-700">Item Mix</div>
+            <div className="text-sm font-semibold text-zinc-800 dark:text-slate-100">Item Mix</div>
             <button
+              id="quiz-item-mix-clear"
               type="button"
               onClick={() =>
                 setQuestionMix({
@@ -769,12 +794,12 @@ export default function Dashboard() {
                   gamified: 0,
                 })
               }
-              className="h-6 rounded border border-zinc-300 bg-white px-2 text-[10px] font-medium text-zinc-700 hover:bg-zinc-100"
+              className="h-6 rounded-md border border-zinc-300/80 bg-white/90 px-2 text-[10px] font-semibold text-zinc-700 hover:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               Clear
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 rounded-xl border border-zinc-200/80 bg-white/80 p-2 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-800">
             {[
               { key: "mcq", label: "MCQ" },
               { key: "trueFalse", label: "T/F" },
@@ -785,8 +810,11 @@ export default function Dashboard() {
               { key: "worksheet", label: "Worksheet" },
               { key: "gamified", label: "Game" },
             ].map((entry) => (
-              <label key={entry.key} className="flex items-center justify-between gap-2 text-xs text-zinc-700">
-                <span>{entry.label}</span>
+              <label
+                key={entry.key}
+                className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-xs text-zinc-700 transition hover:bg-amber-50/70 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                <span className="font-medium">{entry.label}</span>
                 <input
                   type="number"
                   min={0}
@@ -800,12 +828,12 @@ export default function Dashboard() {
                       [entry.key]: safe,
                     });
                   }}
-                  className="h-7 w-14 rounded border border-zinc-300 bg-white px-1 text-center text-xs text-zinc-900 outline-none"
+                  className="h-7 w-14 rounded-md border border-zinc-300 bg-white px-1 text-center text-xs font-semibold text-zinc-900 outline-none ring-amber-200 transition focus:ring-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                 />
               </label>
             ))}
           </div>
-          <div className="mt-3 rounded border border-zinc-200 bg-white px-2 py-1 text-center text-xs text-zinc-600">
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/70 px-2 py-1 text-center text-xs font-semibold text-amber-800 dark:border-slate-700 dark:bg-slate-800 dark:text-amber-300">
             {questionMix.mcq +
               questionMix.trueFalse +
               questionMix.fillBlank +
@@ -818,16 +846,17 @@ export default function Dashboard() {
             {numberOfItems}
           </div>
           {questionMix.gamified > 0 && (
-            <div className="mt-2">
-              <label className="mb-1 block text-[11px] font-medium text-zinc-700">Game Type</label>
+            <div className="mt-2 rounded-lg border border-zinc-200 bg-white/80 p-2 dark:border-slate-700 dark:bg-slate-800">
+              <label className="mb-1 block text-[11px] font-semibold text-zinc-700 dark:text-slate-200">Game Type</label>
               <select
+                id="quiz-gamified-mode"
                 value={gamifiedMode}
                 onChange={(e) => setGamifiedMode(e.target.value as GamifiedMode)}
-                className="h-8 w-full rounded border border-zinc-300 bg-white px-2 text-xs text-zinc-900"
+                className="h-8 w-full rounded-md border border-zinc-300 bg-white px-2 text-xs font-medium text-zinc-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
               >
                 <option value="puzzle">Puzzle Quiz</option>
-                <option value="bingo">Bingo Challenge</option>
-                <option value="sudoku">Sudoku-style Logic</option>
+                <option value="bingo">Super Race</option>
+                <option value="sudoku">Sudoku Logic</option>
               </select>
             </div>
           )}

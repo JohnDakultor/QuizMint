@@ -194,6 +194,7 @@ export default function HomeDashboardPage() {
   const [studentAttempts, setStudentAttempts] = useState<StudentAttemptSummary[]>([]);
   const [attemptsLoading, setAttemptsLoading] = useState(true);
   const [quizActionLoadingId, setQuizActionLoadingId] = useState<number | null>(null);
+  const [pendingDeleteQuizId, setPendingDeleteQuizId] = useState<number | null>(null);
   const [, setTick] = useState(0);
   const dashboardTourSteps = [
     {
@@ -361,8 +362,6 @@ export default function HomeDashboardPage() {
   }
 
   async function handleDeleteQuiz(quizId: number) {
-    const confirmed = window.confirm("Delete this quiz and all student attempts?");
-    if (!confirmed) return;
     try {
       setQuizActionLoadingId(quizId);
       const res = await fetch(`/api/quizzes/${quizId}`, { method: "DELETE" });
@@ -407,22 +406,24 @@ export default function HomeDashboardPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+   <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 bg-transparent">
       <Tour steps={dashboardTourSteps} tourId="home-dashboard" />
       <div
         id="dashboard-hero"
-        className="rounded-2xl border border-indigo-200/40 bg-linear-to-r from-indigo-900 via-blue-900 to-cyan-800 text-white p-6 shadow-lg"
+        className="relative overflow-hidden rounded-3xl border border-indigo-200/40 bg-linear-to-r from-slate-950 via-indigo-900 to-cyan-800 text-white p-4 sm:p-6 shadow-[0_20px_55px_-20px_rgba(30,64,175,0.65)]"
       >
+        <div className="pointer-events-none absolute -top-14 -right-10 h-36 w-36 rounded-full bg-cyan-300/20 blur-2xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-20 h-44 w-44 rounded-full bg-indigo-400/20 blur-3xl" />
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
-            <p className="text-blue-100 mt-1">Manage lesson planning, quiz creation, and classroom workflow from one place.</p>
+            <h1 className="text-xl sm:text-3xl font-bold">Dashboard</h1>
+            <p className="text-sm sm:text-base text-blue-100 mt-1">Manage lesson planning, quiz creation, and classroom workflow from one place.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge className="bg-white/20 text-white border border-white/20">
               Plan: {(data?.subscriptionPlan || "free").toUpperCase()}
             </Badge>
-            <Button asChild className="bg-white text-indigo-900 hover:bg-blue-50">
+            <Button asChild className="h-9 sm:h-10 bg-white text-indigo-900 hover:bg-blue-50">
               <Link href="/generate-quiz">Open Quiz Generator</Link>
             </Button>
           </div>
@@ -435,8 +436,8 @@ export default function HomeDashboardPage() {
         </Alert>
       )}
 
-      <div id="dashboard-stats" className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border-indigo-200 bg-linear-to-brrom-indigo-50 to-blue-50 shadow-sm">
+      <div id="dashboard-stats" className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <Card className="border-indigo-200/70 bg-linear-to-br from-indigo-50 to-blue-50 shadow-[0_10px_24px_-18px_rgba(79,70,229,0.7)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
               <Brain className="w-4 h-4 text-indigo-600" /> Quizzes Generated
@@ -446,12 +447,12 @@ export default function HomeDashboardPage() {
             {loading ? (
               <SkeletonLoading className="h-9 w-24" />
             ) : (
-              <div className="text-3xl font-bold text-zinc-900">{data?.quizCount ?? 0}</div>
+              <div className="text-2xl sm:text-3xl font-bold text-zinc-900">{data?.quizCount ?? 0}</div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border-cyan-200 bg-linear-to-br from-cyan-50 to-sky-50 shadow-sm">
+        <Card className="border-cyan-200/70 bg-linear-to-br from-cyan-50 to-sky-50 shadow-[0_10px_24px_-18px_rgba(6,182,212,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-indigo-600" /> Lesson Plans Generated
@@ -461,12 +462,12 @@ export default function HomeDashboardPage() {
             {loading ? (
               <SkeletonLoading className="h-9 w-24" />
             ) : (
-              <div className="text-3xl font-bold text-zinc-900">{data?.lessonPlanCount ?? 0}</div>
+              <div className="text-2xl sm:text-3xl font-bold text-zinc-900">{data?.lessonPlanCount ?? 0}</div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border-violet-200 bg-linear-to-br from-violet-50 to-fuchsia-50 shadow-sm">
+        <Card className="border-violet-200/70 bg-linear-to-br from-violet-50 to-fuchsia-50 shadow-[0_10px_24px_-18px_rgba(139,92,246,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
               <Clock3 className="w-4 h-4 text-indigo-600" /> Usage / Reset Timer
@@ -476,14 +477,14 @@ export default function HomeDashboardPage() {
             {loading ? (
               <SkeletonLoading className="h-6 w-40" />
             ) : (
-              <div className="text-lg font-semibold text-zinc-900">{usageStatus}</div>
+              <div className="text-base sm:text-lg font-semibold text-zinc-900">{usageStatus}</div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="border-amber-200 bg-linear-to-brrom-amber-50 to-yellow-50 shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        <Card className="border-amber-200/80 bg-linear-to-br from-amber-50 to-yellow-50 shadow-[0_10px_24px_-18px_rgba(245,158,11,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
           <CardHeader>
             <CardTitle className="text-base">Today Snapshot</CardTitle>
           </CardHeader>
@@ -508,7 +509,7 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-emerald-200 bg-linear-to-br from-emerald-50 to-teal-50 shadow-sm">
+        <Card className="border-emerald-200/80 bg-linear-to-br from-emerald-50 to-teal-50 shadow-[0_10px_24px_-18px_rgba(16,185,129,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
           <CardHeader>
             <CardTitle className="text-base">Usage Health</CardTitle>
           </CardHeader>
@@ -534,13 +535,13 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-pink-200 bg-linear-to-br from-pink-50 to-rose-50 shadow-sm">
+        <Card className="border-pink-200/80 bg-linear-to-br from-pink-50 to-rose-50 shadow-[0_10px_24px_-18px_rgba(244,63,94,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
           <CardHeader>
             <CardTitle className="text-base">Classroom Queue</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-zinc-500">Continue where you left off</p>
-            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2">
+            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
               <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Last Quiz</p>
               {loading ? (
                 <>
@@ -563,7 +564,7 @@ export default function HomeDashboardPage() {
             <Button asChild variant="outline" className="w-full">
               <Link href="/generate-quiz">Resume Quiz Workflow</Link>
             </Button>
-            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2">
+            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
               <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Last Lesson Plan</p>
               {loading ? (
                 <>
@@ -590,15 +591,18 @@ export default function HomeDashboardPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card id="dashboard-recent-quizzes" className="border-blue-200 bg-linear-to-br from-white to-blue-50 shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        <Card
+          id="dashboard-recent-quizzes"
+          className="border-blue-200/80 bg-linear-to-br from-white to-blue-50 shadow-[0_12px_28px_-20px_rgba(37,99,235,0.85)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800"
+        >
           <CardHeader>
             <CardTitle className="text-base">Recent Quizzes</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {loading ? (
               Array.from({ length: 3 }).map((_, idx) => (
-                <div key={idx} className="rounded-lg border border-blue-100 bg-white/90 px-3 py-2">
+                <div key={idx} className="rounded-lg border border-blue-100 bg-white/90 px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
                   <SkeletonLoading className="h-4 w-48" />
                   <SkeletonLoading className="mt-1 h-3 w-36" />
                 </div>
@@ -614,7 +618,10 @@ export default function HomeDashboardPage() {
                   : null;
                 const busy = quizActionLoadingId === quiz.id;
                 return (
-                  <details key={quiz.id} className="group border border-blue-100 bg-white/90 rounded-lg px-3 py-2">
+                  <details
+                    key={quiz.id}
+                    className="group border border-blue-100 bg-white/95 rounded-xl px-3 py-2 shadow-[0_6px_16px_-12px_rgba(37,99,235,0.55)] dark:border-slate-700 dark:bg-slate-900"
+                  >
                     <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-medium truncate">{quiz.title}</p>
@@ -650,12 +657,12 @@ export default function HomeDashboardPage() {
                           size="sm"
                           variant="destructive"
                           disabled={busy}
-                          onClick={() => void handleDeleteQuiz(quiz.id)}
+                          onClick={() => setPendingDeleteQuizId(quiz.id)}
                         >
                           Delete Quiz
                         </Button>
                       </div>
-                      <div className="rounded border bg-white p-2">
+                      <div className="rounded border bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
                         <p className="text-xs font-semibold text-zinc-600 mb-1">
                           Attempts ({attemptsForQuiz.length})
                         </p>
@@ -686,14 +693,17 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card id="dashboard-recent-lessons" className="border-violet-200 bg-linear-to-br from-white to-violet-50 shadow-sm">
+        <Card
+          id="dashboard-recent-lessons"
+          className="border-violet-200/80 bg-linear-to-br from-white to-violet-50 shadow-[0_12px_28px_-20px_rgba(139,92,246,0.85)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800"
+        >
           <CardHeader>
             <CardTitle className="text-base">Recent Lesson Plans</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {loading ? (
               Array.from({ length: 3 }).map((_, idx) => (
-                <div key={idx} className="rounded-lg border border-violet-100 bg-white/90 px-3 py-2">
+                <div key={idx} className="rounded-lg border border-violet-100 bg-white/90 px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
                   <SkeletonLoading className="h-4 w-48" />
                   <SkeletonLoading className="mt-1 h-3 w-36" />
                 </div>
@@ -702,7 +712,10 @@ export default function HomeDashboardPage() {
               <p className="text-sm text-zinc-500">No lesson plans yet.</p>
             ) : (
               data.recentPlans.map((plan) => (
-                <div key={plan.id} className="flex items-center justify-between border border-violet-100 bg-white/90 rounded-lg px-3 py-2">
+                <div
+                  key={plan.id}
+                  className="flex items-center justify-between border border-violet-100 bg-white/95 rounded-xl px-3 py-2 shadow-[0_6px_16px_-12px_rgba(139,92,246,0.45)] dark:border-slate-700 dark:bg-slate-900"
+                >
                   <div className="min-w-0">
                     <p className="font-medium truncate">{plan.title}</p>
                     <p className="text-xs text-zinc-500">{plan.subject} - {new Date(plan.createdAt).toLocaleDateString()}</p>
@@ -720,7 +733,7 @@ export default function HomeDashboardPage() {
 
       <Card
         id="dashboard-student-submissions"
-        className="border-slate-200 bg-linear-to-br from-white to-slate-50 shadow-sm"
+        className="border-slate-200/90 bg-linear-to-br from-white to-slate-50 shadow-[0_12px_28px_-20px_rgba(71,85,105,0.55)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800"
       >
         <CardHeader>
           <CardTitle className="text-base">Student Quiz Submissions</CardTitle>
@@ -728,7 +741,7 @@ export default function HomeDashboardPage() {
         <CardContent className="space-y-3">
           {attemptsLoading ? (
             Array.from({ length: 3 }).map((_, idx) => (
-              <div key={idx} className="rounded-lg border border-slate-100 bg-white px-3 py-2">
+              <div key={idx} className="rounded-lg border border-slate-100 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
                 <SkeletonLoading className="h-4 w-56" />
                 <SkeletonLoading className="mt-1 h-3 w-64" />
               </div>
@@ -750,7 +763,7 @@ export default function HomeDashboardPage() {
                 return (
                   <details
                     key={`${first.quizId}-${first.quizTitle}`}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-[0_6px_16px_-12px_rgba(71,85,105,0.35)]"
                   >
                     <summary className="cursor-pointer list-none">
                       <p className="text-sm font-medium truncate">{first.quizTitle}</p>
@@ -782,7 +795,43 @@ export default function HomeDashboardPage() {
         </CardContent>
       </Card>
 
-      <Card id="dashboard-quick-actions" className="border-indigo-200 bg-linear-to-r from-indigo-50 to-cyan-50 shadow-sm">
+      {pendingDeleteQuizId !== null && (
+        <div className="fixed left-0 top-0 z-110 h-dvh w-screen bg-black/55 backdrop-blur-[1px]">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-5 shadow-2xl">
+              <h3 className="text-lg font-semibold text-zinc-900">Delete Quiz?</h3>
+              <p className="mt-2 text-sm text-zinc-600">
+                This will permanently delete the quiz and all student attempts.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setPendingDeleteQuizId(null)}
+                  disabled={quizActionLoadingId === pendingDeleteQuizId}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    const id = pendingDeleteQuizId;
+                    setPendingDeleteQuizId(null);
+                    if (id !== null) await handleDeleteQuiz(id);
+                  }}
+                  disabled={quizActionLoadingId === pendingDeleteQuizId}
+                >
+                  Confirm Delete
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Card
+        id="dashboard-quick-actions"
+        className="border-indigo-200/80 bg-linear-to-r from-indigo-50 to-cyan-50 shadow-[0_12px_28px_-20px_rgba(79,70,229,0.8)]"
+      >
         <CardHeader>
           <CardTitle className="text-base">Dashboard Quick Actions</CardTitle>
         </CardHeader>
@@ -799,7 +848,10 @@ export default function HomeDashboardPage() {
         </CardContent>
       </Card>
 
-      <Card id="dashboard-templates" className="border-fuchsia-200 bg-linear-to-r from-fuchsia-50 to-pink-50 shadow-sm">
+      <Card
+        id="dashboard-templates"
+        className="border-fuchsia-200/80 bg-linear-to-r from-fuchsia-50 to-pink-50 shadow-[0_12px_28px_-20px_rgba(192,38,211,0.7)]"
+      >
         <CardHeader>
           <CardTitle className="text-base">Quick Templates</CardTitle>
         </CardHeader>
@@ -808,7 +860,10 @@ export default function HomeDashboardPage() {
             <p className="text-sm font-semibold text-fuchsia-700">Quiz Generator Samples (10)</p>
             <div className="max-h-105 overflow-auto premium-scrollbar space-y-2 pr-1">
               {QUIZ_TEMPLATES.map((template, idx) => (
-                <div key={template} className="border border-fuchsia-200 rounded-lg p-3 bg-white/95 hover:bg-white transition space-y-2">
+                <div
+                  key={template}
+                  className="border border-fuchsia-200 rounded-xl p-3 bg-white/95 hover:bg-white transition space-y-2 shadow-[0_6px_16px_-12px_rgba(192,38,211,0.45)]"
+                >
                   <p className="text-xs font-medium text-fuchsia-700">Quiz #{idx + 1}</p>
                   <p className="text-sm text-zinc-700">{template}</p>
                   <Button size="sm" variant="outline" onClick={() => copyTemplate(template)}>
@@ -825,7 +880,10 @@ export default function HomeDashboardPage() {
               {LESSON_TEMPLATES.map((template, idx) => {
                 const full = `Topic: ${template.topic}\nSubject: ${template.subject}\nGrade: ${template.grade}\nDays: ${template.days}\nMinutes per day: ${template.minutesPerDay}\nObjectives: ${template.objectives}\nConstraints: ${template.constraints}`;
                 return (
-                  <div key={full} className="border border-fuchsia-200 rounded-lg p-3 bg-white/95 hover:bg-white transition space-y-2">
+                  <div
+                    key={full}
+                    className="border border-fuchsia-200 rounded-xl p-3 bg-white/95 hover:bg-white transition space-y-2 shadow-[0_6px_16px_-12px_rgba(192,38,211,0.45)]"
+                  >
                     <p className="text-xs font-medium text-fuchsia-700">Lesson #{idx + 1}</p>
                     <p className="text-sm text-zinc-700"><span className="font-medium">Topic:</span> {template.topic}</p>
                     <p className="text-sm text-zinc-700"><span className="font-medium">Subject:</span> {template.subject}</p>

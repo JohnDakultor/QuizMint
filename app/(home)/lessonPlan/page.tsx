@@ -1,903 +1,4 @@
-// // app/lesson-plan/page.tsx - IMPROVED UI AND STRUCTURE
-// "use client";
 
-// import { useState, useEffect } from "react";
-// import { Card, CardContent } from "@/components/ui/card";
-// import { Button } from "@/components/ui/button";
-// import { Input } from "@/components/ui/input";
-// import { Textarea } from "@/components/ui/textarea";
-// import { 
-//   Loader2, Sparkles, Download, Clock, AlertCircle, 
-//   Target, Search, BookOpen, Zap, CheckSquare, 
-//   ListChecks, ListOrdered, Hash, Users, Lightbulb,
-//   Brain, ClipboardCheck, BookCheck, CheckCircle2,
-//   ArrowRight, ArrowLeftRight, FileQuestion, SquareCheck
-// } from "lucide-react";
-
-// const FREE_PLAN_LIMIT = 3;
-
-// // Usage Indicator Component
-// function UsageIndicator({ usage }: { usage: any }) {
-//   if (!usage) return null;
-  
-//   const used = usage.used || 0;
-//   const limit = usage.limit || FREE_PLAN_LIMIT;
-//   const percentage = Math.min((used / limit) * 100, 100);
-//   const nextReset = usage.nextReset ? new Date(usage.nextReset) : null;
-  
-//   const getTimeUntilReset = () => {
-//     if (!nextReset) return "";
-//     const now = new Date();
-//     const diffMs = nextReset.getTime() - now.getTime();
-    
-//     if (diffMs <= 0) return "Resets soon";
-    
-//     const hours = Math.floor(diffMs / (1000 * 60 * 60));
-//     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
-//     return `Resets in ${hours}h ${minutes}m`;
-//   };
-  
-//   return (
-//     <div className="mt-4 p-4 bg-linear-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-//       <div className="flex items-center justify-between mb-2">
-//         <div className="flex items-center gap-2">
-//           <Clock className="h-4 w-4 text-blue-600" />
-//           <span className="font-semibold text-blue-700">Free Plan Usage</span>
-//         </div>
-//         <span className="text-sm text-blue-600 font-medium bg-white px-2 py-1 rounded">
-//           {used}/{limit} lesson plans
-//         </span>
-//       </div>
-//       <div className="w-full bg-blue-100 rounded-full h-2.5 mb-2">
-//         <div 
-//           className={`h-2.5 rounded-full transition-all duration-300 ${
-//             percentage >= 90 ? "bg-red-500" : 
-//             percentage >= 70 ? "bg-yellow-500" : "bg-linear-to-r from-blue-500 to-indigo-500"
-//           }`}
-//           style={{ width: `${percentage}%` }}
-//         ></div>
-//       </div>
-//       <div className="flex justify-between items-center text-sm">
-//         <span className="text-blue-600 font-medium">
-//           {used === limit ? "Limit reached" : `${limit - used} remaining`}
-//         </span>
-//         <span className="text-blue-500 font-medium">
-//           {getTimeUntilReset()}
-//         </span>
-//       </div>
-//     </div>
-//   );
-// }
-
-// // Enhanced 4A's Phase Component
-// function FourAsPhaseCard({ phase, index }: { phase: any, index: number }) {
-//   const getPhaseDetails = (phaseName: string) => {
-//     switch (phaseName) {
-//       case "ACTIVITY":
-//         return {
-//           icon: <Target className="h-6 w-6 text-white" />,
-//           gradient: "from-blue-500 to-cyan-500",
-//           bg: "bg-gradient-to-br from-blue-50 to-cyan-50",
-//           border: "border-blue-200",
-//           text: "text-blue-800",
-//           title: "Activity",
-//           subtitle: "Engagement Phase",
-//           description: "Activate prior knowledge and generate interest"
-//         };
-//       case "ANALYSIS":
-//         return {
-//           icon: <Search className="h-6 w-6 text-white" />,
-//           gradient: "from-green-500 to-emerald-500",
-//           bg: "bg-gradient-to-br from-green-50 to-emerald-50",
-//           border: "border-green-200",
-//           text: "text-green-800",
-//           title: "Analysis",
-//           subtitle: "Exploration Phase",
-//           description: "Develop critical thinking through guided exploration"
-//         };
-//       case "ABSTRACTION":
-//         return {
-//           icon: <BookOpen className="h-6 w-6 text-white" />,
-//           gradient: "from-purple-500 to-violet-500",
-//           bg: "bg-gradient-to-br from-purple-50 to-violet-50",
-//           border: "border-purple-200",
-//           text: "text-purple-800",
-//           title: "Abstraction",
-//           subtitle: "Concept Development",
-//           description: "Formal presentation of concepts and principles"
-//         };
-//       case "APPLICATION":
-//         return {
-//           icon: <Zap className="h-6 w-6 text-white" />,
-//           gradient: "from-amber-500 to-orange-500",
-//           bg: "bg-gradient-to-br from-amber-50 to-orange-50",
-//           border: "border-amber-200",
-//           text: "text-amber-800",
-//           title: "Application",
-//           subtitle: "Practice & Assessment",
-//           description: "Apply knowledge and demonstrate understanding"
-//         };
-//       default:
-//         return {
-//           icon: <Lightbulb className="h-6 w-6 text-white" />,
-//           gradient: "from-gray-500 to-slate-500",
-//           bg: "bg-gradient-to-br from-gray-50 to-slate-50",
-//           border: "border-gray-200",
-//           text: "text-gray-800",
-//           title: "Phase",
-//           subtitle: "Learning Phase",
-//           description: "Learning activity"
-//         };
-//     }
-//   };
-
-//   const details = getPhaseDetails(phase.phase);
-//   const phaseNumber = index + 1;
-
-//   return (
-//     <div className={`relative p-5 rounded-2xl border-2 ${details.bg} ${details.border} shadow-sm hover:shadow-md transition-shadow duration-300`}>
-//       {/* Phase Number Badge */}
-//       <div className={`absolute -top-3 -left-3 w-8 h-8 rounded-full flex items-center justify-center bg-linear-to-r ${details.gradient} text-white font-bold text-sm shadow-lg`}>
-//         {phaseNumber}
-//       </div>
-      
-//       {/* Header */}
-//       <div className="flex items-start gap-4 mb-5">
-//         <div className={`p-3 rounded-xl bg-linear-to-r ${details.gradient} shadow-md`}>
-//           {details.icon}
-//         </div>
-//         <div className="flex-1 min-w-0">
-//           <div className="flex justify-between items-start">
-//             <div className="min-w-0">
-//               <h4 className={`font-bold text-xl ${details.text} mb-1 truncate`}>
-//                 {phase.phase || details.title}
-//               </h4>
-//               <p className="text-gray-600 text-sm font-medium">
-//                 {phase.title || details.subtitle}
-//               </p>
-//               <div className="flex items-center gap-2 mt-2">
-//                 <span className="text-xs font-semibold bg-white px-2 py-1 rounded-full border">
-//                   {phase.timeMinutes || 10} min
-//                 </span>
-//                 <span className="text-xs text-gray-500">ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢</span>
-//                 <span className="text-xs text-gray-600">Phase {phaseNumber}/4</span>
-//               </div>
-//             </div>
-//           </div>
-//         </div>
-//       </div>
-
-//       {/* Description */}
-//       <div className="mb-5">
-//         <p className="text-gray-700 leading-relaxed line-clamp-3">
-//           {phase.description || details.description}
-//         </p>
-//       </div>
-
-//       {/* Teacher & Student Roles */}
-//       <div className="space-y-3 mb-5">
-//         <div className="grid grid-cols-1 gap-3">
-//           <div className="bg-white/70 backdrop-blur-sm rounded-lg p-3 border">
-//             <div className="flex items-center gap-2 mb-2">
-//               <Users className="h-4 w-4 text-red-500" />
-//               <p className="font-semibold text-red-600 text-sm">Teacher Role</p>
-//             </div>
-//             <p className="text-gray-700 text-sm leading-tight">
-//               {phase.teacherRole || "Facilitator and guide"}
-//             </p>
-//           </div>
-//           <div className="bg-white/70 backdrop-blur-sm rounded-lg p-3 border">
-//             <div className="flex items-center gap-2 mb-2">
-//               <Brain className="h-4 w-4 text-blue-500" />
-//               <p className="font-semibold text-blue-600 text-sm">Student Role</p>
-//             </div>
-//             <p className="text-gray-700 text-sm leading-tight">
-//               {phase.studentRole || "Active participants"}
-//             </p>
-//           </div>
-//         </div>
-//       </div>
-
-//       {/* Materials */}
-//       {phase.materials && Array.isArray(phase.materials) && phase.materials.length > 0 && (
-//         <div className="pt-4 border-t border-gray-300/50">
-//           <div className="flex items-center gap-2 mb-3">
-//             <ClipboardCheck className="h-4 w-4 text-gray-500" />
-//             <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Materials</p>
-//           </div>
-//           <div className="flex flex-wrap gap-1.5">
-//             {phase.materials.slice(0, 3).map((material: string, i: number) => (
-//               <span key={i} className="text-xs bg-white/80 backdrop-blur-sm px-2.5 py-1.5 border rounded-lg font-medium text-gray-700">
-//                 {material}
-//               </span>
-//             ))}
-//             {phase.materials.length > 3 && (
-//               <span className="text-xs bg-white/80 backdrop-blur-sm px-2.5 py-1.5 border rounded-lg font-medium text-gray-500">
-//                 +{phase.materials.length - 3} more
-//               </span>
-//             )}
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-// // Specific Activity Component
-// function SpecificActivityCard({ phase, activity }: { phase: string, activity: any }) {
-//   const getActivityDetails = (phase: string) => {
-//     switch (phase) {
-//       case "ACTIVITY":
-//         return {
-//           icon: <BookCheck className="h-6 w-6 text-white" />,
-//           gradient: "from-blue-500 to-cyan-500",
-//           bg: "bg-gradient-to-br from-blue-50 to-cyan-50",
-//           border: "border-blue-200",
-//           text: "text-blue-800",
-//           title: "Reading Comprehension",
-//           subtitle: "Engagement Activity"
-//         };
-//       case "ANALYSIS":
-//         return {
-//           icon: <SquareCheck className="h-6 w-6 text-white" />,
-//           gradient: "from-green-500 to-emerald-500",
-//           bg: "bg-gradient-to-br from-green-50 to-emerald-50",
-//           border: "border-green-200",
-//           text: "text-green-800",
-//           title: "True/False + Checklist",
-//           subtitle: "Analysis Activities"
-//         };
-//       case "ABSTRACTION":
-//         return {
-//           icon: <ArrowLeftRight className="h-6 w-6 text-white" />,
-//           gradient: "from-purple-500 to-violet-500",
-//           bg: "bg-gradient-to-br from-purple-50 to-violet-50",
-//           border: "border-purple-200",
-//           text: "text-purple-800",
-//           title: "Matching Type",
-//           subtitle: "Abstraction Activity"
-//         };
-//       case "APPLICATION":
-//         return {
-//           icon: <FileQuestion className="h-6 w-6 text-white" />,
-//           gradient: "from-amber-500 to-orange-500",
-//           bg: "bg-gradient-to-br from-amber-50 to-orange-50",
-//           border: "border-amber-200",
-//           text: "text-amber-800",
-//           title: "MCQ + Identification",
-//           subtitle: "Application Activities"
-//         };
-//       default:
-//         return {
-//           icon: <Lightbulb className="h-6 w-6 text-white" />,
-//           gradient: "from-gray-500 to-slate-500",
-//           bg: "bg-gradient-to-br from-gray-50 to-slate-50",
-//           border: "border-gray-200",
-//           text: "text-gray-800",
-//           title: "Activity",
-//           subtitle: "Learning Activity"
-//         };
-//     }
-//   };
-
-//   const details = getActivityDetails(phase);
-
-//   return (
-//     <div className={`p-6 rounded-2xl border-2 ${details.bg} ${details.border} shadow-sm`}>
-//       {/* Header */}
-//       <div className="flex items-center gap-4 mb-6">
-//         <div className={`p-3 rounded-xl bg-linear-to-r ${details.gradient} shadow-md`}>
-//           {details.icon}
-//         </div>
-//         <div>
-//           <h5 className={`font-bold text-xl ${details.text} mb-1`}>
-//             {activity.type || details.title}
-//           </h5>
-//           <p className="text-gray-600 text-sm font-medium">
-//             {details.subtitle}
-//           </p>
-//         </div>
-//       </div>
-
-//       {/* Content based on activity type */}
-//       <div className="space-y-6">
-//         {phase === "ACTIVITY" && (
-//           <>
-//             {activity.readingPassage && (
-//               <div>
-//                 <div className="flex items-center gap-2 mb-3">
-//                   <BookOpen className="h-4 w-4 text-blue-500" />
-//                   <h6 className="font-semibold text-gray-800">Reading Passage</h6>
-//                 </div>
-//                 <div className="p-4 bg-white rounded-xl border border-blue-100">
-//                   <p className="text-gray-700 leading-relaxed whitespace-pre-line">
-//                     {activity.readingPassage}
-//                   </p>
-//                 </div>
-//               </div>
-//             )}
-            
-//             {Array.isArray(activity.questions) && (
-//               <div>
-//                 <div className="flex items-center gap-2 mb-3">
-//                   <CheckCircle2 className="h-4 w-4 text-blue-500" />
-//                   <h6 className="font-semibold text-gray-800">Comprehension Questions</h6>
-//                 </div>
-//                 <div className="space-y-3">
-//                   {activity.questions.map((q: any, i: number) => (
-//                     <div key={i} className="p-4 bg-white rounded-xl border border-gray-200">
-//                       <p className="font-medium text-gray-800 mb-3">
-//                         <span className="text-blue-600 font-bold mr-2">{i + 1}.</span>
-//                         {q.question}
-//                       </p>
-//                       {q.answer && (
-//                         <div className="mt-3 p-3 bg-linear-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-//                           <div className="flex items-center gap-2 mb-1">
-//                             <ArrowRight className="h-3 w-3 text-green-600" />
-//                             <p className="font-semibold text-green-700">Answer:</p>
-//                           </div>
-//                           <p className="text-green-700 pl-5">{q.answer}</p>
-//                         </div>
-//                       )}
-//                     </div>
-//                   ))}
-//                 </div>
-//               </div>
-//             )}
-//           </>
-//         )}
-
-//         {phase === "ANALYSIS" && (
-//           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-//             {/* True/False Section */}
-//             <div>
-//               <div className="flex items-center gap-2 mb-3">
-//                 <CheckSquare className="h-4 w-4 text-green-500" />
-//                 <h6 className="font-semibold text-gray-800">True/False Statements</h6>
-//               </div>
-//               <div className="space-y-3">
-//                 {Array.isArray(activity.trueFalse) && 
-//                   activity.trueFalse.map((tf: any, i: number) => (
-//                     <div key={i} className="p-3 bg-white rounded-xl border border-gray-200">
-//                       <p className="font-medium text-gray-800 mb-2">
-//                         <span className="text-green-600 font-bold mr-2">{i + 1}.</span>
-//                         {tf.statement}
-//                       </p>
-//                       <div className={`mt-2 p-2 rounded-lg border ${
-//                         tf.answer === "True" 
-//                           ? "bg-linear-to-r from-green-50 to-emerald-50 border-green-200" 
-//                           : "bg-linear-to-r from-red-50 to-rose-50 border-red-200"
-//                       }`}>
-//                         <div className="flex items-center gap-2">
-//                           {tf.answer === "True" ? (
-//                             <CheckCircle2 className="h-4 w-4 text-green-600" />
-//                           ) : (
-//                             <AlertCircle className="h-4 w-4 text-red-600" />
-//                           )}
-//                           <p className={tf.answer === "True" ? "text-green-700 font-semibold" : "text-red-700 font-semibold"}>
-//                             {tf.answer}
-//                           </p>
-//                         </div>
-//                       </div>
-//                     </div>
-//                   ))}
-//               </div>
-//             </div>
-            
-//             {/* Checklist Section */}
-//             <div>
-//               <div className="flex items-center gap-2 mb-3">
-//                 <ListChecks className="h-4 w-4 text-green-500" />
-//                 <h6 className="font-semibold text-gray-800">Self-assessment Checklist</h6>
-//               </div>
-//               <div className="p-4 bg-white rounded-xl border border-gray-200">
-//                 <ul className="space-y-3">
-//                   {Array.isArray(activity.checklist) && 
-//                     activity.checklist.map((item: string, i: number) => (
-//                       <li key={i} className="flex items-start gap-3">
-//                         <div className="h-5 w-5 border-2 border-green-400 rounded-md bg-white flex items-center justify-center mt-0.5">
-//                           <div className="h-2 w-2 rounded-full bg-green-500"></div>
-//                         </div>
-//                         <span className="text-gray-700">{item}</span>
-//                       </li>
-//                     ))}
-//                 </ul>
-//               </div>
-//             </div>
-//           </div>
-//         )}
-
-//         {phase === "ABSTRACTION" && (
-//           <>
-//             <div>
-//               <div className="flex items-center gap-2 mb-3">
-//                 <ListOrdered className="h-4 w-4 text-purple-500" />
-//                 <h6 className="font-semibold text-gray-800">Matching Exercise</h6>
-//               </div>
-//               <div className="space-y-3">
-//                 {Array.isArray(activity.pairs) && 
-//                   activity.pairs.map((pair: any, i: number) => (
-//                     <div key={i} className="p-4 bg-white rounded-xl border border-purple-100">
-//                       <div className="flex items-center justify-between">
-//                         <span className="font-medium text-gray-800 bg-purple-50 px-3 py-1.5 rounded-lg">
-//                           {pair.left}
-//                         </span>
-//                         <ArrowRight className="h-4 w-4 text-purple-400 mx-2" />
-//                         <span className="text-gray-700 bg-white px-3 py-1.5 rounded-lg border">
-//                           {pair.right}
-//                         </span>
-//                       </div>
-//                     </div>
-//                   ))}
-//               </div>
-//             </div>
-            
-//             {activity.explanation && (
-//               <div>
-//                 <div className="flex items-center gap-2 mb-3">
-//                   <Lightbulb className="h-4 w-4 text-purple-500" />
-//                   <h6 className="font-semibold text-gray-800">Concept Explanation</h6>
-//                 </div>
-//                 <div className="p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-purple-100">
-//                   <p className="text-gray-700 leading-relaxed">{activity.explanation}</p>
-//                 </div>
-//               </div>
-//             )}
-//           </>
-//         )}
-
-//         {phase === "APPLICATION" && (
-//           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-//             {/* Multiple Choice Section */}
-//             <div>
-//               <div className="flex items-center gap-2 mb-3">
-//                 <Hash className="h-4 w-4 text-amber-500" />
-//                 <h6 className="font-semibold text-gray-800">Multiple Choice Questions</h6>
-//               </div>
-//               <div className="space-y-4">
-//                 {Array.isArray(activity.multipleChoice) && 
-//                   activity.multipleChoice.map((mc: any, i: number) => (
-//                     <div key={i} className="p-4 bg-white rounded-xl border border-gray-200">
-//                       <p className="font-medium text-gray-800 mb-3">
-//                         <span className="text-amber-600 font-bold mr-2">{i + 1}.</span>
-//                         {mc.question}
-//                       </p>
-//                       <div className="space-y-2 ml-4">
-//                         {Array.isArray(mc.options) && mc.options.map((opt: string, optIndex: number) => {
-//                           const isCorrect = mc.answer && opt.startsWith(mc.answer);
-//                           return (
-//                             <div key={optIndex} className="flex items-center gap-2">
-//                               <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-//                                 isCorrect 
-//                                   ? "bg-linear-to-r from-green-500 to-emerald-500 text-white" 
-//                                   : "bg-gray-100 text-gray-600"
-//                               }`}>
-//                                 <span className="text-xs font-bold">{String.fromCharCode(65 + optIndex)}</span>
-//                               </div>
-//                               <p className={`${isCorrect ? "text-green-700 font-semibold" : "text-gray-700"}`}>
-//                                 {opt}
-//                               </p>
-//                             </div>
-//                           );
-//                         })}
-//                       </div>
-//                       {mc.answer && (
-//                         <div className="mt-4 p-3 bg-linear-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-//                           <div className="flex items-center gap-2">
-//                             <CheckCircle2 className="h-4 w-4 text-green-600" />
-//                             <p className="text-green-700 font-semibold">Correct Answer: {mc.answer}</p>
-//                           </div>
-//                         </div>
-//                       )}
-//                     </div>
-//                   ))}
-//               </div>
-//             </div>
-            
-//             {/* Identification Section */}
-//             <div>
-//               <div className="flex items-center gap-2 mb-3">
-//                 <ListChecks className="h-4 w-4 text-amber-500" />
-//                 <h6 className="font-semibold text-gray-800">Identification Exercise</h6>
-//               </div>
-              
-//               {/* Word Bank */}
-//               {activity.identification?.wordBank && (
-//                 <div className="mb-6 p-4 bg-linear-to-rrom-amber-50 to-orange-50 rounded-xl border border-amber-200">
-//                   <div className="flex items-center gap-2 mb-3">
-//                     <BookOpen className="h-4 w-4 text-amber-600" />
-//                     <p className="font-semibold text-gray-800">Word Bank</p>
-//                   </div>
-//                   <div className="flex flex-wrap gap-2">
-//                     {activity.identification.wordBank.map((word: string, i: number) => (
-//                       <span key={i} className="bg-white px-3 py-1.5 border rounded-lg text-sm font-medium shadow-sm">
-//                         {word}
-//                       </span>
-//                     ))}
-//                   </div>
-//                 </div>
-//               )}
-              
-//               {/* Clues */}
-//               {activity.identification?.clues && (
-//                 <div className="space-y-3">
-//                   {activity.identification.clues.map((clue: string, i: number) => (
-//                     <div key={i} className="p-3 bg-white rounded-xl border border-gray-200">
-//                       <p className="font-medium text-gray-800 mb-2">
-//                         <span className="text-amber-600 font-bold mr-2">{i + 1}.</span>
-//                         {clue}
-//                       </p>
-//                       {activity.identification.answers && 
-//                         activity.identification.answers[i] && (
-//                           <div className="mt-2 p-2 bg-linear-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-//                             <p className="text-green-700 font-medium">
-//                               <span className="font-semibold">Answer:</span> {activity.identification.answers[i]}
-//                             </p>
-//                           </div>
-//                         )}
-//                     </div>
-//                   ))}
-//                 </div>
-//               )}
-//             </div>
-//           </div>
-//         )}
-//       </div>
-//     </div>
-//   );
-// }
-
-// // Main Component
-// export default function LessonPlanPage() {
-//   const [loading, setLoading] = useState(false);
-//   const [lessonPlan, setLessonPlan] = useState<any>(null);
-//   const [error, setError] = useState<string | null>(null);
-//   const [downloading, setDownloading] = useState(false);
-//   const [formDataObject, setFormDataObject] = useState<any>(null);
-//   const [usageInfo, setUsageInfo] = useState<any>(null);
-
-//   async function generateLessonPlan(formData: FormData) {
-//     const formObj = Object.fromEntries(formData.entries());
-//     setFormDataObject(formObj);
-
-//     setLoading(true);
-//     setError(null);
-//     setLessonPlan(null);
-//     setUsageInfo(null);
-
-//     try {
-//       const res = await fetch("/api/generate-lesson-plan", {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify(formObj),
-//       });
-
-//       const data = await res.json().catch(() => ({}));
-      
-//       if (!res.ok) {
-//         if (res.status === 403 && data.error === "Free limit reached") {
-//           throw new Error(
-//             `${data.message || `You've reached your limit of ${FREE_PLAN_LIMIT} lesson plans.`}\n` +
-//             (data.resetTime ? `Limit resets at: ${new Date(data.resetTime).toLocaleTimeString()}` : "")
-//           );
-//         }
-//         throw new Error(data.error || data.message || "Failed to generate lesson plan");
-//       }
-      
-//       setLessonPlan(data.lessonPlan);
-//       setUsageInfo(data.usage);
-      
-//     } catch (err: any) {
-//       setError(err.message || "Failed to generate lesson plan");
-//     } finally {
-//       setLoading(false);
-//     }
-//   }
-
-//   async function downloadLessonPlan() {
-//     if (!lessonPlan || !formDataObject) return;
-//     setDownloading(true);
-
-//     try {
-//       if (usageInfo?.used >= FREE_PLAN_LIMIT) {
-//         throw new Error(`You've reached your limit of ${FREE_PLAN_LIMIT} lesson plans. Please wait 3 hours for your limit to reset.`);
-//       }
-
-//       const downloadData = {
-//         ...formDataObject,
-//         format: "docx",
-//         useCache: true
-//       };
-
-//       const res = await fetch("/api/generate-lesson-plan", {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify(downloadData),
-//       });
-
-//       if (!res.ok) {
-//         const errorText = await res.text();
-//         throw new Error(`Download failed: ${res.status} ${errorText}`);
-//       }
-
-//       const blob = await res.blob();
-//       const url = URL.createObjectURL(blob);
-      
-//       const link = document.createElement("a");
-//       link.href = url;
-//       link.download = `${formDataObject.topic || 'lesson_plan'}.docx`;
-      
-//       document.body.appendChild(link);
-//       link.click();
-      
-//       setTimeout(() => {
-//         document.body.removeChild(link);
-//         URL.revokeObjectURL(url);
-//       }, 100);
-      
-//     } catch (err: any) {
-//       console.error("Download error:", err);
-//       alert(`Failed to download: ${err.message}`);
-//     } finally {
-//       setDownloading(false);
-//     }
-//   }
-
-//   useEffect(() => {
-//     if (error) {
-//       const timer = setTimeout(() => {
-//         setError(null);
-//       }, 10000);
-//       return () => clearTimeout(timer);
-//     }
-//   }, [error]);
-
-//   return (
-//     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-//       {/* Header */}
-//       <div className="relative text-center">
-        
-//         <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-//           4A's Model Lesson Plan Generator
-//         </h1>
-//         <p className="text-gray-600 text-lg max-w-3xl mx-auto">
-//           Generate comprehensive DepEd-aligned lesson plans using the 4A's instructional model with clear separation between pedagogical framework and activity types
-//         </p>
-        
-//         {/* 4A's Overview Cards */}
-//         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
-//           {[
-//             { phase: "ACTIVITY", icon: Target, color: "blue", title: "Activity", subtitle: "Engagement Phase", desc: "Activate prior knowledge" },
-//             { phase: "ANALYSIS", icon: Search, color: "green", title: "Analysis", subtitle: "Exploration Phase", desc: "Develop critical thinking" },
-//             { phase: "ABSTRACTION", icon: BookOpen, color: "purple", title: "Abstraction", subtitle: "Concept Development", desc: "Present concepts & principles" },
-//             { phase: "APPLICATION", icon: Zap, color: "amber", title: "Application", subtitle: "Practice & Assessment", desc: "Apply real-world skills" }
-//           ].map((item, idx) => (
-//             <div key={idx} className={`p-4 rounded-xl border-2 border-${item.color}-100 bg-linear-to-br from-${item.color}-50 to-white`}>
-//               <div className="flex items-center justify-center mb-3">
-//                 <div className={`p-3 rounded-lg bg-linear-to-r from-${item.color}-500 to-${item.color}-600`}>
-//                   <item.icon className="h-6 w-6 text-white" />
-//                 </div>
-//               </div>
-//               <p className={`font-bold text-${item.color}-700 text-center mb-1`}>{item.title}</p>
-//               <p className="text-sm text-gray-600 text-center mb-2">{item.subtitle}</p>
-//               <p className="text-xs text-gray-500 text-center">{item.desc}</p>
-//             </div>
-//           ))}
-//         </div>
-//       </div>
-
-//       {lessonPlan && (
-//         <Card className="shadow-2xl border-2 border-gray-300 overflow-hidden">
-//           <div className="bg-linear-to-r from-blue-600 to-purple-600 p-4">
-//             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-//               <div>
-//                 <h2 className="text-2xl font-bold text-white">{lessonPlan.title}</h2>
-//                 <div className="flex items-center gap-4 mt-2 text-blue-100">
-//                   <span><strong>Grade:</strong> {lessonPlan.grade}</span>
-//                   <span>ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢</span>
-//                   <span><strong>Duration:</strong> {lessonPlan.duration}</span>
-//                 </div>
-//               </div>
-//               <Button 
-//                 onClick={downloadLessonPlan} 
-//                 disabled={downloading || (usageInfo?.used >= FREE_PLAN_LIMIT)}
-//                 variant={usageInfo?.used >= FREE_PLAN_LIMIT ? "outline" : "default"}
-//                 className="bg-white text-blue-600 hover:bg-blue-50 border-0 font-semibold shadow-lg"
-//               >
-//                 {downloading ? (
-//                   <Loader2 className="animate-spin mr-2" />
-//                 ) : (
-//                   <Download className="mr-2" />
-//                 )}
-//                 {usageInfo?.used >= FREE_PLAN_LIMIT ? "Limit Reached" : "Download DOCX"}
-//               </Button>
-//             </div>
-//           </div>
-
-//           <CardContent className="p-6 space-y-8">
-//             {/* Usage Indicator */}
-//             <UsageIndicator usage={usageInfo} />
-
-//             {/* Objectives */}
-//             {lessonPlan.objectives && lessonPlan.objectives.length > 0 && (
-//               <div className="bg-linear-to-rrom-blue-50 to-indigo-50 p-6 rounded-2xl border-2 border-blue-200">
-//                 <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2">
-//                   <Lightbulb className="h-5 w-5 text-blue-600" />
-//                   Learning Objectives
-//                 </h3>
-//                 <ul className="space-y-3 ml-2">
-//                   {lessonPlan.objectives.map((obj: string, i: number) => (
-//                     <li key={i} className="flex items-start gap-3">
-//                       <div className="w-2 h-2 rounded-full bg-blue-500 mt-2"></div>
-//                       <span className="text-gray-700 font-medium">{obj}</span>
-//                     </li>
-//                   ))}
-//                 </ul>
-//               </div>
-//             )}
-
-//             {/* Days */}
-//             {lessonPlan.days?.map((day: any, dayIndex: number) => (
-//               <div key={day.day || dayIndex + 1} className="mt-8 pt-8 border-t-2 border-gray-300 first:border-t-0 first:pt-0">
-//                 {/* Day Header */}
-//                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-//                   <div>
-//                     <div className="flex items-center gap-3 mb-2">
-//                       <div className="w-10 h-10 rounded-full bg-linear-to-r from-blue-500 to-purple-500 flex items-center justify-center">
-//                         <span className="text-white font-bold text-lg">{day.day || dayIndex + 1}</span>
-//                       </div>
-//                       <h3 className="text-2xl font-bold text-gray-900">
-//                         Day {day.day || dayIndex + 1}: {day.topic}
-//                       </h3>
-//                     </div>
-//                     <p className="text-gray-600 ml-13">Total duration: 40 minutes</p>
-//                   </div>
-//                   <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-4 py-2 rounded-full">
-//                     ÃƒÂ¢Ã‚ÂÃ‚Â±ÃƒÂ¯Ã‚Â¸Ã‚Â 40 minutes total
-//                   </span>
-//                 </div>
-                
-//                 {/* 4A's Pedagogical Framework Section */}
-//                 <div className="mb-10">
-//                   <div className="flex items-center justify-between mb-6">
-//                     <h4 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-//                       <Brain className="h-5 w-5 text-blue-600" />
-//                       4A's Pedagogical Framework
-//                     </h4>
-//                     <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-//                       4 Phases - 10 min each
-//                     </div>
-//                   </div>
-                  
-//                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-//                     {day["4asModel"] && Array.isArray(day["4asModel"]) && 
-//                       day["4asModel"].map((phase: any, idx: number) => (
-//                         <FourAsPhaseCard key={idx} phase={phase} index={idx} />
-//                       ))}
-//                   </div>
-//                 </div>
-
-//                 {/* Specific Activities Section */}
-//                 {day.specificActivities && (
-//                   <div className="mb-10">
-//                     <div className="flex items-center justify-between mb-6">
-//                       <h4 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-//                         <ClipboardCheck className="h-5 w-5 text-purple-600" />
-//                         Specific Activity Types
-//                       </h4>
-//                       <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-//                         Linked to 4A's Phases
-//                       </div>
-//                     </div>
-                    
-//                     <div className="space-y-8">
-//                       {Object.entries(day.specificActivities).map(([phase, activity]: [string, any]) => (
-//                         <SpecificActivityCard 
-//                           key={phase} 
-//                           phase={phase} 
-//                           activity={activity} 
-//                         />
-//                       ))}
-//                     </div>
-//                   </div>
-//                 )}
-
-//                 {/* Additional Information */}
-//                 {(day.differentiation || day.closure) && (
-//                   <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-//                     {day.differentiation && (
-//                       <div className="bg-linear-to-br from-green-50 to-emerald-50 p-6 rounded-2xl border-2 border-green-200">
-//                         <h4 className="font-bold text-green-800 text-lg mb-3 flex items-center gap-2">
-//                           <Users className="h-5 w-5 text-green-600" />
-//                           Differentiation Strategies
-//                         </h4>
-//                         <p className="text-gray-700 whitespace-pre-line leading-relaxed">
-//                           {day.differentiation}
-//                         </p>
-//                       </div>
-//                     )}
-                    
-//                     {day.closure && (
-//                       <div className="bg-linear-to-br from-purple-50 to-violet-50 p-6 rounded-2xl border-2 border-purple-200">
-//                         <h4 className="font-bold text-purple-800 text-lg mb-3 flex items-center gap-2">
-//                           <CheckCircle2 className="h-5 w-5 text-purple-600" />
-//                           Lesson Closure
-//                         </h4>
-//                         <p className="text-gray-700 leading-relaxed">{day.closure}</p>
-//                       </div>
-//                     )}
-//                   </div>
-//                 )}
-
-//                 {/* Assessment/Rubrics */}
-//                 <div className="mt-10">
-//                   <h4 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-//                     <FileQuestion className="h-5 w-5 text-red-600" />
-//                     Assessment / Rubrics
-//                   </h4>
-//                   {day.assessment && day.assessment.length > 0 ? (
-//                     <div className="space-y-6">
-//                       {day.assessment.map((a: any, i: number) => (
-//                         <div key={i} className="bg-linear-to-br from-gray-50 to-slate-50 p-6 rounded-2xl border-2 border-gray-200">
-//                           <p className="font-bold text-blue-700 text-xl mb-3">{a.criteria}</p>
-//                           <p className="text-gray-700 mb-6 font-medium">{a.description}</p>
-//                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-//                             <div className="bg-linear-to-br from-green-50 to-emerald-50 p-4 rounded-xl border-2 border-green-200">
-//                               <div className="flex items-center gap-2 mb-2">
-//                                 <CheckCircle2 className="h-4 w-4 text-green-600" />
-//                                 <p className="font-bold text-green-800">Excellent</p>
-//                               </div>
-//                               <p className="text-green-700 text-sm">{a.rubricLevel?.excellent || "N/A"}</p>
-//                             </div>
-//                             <div className="bg-linear-to-br from-amber-50 to-orange-50 p-4 rounded-xl border-2 border-amber-200">
-//                               <div className="flex items-center gap-2 mb-2">
-//                                 <AlertCircle className="h-4 w-4 text-amber-600" />
-//                                 <p className="font-bold text-amber-800">Satisfactory</p>
-//                               </div>
-//                               <p className="text-amber-700 text-sm">{a.rubricLevel?.satisfactory || "N/A"}</p>
-//                             </div>
-//                             <div className="bg-linear-to-br from-red-50 to-rose-50 p-4 rounded-xl border-2 border-red-200">
-//                               <div className="flex items-center gap-2 mb-2">
-//                                 <AlertCircle className="h-4 w-4 text-red-600" />
-//                                 <p className="font-bold text-red-800">Needs Improvement</p>
-//                               </div>
-//                               <p className="text-red-700 text-sm">{a.rubricLevel?.needsImprovement || "N/A"}</p>
-//                             </div>
-//                           </div>
-//                         </div>
-//                       ))}
-//                     </div>
-//                   ) : (
-//                     <div className="bg-linear-to-br from-amber-50 to-orange-50 p-6 rounded-2xl border-2 border-amber-300">
-//                       <div className="flex items-center gap-3">
-//                         <AlertCircle className="h-6 w-6 text-amber-600" />
-//                         <div>
-//                           <p className="text-amber-800 font-bold text-lg">
-//                             No assessment rubrics provided for this day.
-//                           </p>
-//                           <p className="text-amber-700 mt-1">
-//                             Consider adding assessment criteria to evaluate student learning.
-//                           </p>
-//                         </div>
-//                       </div>
-//                     </div>
-//                   )}
-//                 </div>
-//               </div>
-//             ))}
-//           </CardContent>
-//         </Card>
-//       )}
-//     </div>
-//   );
-// }
-
-
-
-
-// app/lesson-plan/page.tsx - WITH PDF DOWNLOAD FUNCTIONALITY
-// app/lesson-plan/page.tsx - WITH PDF DOWNLOAD FUNCTIONALITY (FIXED FOR EXISTING BACKEND)
 "use client";
 
 import { useRef, useState, useEffect, useMemo } from "react";
@@ -907,8 +8,8 @@ import {
   Brain,
 } from "lucide-react";
 import { X } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import PptxEditor from "@/components/lesson-plan/pptx-editor";
 import {
   Dialog,
   DialogContent,
@@ -925,6 +26,15 @@ import { LessonPlanOutputPanel } from "@/components/lesson-plan/output-panel";
 import { LessonPlanDaySections } from "@/components/lesson-plan/day-sections";
 import { FourAsPhaseCard, SpecificActivityCard } from "@/components/lesson-plan/activity-cards";
 import { trackGaEvent } from "@/lib/ga-client";
+import {
+  getLessonPlanFramework,
+  normalizeLessonPlanFramework,
+  type LessonPlanFrameworkId,
+} from "@/lib/lesson-plan-frameworks";
+
+const PptxEditor = dynamic(() => import("@/components/lesson-plan/pptx-editor"), {
+  ssr: false,
+});
 
 const FREE_PLAN_LIMIT = 3;
 const LESSON_EXPORT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -1018,6 +128,9 @@ export default function LessonPlanPage() {
   const [pendingExportJobs, setPendingExportJobs] = useState<PendingExportJob[]>([]);
   const [retryingPendingExport, setRetryingPendingExport] = useState(false);
   const [showPptxEditor, setShowPptxEditor] = useState(false);
+  const [selectedFramework, setSelectedFramework] = useState<LessonPlanFrameworkId>(
+    normalizeLessonPlanFramework(searchParams.get("framework"))
+  );
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyPlans, setHistoryPlans] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1107,8 +220,18 @@ export default function LessonPlanPage() {
     return unique;
   }, [historyPlans]);
 
+  useEffect(() => {
+    setSelectedFramework(normalizeLessonPlanFramework(searchParams.get("framework")));
+  }, [searchParams]);
+
+  const frameworkConfig = useMemo(
+    () => getLessonPlanFramework(lessonPlan?.framework || formDataObject?.framework || selectedFramework),
+    [formDataObject?.framework, lessonPlan?.framework, selectedFramework]
+  );
+
   const lessonTemplateDefaults = useMemo(
     () => ({
+      framework: normalizeLessonPlanFramework(searchParams.get("framework")),
       topic: searchParams.get("topic") || "",
       subject: searchParams.get("subject") || "",
       grade: searchParams.get("grade") || "",
@@ -1323,6 +446,7 @@ export default function LessonPlanPage() {
       ...formData,
     } as Record<string, any>;
     return {
+      framework: normalizeLessonPlanFramework(merged.framework),
       topic: String(merged.topic || "").trim(),
       subject: String(merged.subject || "").trim(),
       grade: String(merged.grade || "").trim(),
@@ -1429,6 +553,7 @@ export default function LessonPlanPage() {
     const formObj = Object.fromEntries(formData.entries());
     trackGaEvent("lesson_plan_generate", {
       action: "start",
+      framework: normalizeLessonPlanFramework(formObj.framework),
       topic: String(formObj.topic || "").slice(0, 80),
       days: Number(formObj.days || 0),
       minutes_per_day: Number(formObj.minutesPerDay || 0),
@@ -1519,8 +644,10 @@ export default function LessonPlanPage() {
       }
       
       setLessonPlan(data.lessonPlan);
+      setSelectedFramework(normalizeLessonPlanFramework(data?.lessonPlan?.framework || formObj.framework));
       trackGaEvent("lesson_plan_generate", {
         action: "success",
+        framework: normalizeLessonPlanFramework(data?.lessonPlan?.framework || formObj.framework),
         day_count: Array.isArray(data?.lessonPlan?.days)
           ? data.lessonPlan.days.length
           : 0,
@@ -1941,14 +1068,15 @@ export default function LessonPlanPage() {
     return count <= 2;
   }
 
-  async function downloadEditedPptx() {
-    if (!pptxDeck) return;
+  async function downloadEditedPptx(deckOverride?: any) {
+    const deckToExport = deckOverride || pptxDeck;
+    if (!deckToExport) return;
     setDownloadingPptx(true);
     try {
       const res = await fetch("/api/generate-lesson-pptx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deck: pptxDeck, source: pptxDeckSource }),
+        body: JSON.stringify({ deck: deckToExport, source: pptxDeckSource }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -1971,7 +1099,7 @@ export default function LessonPlanPage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${pptxDeck.title || "Lesson_Plan"}.pptx`;
+      link.download = `${deckToExport.title || "Lesson_Plan"}.pptx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -2120,7 +1248,7 @@ export default function LessonPlanPage() {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 bg-transparent">
       <style jsx global>{`
         @media print {
           html,
@@ -2178,43 +1306,53 @@ export default function LessonPlanPage() {
       `}</style>
       {!liteMode && <Tour steps={lessonPlanTourSteps} tourId="lessonplan-generator" />}
       {/* Header */}
-      <div className="relative text-center pt-12 sm:pt-0">
-        <LiteModeBadge className="absolute right-11 top-1 sm:right-14 sm:top-0" />
-        <button
-          id="lessonplan-history"
-          type="button"
-          onClick={() => setHistoryOpen(true)}
-          className="absolute right-1 top-1 sm:right-0 sm:top-0 inline-flex h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 items-center justify-center rounded-full border border-blue-200 bg-linear-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-sm transition hover:from-blue-100 hover:to-indigo-100 hover:text-blue-800"
-          aria-label="Open recent lesson plans"
-          title="Recent lesson plans"
-          data-print-hidden
-        >
-          <Brain className="h-4 w-4 sm:h-5 sm:w-5" />
-        </button>
-        <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+      <div className="relative text-center rounded-3xl border border-indigo-200/50 bg-linear-to-r from-slate-950 via-indigo-900 to-cyan-800 p-4 sm:p-6 shadow-[0_20px_55px_-20px_rgba(30,64,175,0.65)] overflow-hidden">
+        <div className="pointer-events-none absolute -top-10 -right-8 h-32 w-32 rounded-full bg-cyan-300/20 blur-2xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-20 h-44 w-44 rounded-full bg-indigo-400/20 blur-3xl" />
+        <div className="relative z-10 mb-4 flex items-center justify-end gap-2">
+          <LiteModeBadge className="static" />
+          <button
+            id="lessonplan-history"
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="inline-flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border border-white/35 bg-white/15 text-white shadow-sm transition hover:bg-white/30 hover:text-white hover:border-cyan-200 hover:shadow-[0_0_0_2px_rgba(103,232,249,0.35)]"
+            aria-label="Open recent lesson plans"
+            title="Recent lesson plans"
+            data-print-hidden
+          >
+            <Brain className="h-4 w-4 sm:h-5 sm:w-5" />
+          </button>
+        </div>
+        <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
           Lesson Plan Generator
         </h1>
-        <p className="text-gray-600 text-lg max-w-3xl mx-auto">
-          Generate comprehensive lesson plans using the 4A's instructional model with clear separation between pedagogical framework and activity types
+        <p className="text-blue-100 text-base sm:text-lg max-w-3xl mx-auto">
+          {frameworkConfig.description}
         </p>
         
-        {/* 4A's Overview Cards */}
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
-          {[
-            { phase: "ACTIVITY", icon: Target, color: "blue", title: "Activity", subtitle: "Engagement Phase", desc: "Activate prior knowledge" },
-            { phase: "ANALYSIS", icon: Search, color: "green", title: "Analysis", subtitle: "Exploration Phase", desc: "Develop critical thinking" },
-            { phase: "ABSTRACTION", icon: BookOpen, color: "purple", title: "Abstraction", subtitle: "Concept Development", desc: "Present concepts & principles" },
-            { phase: "APPLICATION", icon: Zap, color: "amber", title: "Application", subtitle: "Practice & Assessment", desc: "Apply real-world skills" }
-          ].map((item, idx) => (
-            <div key={idx} className={`p-4 rounded-xl border-2 border-${item.color}-100 bg-linear-to-br from-${item.color}-50 to-white`}>
+        {/* Framework Overview Cards */}
+        <div className="mt-8 flex flex-wrap items-stretch justify-center gap-4 max-w-6xl mx-auto">
+          {frameworkConfig.cards.map((item, idx) => (
+            <div
+              key={idx}
+              className="w-full max-w-[320px] sm:w-[280px] lg:w-[260px] xl:w-[280px] p-4 rounded-2xl border border-white/15 bg-white/95 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.55)] dark:bg-slate-900/85 dark:border-slate-700/80"
+            >
               <div className="flex items-center justify-center mb-3">
-                <div className={`p-3 rounded-lg bg-linear-to-r from-${item.color}-500 to-${item.color}-600`}>
-                  <item.icon className="h-6 w-6 text-white" />
+                <div className="p-3 rounded-xl bg-gradient-to-r from-indigo-500 via-violet-500 to-cyan-500">
+                  {idx === 0 ? (
+                    <Target className="h-6 w-6 text-white" />
+                  ) : idx === 1 ? (
+                    <Search className="h-6 w-6 text-white" />
+                  ) : idx === 2 ? (
+                    <BookOpen className="h-6 w-6 text-white" />
+                  ) : (
+                    <Zap className="h-6 w-6 text-white" />
+                  )}
                 </div>
               </div>
-              <p className={`font-bold text-${item.color}-700 text-center mb-1`}>{item.title}</p>
-              <p className="text-sm text-gray-600 text-center mb-2">{item.subtitle}</p>
-              <p className="text-xs text-gray-500 text-center">{item.desc}</p>
+              <p className="font-bold text-slate-900 text-center mb-1 dark:text-white">{item.title}</p>
+              <p className="text-sm text-slate-600 text-center mb-2 dark:text-slate-300">{item.subtitle}</p>
+              <p className="text-xs text-slate-500 text-center dark:text-slate-400">{item.desc}</p>
             </div>
           ))}
         </div>
@@ -2224,6 +1362,7 @@ export default function LessonPlanPage() {
       <LessonPlanInputForm
         lessonTemplateKey={lessonTemplateKey}
         lessonTemplateDefaults={lessonTemplateDefaults}
+        selectedFramework={selectedFramework}
         lessonFormRef={lessonFormRef}
         loading={loading}
         loadingSlides={loadingSlides}
@@ -2251,6 +1390,7 @@ export default function LessonPlanPage() {
         onHandleFileUpload={(file) => {
           void handleLessonPlanFileUpload(file);
         }}
+        onFrameworkChange={setSelectedFramework}
       />
 
       {/* Generated Lesson Plan */}
@@ -2301,27 +1441,30 @@ export default function LessonPlanPage() {
       )}
 
       <Dialog open={showPptxEditor} onOpenChange={setShowPptxEditor}>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto premium-scrollbar">
-          <DialogHeader>
-            <DialogTitle>Edit PPTX Slides</DialogTitle>
-          </DialogHeader>
-          <div className="text-xs rounded-md border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2">
-            Source: {pptxDeckSource === "lesson_material_upload" ? "Uploaded file" : "Generated lesson plan"}
-          </div>
+        <DialogContent
+          showCloseButton={false}
+          className="!top-0 !left-0 !right-0 !bottom-0 !h-screen !w-screen !max-h-screen !max-w-none !translate-x-0 !translate-y-0 rounded-none border-0 bg-slate-100 p-0 shadow-none dark:bg-slate-950"
+        >
+          <DialogTitle className="sr-only">Edit PPTX Slides</DialogTitle>
           {downloadingPptx && (
-            <LoadingProgress
-              label="Generating PPTX file..."
-              percent={pptxProgress}
-            />
+            <div className="pointer-events-none absolute right-20 top-4 z-20 w-80">
+              <LoadingProgress
+                label="Generating PPTX file..."
+                percent={pptxProgress}
+              />
+            </div>
           )}
-          {pptxDeck && (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {pptxDeck && (
             <PptxEditor
               deck={pptxDeck}
               onChange={setPptxDeck}
               onDownload={downloadEditedPptx}
               loading={downloadingPptx}
+              onClose={() => setShowPptxEditor(false)}
             />
-          )}
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -2332,11 +1475,11 @@ export default function LessonPlanPage() {
         />
       )}
       <aside
-        className={`fixed right-0 top-0 z-50 h-full w-full max-w-md bg-linear-to-b from-blue-50 via-indigo-50 to-white shadow-2xl border-l border-blue-200 transform transition-transform duration-300 ${
+        className={`fixed right-0 top-0 z-50 h-full w-full max-w-md bg-linear-to-b from-slate-950 via-indigo-900 to-cyan-900 shadow-2xl border-l border-indigo-300/40 transform transition-transform duration-300 ${
           historyOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between p-4 border-b border-blue-200 bg-linear-to-r from-blue-600 to-purple-600">
+        <div className="flex items-center justify-between p-4 border-b border-white/20 bg-white/10">
           <h3 className="font-semibold text-white">Recent Lesson Plans</h3>
           <button
             onClick={() => setHistoryOpen(false)}
@@ -2355,17 +1498,18 @@ export default function LessonPlanPage() {
             </div>
           )}
           {!historyLoading && dedupedHistoryPlans.length === 0 && (
-            <div className="text-sm text-blue-700">
+            <div className="text-sm text-blue-100">
               No lesson plans saved yet.
             </div>
           )}
           {dedupedHistoryPlans.map((plan) => (
             <button
               key={plan.id}
-              className="w-full text-left border border-blue-200 bg-white/90 rounded-xl p-3 hover:bg-blue-50 transition"
+              className="w-full rounded-xl border border-white/20 bg-white/95 p-3 text-left text-slate-900 transition shadow-[0_10px_20px_-14px_rgba(59,130,246,0.6)] hover:bg-white dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
               onClick={() => {
                 setLessonPlan(plan.data);
                 setFormDataObject({
+                  framework: normalizeLessonPlanFramework(plan?.data?.framework),
                   topic: plan.topic,
                   subject: plan.subject,
                   grade: plan.grade,
@@ -2389,19 +1533,20 @@ export default function LessonPlanPage() {
                     : null;
                 setLessonSources(historySources);
                 setLessonSourceTrace(historyTrace);
+                setSelectedFramework(normalizeLessonPlanFramework(plan?.data?.framework));
                 setIsHistoryView(true);
                 setHistoryOpen(false);
                 setPptxDeck(null);
                 setPptxDeckSource("lesson_plan");
               }}
             >
-              <div className="font-semibold text-blue-900">
+              <div className="font-semibold text-blue-900 dark:text-sky-200">
                 {plan.title || `${plan.topic} - ${plan.subject}`}
               </div>
-              <div className="text-xs text-blue-700">
+              <div className="text-xs text-blue-700 dark:text-slate-300">
                 {plan.topic} - {plan.subject} - {plan.grade}
               </div>
-              <div className="text-xs text-blue-600/80 mt-1">
+              <div className="mt-1 text-xs text-blue-600/80 dark:text-slate-400">
                 {new Date(plan.createdAt).toLocaleString()}
               </div>
             </button>

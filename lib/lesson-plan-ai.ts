@@ -1,8 +1,10 @@
 // lib/lesson-plan-ai.ts - FIXED VERSION
 import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
 import { log } from "@/lib/logger";
+import { buildFrameworkPhaseModel, getLessonPlanFramework, type LessonPlanFrameworkId } from "@/lib/lesson-plan-frameworks";
 
 interface LessonPlanInput {
+  framework: LessonPlanFrameworkId;
   topic: string;
   subject: string;
   grade: string;
@@ -44,145 +46,127 @@ export async function generateLessonPlanAIWithMeta(
   options?: { liteMode?: boolean }
 ): Promise<LessonPlanAIResult> {
   log.info("lesson_ai_generate_start", {
+    framework: input.framework,
     topic: input.topic,
     subject: input.subject,
     grade: input.grade,
     days: input.days,
   });
   
+  const framework = getLessonPlanFramework(input.framework);
+  const samplePhaseModel = buildFrameworkPhaseModel(input.framework, {
+    topic: input.topic,
+    subject: input.subject,
+    grade: input.grade,
+    minutesPerDay: input.minutesPerDay,
+  });
+  const outputShape = {
+    title: `Comprehensive Lesson: ${input.topic} for ${input.grade} ${input.subject}`,
+    framework: framework.id,
+    frameworkLabel: framework.label,
+    grade: input.grade,
+    duration: input.duration,
+    objectives: [
+      "By the end of the lesson, students will be able to...",
+      "Students will demonstrate understanding of...",
+      "Learners will apply knowledge of...",
+    ],
+    days: [
+      {
+        day: 1,
+        topic: "Specific sub-topic for Day 1",
+        "4asModel": samplePhaseModel,
+        specificActivities: framework.supportsSpecificActivities
+          ? {
+              ACTIVITY: {
+                type: "Reading Comprehension",
+                readingPassage: "A 100-150 word engaging passage...",
+                questions: [
+                  { question: "Literal question...", answer: "Detailed answer..." },
+                  { question: "Inferential question...", answer: "Detailed answer..." },
+                  { question: "Critical question...", answer: "Detailed answer..." },
+                ],
+              },
+              ANALYSIS: {
+                type: "True/False + Checklist",
+                trueFalse: [
+                  { statement: "Statement...", answer: "True/False", explanation: "Brief explanation..." },
+                  { statement: "Statement...", answer: "True/False", explanation: "Brief explanation..." },
+                ],
+                checklist: ["Item 1", "Item 2", "Item 3"],
+              },
+              ABSTRACTION: {
+                type: "Matching Type",
+                pairs: [
+                  { left: "Term 1", right: "Definition 1" },
+                  { left: "Term 2", right: "Definition 2" },
+                ],
+                explanation: "Detailed explanation...",
+              },
+              APPLICATION: {
+                type: "Multiple Choice + Identification",
+                multipleChoice: [
+                  {
+                    question: "Scenario-based question...",
+                    options: ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
+                    answer: "B",
+                    explanation: "Detailed explanation...",
+                  },
+                ],
+                identification: {
+                  clues: ["Clue 1", "Clue 2", "Clue 3"],
+                  wordBank: ["Term1", "Term2", "Term3"],
+                  answers: ["Term1", "Term2", "Term3"],
+                },
+              },
+            }
+          : {},
+        assessment: [
+          {
+            criteria: "Understanding of Concepts",
+            description: "Assesses student's ability...",
+            rubricLevel: {
+              excellent: "Student demonstrates comprehensive understanding...",
+              satisfactory: "Student shows basic understanding...",
+              needsImprovement: "Student struggles with fundamental concepts...",
+            },
+          },
+        ],
+        differentiation: "Concrete strategies for different learners...",
+        closure: "Specific end-of-lesson activity...",
+      },
+    ],
+  };
+
   const systemPrompt = `You are Quizmints AI, a highly experienced DepEd-aligned lesson plan generator. You have 20+ years of teaching experience and create comprehensive, practical lesson plans that teachers can implement immediately.
 
 IMPORTANT: You MUST return valid JSON in the exact format specified below. DO NOT include any additional text, explanations, or markdown code blocks outside the JSON.
 
 OUTPUT FORMAT (STRICT JSON ONLY - NO OTHER TEXT):
-{
-  "title": "Comprehensive Lesson: [Topic] for [Grade] [Subject]",
-  "grade": "[Exact grade level from input]",
-  "duration": "[Duration from input]",
-  "objectives": [
-    "By the end of the lesson, students will be able to...",
-    "Students will demonstrate understanding of...",
-    "Learners will apply knowledge of..."
-  ],
-  "days": [
-    {
-      "day": 1,
-      "topic": "Specific sub-topic for Day 1",
-      "4asModel": [
-        {
-          "phase": "ACTIVITY",
-          "title": "Engagement: Connecting to Real World",
-          "timeMinutes": 10,
-          "description": "Detailed description...",
-          "teacherRole": "Specific actions...",
-          "studentRole": "Specific actions...",
-          "materials": ["Item 1", "Item 2"]
-        },
-        {
-          "phase": "ANALYSIS",
-          "title": "Exploration: Investigating Key Concepts",
-          "timeMinutes": 10,
-          "description": "Detailed description...",
-          "teacherRole": "Specific actions...",
-          "studentRole": "Specific actions...",
-          "materials": ["Item 1", "Item 2"]
-        },
-        {
-          "phase": "ABSTRACTION",
-          "title": "Concept Development: Building Understanding",
-          "timeMinutes": 10,
-          "description": "Detailed description...",
-          "teacherRole": "Specific actions...",
-          "studentRole": "Specific actions...",
-          "materials": ["Item 1", "Item 2"]
-        },
-        {
-          "phase": "APPLICATION",
-          "title": "Practice & Assessment: Using Knowledge",
-          "timeMinutes": 10,
-          "description": "Detailed description...",
-          "teacherRole": "Specific actions...",
-          "studentRole": "Specific actions...",
-          "materials": ["Item 1", "Item 2"]
-        }
-      ],
-      "specificActivities": {
-        "ACTIVITY": {
-          "type": "Reading Comprehension",
-          "readingPassage": "A 100-150 word engaging passage...",
-          "questions": [
-            {"question": "Literal question...", "answer": "Detailed answer..."},
-            {"question": "Inferential question...", "answer": "Detailed answer..."},
-            {"question": "Critical question...", "answer": "Detailed answer..."}
-          ]
-        },
-        "ANALYSIS": {
-          "type": "True/False + Checklist",
-          "trueFalse": [
-            {"statement": "Statement...", "answer": "True/False", "explanation": "Brief explanation..."},
-            {"statement": "Statement...", "answer": "True/False", "explanation": "Brief explanation..."},
-            {"statement": "Statement...", "answer": "True/False", "explanation": "Brief explanation..."}
-          ],
-          "checklist": ["Item 1", "Item 2", "Item 3"]
-        },
-        "ABSTRACTION": {
-          "type": "Matching Type",
-          "pairs": [
-            {"left": "Term 1", "right": "Definition 1"},
-            {"left": "Term 2", "right": "Definition 2"},
-            {"left": "Term 3", "right": "Definition 3"},
-            {"left": "Term 4", "right": "Definition 4"},
-            {"left": "Term 5", "right": "Definition 5"}
-          ],
-          "explanation": "Detailed explanation..."
-        },
-        "APPLICATION": {
-          "type": "Multiple Choice + Identification",
-          "multipleChoice": [
-            {
-              "question": "Scenario-based question...",
-              "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
-              "answer": "B",
-              "explanation": "Detailed explanation..."
-            }
-          ],
-          "identification": {
-            "clues": ["Clue 1", "Clue 2", "Clue 3"],
-            "wordBank": ["Term1", "Term2", "Term3", "Term4", "Term5"],
-            "answers": ["Term1", "Term2", "Term3"]
-          }
-        }
-      },
-      "assessment": [
-        {
-          "criteria": "Understanding of Concepts",
-          "description": "Assesses student's ability...",
-          "rubricLevel": {
-            "excellent": "Student demonstrates comprehensive understanding...",
-            "satisfactory": "Student shows basic understanding...",
-            "needsImprovement": "Student struggles with fundamental concepts..."
-          }
-        }
-      ],
-      "differentiation": "Concrete strategies for different learners...",
-      "closure": "Specific end-of-lesson activity..."
-    }
-  ]
-}`;
+${JSON.stringify(outputShape, null, 2)}
 
-  const userPrompt = `Generate a ${input.days}-day lesson plan for ${input.topic} in ${input.subject} for ${input.grade} students. Each day should be ${input.minutesPerDay} minutes. Make it detailed, practical, and classroom-ready.
+IMPORTANT FRAMEWORK RULES:
+- The lesson framework for this generation is "${framework.label}".
+- Keep using the "4asModel" array key for compatibility, but fill it with the phases of "${framework.label}", not the 4A's phases unless the framework is 4A's.
+- Include "framework" and "frameworkLabel" at the top level.
+- ${framework.supportsSpecificActivities ? "Provide detailed specificActivities aligned to the 4A's phase keys." : 'For non-4A frameworks, set "specificActivities" to {} or omit it entirely.'}
+- Time allocations across the framework phases should add up to the lesson minutes for the day.
+- Make the phase titles and descriptions match the selected framework naturally.`;
+
+  const userPrompt = `Generate a ${input.days}-day lesson plan for ${input.topic} in ${input.subject} for ${input.grade} students using the ${framework.label}. Each day should be ${input.minutesPerDay} minutes. Make it detailed, practical, and classroom-ready.
 
 TOPIC: ${input.topic}
 SUBJECT: ${input.subject}
 GRADE: ${input.grade}
 DURATION: ${input.days} days, ${input.minutesPerDay} minutes per day
+FRAMEWORK: ${framework.label}
 OBJECTIVES: ${input.objectives || "No specific objectives provided"}
 CONSTRAINTS: ${input.constraints || "No constraints"}
 
 Generate ${input.days} days of content. Make sure each day has:
 1. Different sub-topic for each day
-2. Complete 4A's model with all 4 phases
-3. Specific activities for each phase
+2. A complete ${framework.shortLabel} sequence inside the "4asModel" array
+3. ${framework.supportsSpecificActivities ? "Specific activities for each 4A phase" : "Strong framework-aligned teacher and student moves"}
 4. Assessment criteria
 5. Differentiation strategies
 6. Lesson closure
@@ -494,55 +478,25 @@ function extractBalancedJSONObject(input: string) {
 
 function createMinimalValidLessonPlan(input: LessonPlanInput) {
   log.warn("lesson_ai_fallback_minimal_plan", {
+    framework: input.framework,
     topic: input.topic,
     subject: input.subject,
     grade: input.grade,
   });
+  const framework = getLessonPlanFramework(input.framework);
   
   const days = [];
   for (let i = 0; i < input.days; i++) {
     days.push({
       day: i + 1,
       topic: `${input.topic} - Day ${i + 1}`,
-      "4asModel": [
-        {
-          phase: "ACTIVITY",
-          title: "Engagement Phase",
-          timeMinutes: 10,
-          description: `Activate prior knowledge about ${input.topic} through discussion and real-world examples.`,
-          teacherRole: "Facilitate discussion, ask probing questions, provide examples",
-          studentRole: "Participate in discussion, share experiences, ask questions",
-          materials: ["Whiteboard", "Markers", "Visual aids"]
-        },
-        {
-          phase: "ANALYSIS",
-          title: "Exploration Phase",
-          timeMinutes: 10,
-          description: `Analyze key concepts of ${input.topic} through guided inquiry and group work.`,
-          teacherRole: "Guide analysis, provide resources, facilitate group discussions",
-          studentRole: "Analyze information, collaborate in groups, draw conclusions",
-          materials: ["Case studies", "Graphic organizers", "Discussion prompts"]
-        },
-        {
-          phase: "ABSTRACTION",
-          title: "Concept Development",
-          timeMinutes: 10,
-          description: `Develop understanding of core ${input.topic} concepts through direct instruction.`,
-          teacherRole: "Explain concepts, provide examples, address misconceptions",
-          studentRole: "Take notes, ask clarifying questions, practice explanations",
-          materials: ["Presentation slides", "Handouts", "Examples"]
-        },
-        {
-          phase: "APPLICATION",
-          title: "Practice & Assessment",
-          timeMinutes: 10,
-          description: `Apply knowledge of ${input.topic} to solve problems and demonstrate understanding.`,
-          teacherRole: "Provide practice tasks, give feedback, assess understanding",
-          studentRole: "Complete practice tasks, self-assess, demonstrate learning",
-          materials: ["Practice worksheets", "Assessment tools", "Feedback forms"]
-        }
-      ],
-      specificActivities: {
+      "4asModel": buildFrameworkPhaseModel(input.framework, {
+        topic: input.topic,
+        subject: input.subject,
+        grade: input.grade,
+        minutesPerDay: input.minutesPerDay,
+      }),
+      specificActivities: framework.supportsSpecificActivities ? {
         ACTIVITY: {
           type: "Reading Comprehension",
           readingPassage: `This passage introduces ${input.topic} in the context of ${input.subject}. ${input.topic} is important for ${input.grade} students because it helps them understand ${input.subject} principles and their real-world applications.`,
@@ -622,7 +576,7 @@ function createMinimalValidLessonPlan(input: LessonPlanInput) {
             answers: ["Core Concept", "Application", "Analysis"]
           }
         }
-      },
+      } : {},
       assessment: [
         {
           criteria: `Understanding of ${input.topic}`,
@@ -649,6 +603,8 @@ function createMinimalValidLessonPlan(input: LessonPlanInput) {
   
   return {
     title: `${input.topic} - ${input.subject} Lesson Plan`,
+    framework: framework.id,
+    frameworkLabel: framework.label,
     grade: input.grade,
     duration: `${input.days} day(s), ${input.minutesPerDay} minutes per day`,
     objectives: input.objectives 

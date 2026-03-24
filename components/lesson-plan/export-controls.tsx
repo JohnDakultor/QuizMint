@@ -30,12 +30,12 @@ export function LessonPlanExportControls({
   onRetryPendingExport,
 }: ExportControlsProps) {
   return (
-    <div className="flex gap-3">
+    <div className="flex flex-wrap gap-3">
       <Button
         onClick={onDownloadPdf}
         disabled={downloadingPdf}
         variant="default"
-        className="bg-linear-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white shadow-lg"
+        className="bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-700 hover:to-orange-700 dark:hover:from-rose-500 dark:hover:to-orange-500 text-white shadow-lg"
         data-print-hidden
       >
         {downloadingPdf ? (
@@ -50,7 +50,7 @@ export function LessonPlanExportControls({
         onClick={onDownloadDocx}
         disabled={downloadingDocx}
         variant="default"
-        className="bg-white text-blue-600 hover:bg-blue-50 border-0 font-semibold shadow-lg"
+        className="bg-white text-indigo-700 hover:bg-indigo-50 border border-indigo-200 font-semibold shadow-lg dark:bg-slate-900 dark:text-indigo-200 dark:border-indigo-400/40 dark:hover:bg-indigo-500/20 dark:hover:border-indigo-300/70"
         data-print-hidden
       >
         {downloadingDocx ? (
@@ -66,7 +66,7 @@ export function LessonPlanExportControls({
           onClick={onRetryPendingExport}
           disabled={retryingPendingExport || !pendingExportJobs.length}
           variant="outline"
-          className="border-blue-200 text-blue-700 hover:bg-blue-50"
+          className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-400/40 dark:text-indigo-200 dark:hover:bg-indigo-500/20 dark:hover:border-indigo-300/70"
           data-print-hidden
         >
           {retryingPendingExport ? (

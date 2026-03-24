@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
+function isBootstrapEnabled() {
+  const raw = String(process.env.APP_REVIEWER_BOOTSTRAP_ENABLED || "")
+    .trim()
+    .toLowerCase();
+  const explicitlyEnabled =
+    raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+
+  // Default safe behavior in production: disabled unless explicitly enabled.
+  if (process.env.NODE_ENV === "production") return explicitlyEnabled;
+  // In non-production, keep it available for local/test unless explicitly disabled.
+  if (!raw) return true;
+  return explicitlyEnabled;
+}
+
 function getInternalSecret(req: NextRequest) {
   const headerSecret = req.headers.get("x-internal-secret") || "";
   const envSecret =
@@ -13,6 +27,10 @@ function getInternalSecret(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!isBootstrapEnabled()) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const { headerSecret, envSecret } = getInternalSecret(req);
     if (!envSecret || headerSecret !== envSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -73,4 +91,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

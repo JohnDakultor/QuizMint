@@ -97,6 +97,11 @@ import { buildPromptProfile } from "@/lib/adaptive-personalization";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { logDebug, logWarn } from "@/lib/logger";
 import type { GamifiedMode } from "@/lib/quiz-question-types";
+import {
+  buildStoredStructureFromAI,
+  encodeAnswerWithStructure,
+  stripStructuredMeta,
+} from "@/lib/quiz-structured";
 
 export const runtime = "nodejs";
 
@@ -457,6 +462,8 @@ content = meaningfulText;  // override to pass to AI
         question: string;
         options: string[];
         answer: string;
+        questionType?: string | null;
+        structure?: unknown;
         explanation?: string | null;
         hint?: string | null;
       }) => ({
@@ -466,7 +473,15 @@ content = meaningfulText;  // override to pass to AI
               .map((opt) => stripInlineAnswerArtifacts(String(opt ?? "")))
               .filter(Boolean)
           : [],
-        answer: stripInlineAnswerArtifacts(String(q.answer ?? "")),
+        answer: encodeAnswerWithStructure(
+          stripInlineAnswerArtifacts(String(q.answer ?? "")),
+          buildStoredStructureFromAI({
+            question: String(q.question ?? ""),
+            answer: String(q.answer ?? ""),
+            questionType: q.questionType ?? null,
+            structure: q.structure,
+          })
+        ),
         explanation: adaptiveLearning ? (q.explanation ?? null) : null,
         hint: adaptiveLearning ? (q.hint ?? null) : null,
       })),
@@ -497,6 +512,13 @@ content = meaningfulText;  // override to pass to AI
     questions: true, // return saved questions as well
   },
 });
+    const responseQuiz = {
+      ...savedQuiz,
+      questions: savedQuiz.questions.map((q) => ({
+        ...q,
+        answer: stripStructuredMeta(q.answer),
+      })),
+    };
 
     const promptProfile = buildPromptProfile(
       [basePrompt, title, content.slice(0, 1200)].filter(Boolean).join("\n\n"),
@@ -538,7 +560,7 @@ content = meaningfulText;  // override to pass to AI
 
     return NextResponse.json({
       message: "Quiz generated",
-      quiz: savedQuiz,
+      quiz: responseQuiz,
       ...(liteMode
         ? {}
         : {

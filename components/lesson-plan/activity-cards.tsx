@@ -23,6 +23,15 @@ import {
 } from "lucide-react";
 
 export function FourAsPhaseCard({ phase, index }: { phase: any; index: number }) {
+  const prettyPhaseName =
+    typeof phase?.phase === "string"
+      ? phase.phase
+          .split("_")
+          .filter(Boolean)
+          .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+          .join(" ")
+      : "Phase";
+
   const getPhaseDetails = (phaseName: string) => {
     switch (phaseName) {
       case "ACTIVITY":
@@ -69,6 +78,94 @@ export function FourAsPhaseCard({ phase, index }: { phase: any; index: number })
           subtitle: "Practice & Assessment",
           description: "Apply knowledge and demonstrate understanding",
         };
+      case "ENGAGE":
+        return {
+          icon: <Target className="h-6 w-6 text-white" />,
+          gradient: "from-blue-500 to-cyan-500",
+          bg: "bg-gradient-to-br from-blue-50 to-cyan-50",
+          border: "border-blue-200",
+          text: "text-blue-800",
+          title: "Engage",
+          subtitle: "Curiosity & prior knowledge",
+          description: "Launch the lesson with a strong hook and activate prior ideas",
+        };
+      case "EXPLORE":
+        return {
+          icon: <Search className="h-6 w-6 text-white" />,
+          gradient: "from-green-500 to-emerald-500",
+          bg: "bg-gradient-to-br from-green-50 to-emerald-50",
+          border: "border-green-200",
+          text: "text-green-800",
+          title: "Explore",
+          subtitle: "Inquiry & investigation",
+          description: "Let learners investigate, observe, and gather evidence",
+        };
+      case "EXPLAIN":
+        return {
+          icon: <BookOpen className="h-6 w-6 text-white" />,
+          gradient: "from-violet-500 to-fuchsia-500",
+          bg: "bg-gradient-to-br from-violet-50 to-fuchsia-50",
+          border: "border-violet-200",
+          text: "text-violet-800",
+          title: "Explain",
+          subtitle: "Clarify understanding",
+          description: "Turn discoveries into clear, formal understanding",
+        };
+      case "ELABORATE":
+        return {
+          icon: <ArrowRight className="h-6 w-6 text-white" />,
+          gradient: "from-amber-500 to-orange-500",
+          bg: "bg-gradient-to-br from-amber-50 to-orange-50",
+          border: "border-amber-200",
+          text: "text-amber-800",
+          title: "Elaborate",
+          subtitle: "Extend learning",
+          description: "Apply the concept to richer or unfamiliar contexts",
+        };
+      case "EVALUATE":
+        return {
+          icon: <CheckCircle2 className="h-6 w-6 text-white" />,
+          gradient: "from-rose-500 to-pink-500",
+          bg: "bg-gradient-to-br from-rose-50 to-pink-50",
+          border: "border-rose-200",
+          text: "text-rose-800",
+          title: "Evaluate",
+          subtitle: "Assess progress",
+          description: "Measure understanding and reflect on mastery",
+        };
+      case "DESIRED_RESULTS":
+        return {
+          icon: <Target className="h-6 w-6 text-white" />,
+          gradient: "from-blue-500 to-cyan-500",
+          bg: "bg-gradient-to-br from-blue-50 to-cyan-50",
+          border: "border-blue-200",
+          text: "text-blue-800",
+          title: "Desired Results",
+          subtitle: "Goals & understandings",
+          description: "Clarify the outcomes and essential understandings first",
+        };
+      case "EVIDENCE":
+        return {
+          icon: <ClipboardCheck className="h-6 w-6 text-white" />,
+          gradient: "from-violet-500 to-fuchsia-500",
+          bg: "bg-gradient-to-br from-violet-50 to-fuchsia-50",
+          border: "border-violet-200",
+          text: "text-violet-800",
+          title: "Evidence",
+          subtitle: "Assessment evidence",
+          description: "Define what mastery will look like and how it will be shown",
+        };
+      case "LEARNING_PLAN":
+        return {
+          icon: <Zap className="h-6 w-6 text-white" />,
+          gradient: "from-emerald-500 to-teal-500",
+          bg: "bg-gradient-to-br from-emerald-50 to-teal-50",
+          border: "border-emerald-200",
+          text: "text-emerald-800",
+          title: "Learning Plan",
+          subtitle: "Teaching sequence",
+          description: "Plan the teaching, practice, and reflection path",
+        };
       default:
         return {
           icon: <Lightbulb className="h-6 w-6 text-white" />,
@@ -97,12 +194,18 @@ export function FourAsPhaseCard({ phase, index }: { phase: any; index: number })
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-start">
             <div className="min-w-0">
-              <h4 className={`font-bold text-xl ${details.text} mb-1 truncate`}>{phase.phase || details.title}</h4>
-              <p className="text-gray-600 text-sm font-medium">{phase.title || details.subtitle}</p>
+              <h4
+                className={`font-bold ${details.text} mb-1 text-lg leading-tight break-words whitespace-normal`}
+              >
+                {prettyPhaseName || details.title}
+              </h4>
+              <p className="text-gray-600 text-sm font-medium break-words whitespace-normal">
+                {phase.title || details.subtitle}
+              </p>
               <div className="flex items-center gap-2 mt-2">
                 <span className="text-xs font-semibold bg-white px-2 py-1 rounded-full border">{phase.timeMinutes || 10} min</span>
                 <span className="text-xs text-gray-500">-</span>
-                <span className="text-xs text-gray-600">Phase {phaseNumber}/4</span>
+                <span className="text-xs text-gray-600">Phase {phaseNumber}</span>
               </div>
             </div>
           </div>
@@ -218,6 +321,11 @@ export function SpecificActivityCard({ phase, activity }: { phase: string; activ
   };
 
   const details = getActivityDetails(phase);
+  const hasGenericContent =
+    (typeof activity?.description === "string" && activity.description.trim()) ||
+    (Array.isArray(activity?.steps) && activity.steps.length > 0) ||
+    (Array.isArray(activity?.outputs) && activity.outputs.length > 0) ||
+    (Array.isArray(activity?.materials) && activity.materials.length > 0);
 
   return (
     <div className={`p-6 rounded-2xl border-2 ${details.bg} ${details.border} shadow-sm`}>
@@ -457,6 +565,42 @@ export function SpecificActivityCard({ phase, activity }: { phase: string; activ
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {!["ACTIVITY", "ANALYSIS", "ABSTRACTION", "APPLICATION"].includes(phase) && hasGenericContent && (
+          <div className="space-y-4">
+            {activity?.description && (
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <h6 className="mb-2 font-semibold text-gray-800">Description</h6>
+                <p className="text-gray-700 leading-relaxed">{activity.description}</p>
+              </div>
+            )}
+            {Array.isArray(activity?.steps) && activity.steps.length > 0 && (
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <h6 className="mb-2 font-semibold text-gray-800">Steps</h6>
+                <ul className="space-y-2">
+                  {activity.steps.map((step: string, index: number) => (
+                    <li key={`${step}-${index}`} className="text-gray-700">
+                      <span className="mr-2 font-semibold text-indigo-600">{index + 1}.</span>
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {Array.isArray(activity?.outputs) && activity.outputs.length > 0 && (
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <h6 className="mb-2 font-semibold text-gray-800">Expected Outputs</h6>
+                <div className="flex flex-wrap gap-2">
+                  {activity.outputs.map((output: string, index: number) => (
+                    <span key={`${output}-${index}`} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-sm text-gray-700">
+                      {output}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

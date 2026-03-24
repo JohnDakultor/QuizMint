@@ -6,6 +6,11 @@ import { trackGenerationEvent } from "@/lib/generation-events";
 import { randomUUID } from "crypto";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { inferQuizQuestionType } from "@/lib/quiz-question-types";
+import {
+  decodeStoredAnswer,
+  gradeMatchingFromStructure,
+  gradeWorksheetFromStructure,
+} from "@/lib/quiz-structured";
 
 type RouteParams = {
   params: Promise<{ token: string }>;
@@ -222,23 +227,31 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const details = quiz.questions.map((q) => {
       const raw = answersInput[String(q.id)];
       const selected = typeof raw === "string" ? raw : "";
-      const questionType = inferQuizQuestionType(q.question, q.options);
+      const decoded = decodeStoredAnswer(q.answer);
+      const questionType = decoded.structure?.type ?? inferQuizQuestionType(q.question, q.options);
+      const expectedAnswer = decoded.answer;
       let correct = false;
       if (questionType === "short_answer" || questionType === "essay_rubric") {
-        correct = shortAnswerMatches(selected, q.answer);
+        correct = shortAnswerMatches(selected, expectedAnswer);
       } else if (questionType === "matching") {
-        correct = matchingAnswersMatch(selected, q.answer);
+        correct =
+          decoded.structure?.type === "matching"
+            ? gradeMatchingFromStructure(selected, decoded.structure)
+            : matchingAnswersMatch(selected, expectedAnswer);
       } else if (questionType === "worksheet") {
-        correct = worksheetMatches(selected, q.answer);
+        correct =
+          decoded.structure?.type === "worksheet"
+            ? gradeWorksheetFromStructure(selected, decoded.structure, worksheetMatches)
+            : worksheetMatches(selected, expectedAnswer);
       } else {
-        correct = answersMatch(selected, q.answer);
+        correct = answersMatch(selected, expectedAnswer);
       }
       return {
         questionId: q.id,
         question: q.question,
         questionType,
         selected,
-        correctAnswer: q.answer,
+        correctAnswer: expectedAnswer,
         correct,
       };
     });

@@ -4,6 +4,7 @@ import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { verifyQuizShareToken } from "@/lib/quiz-share";
 import { randomUUID } from "crypto";
 import { inferQuizQuestionType } from "@/lib/quiz-question-types";
+import { decodeStoredAnswer, toPublicStructure } from "@/lib/quiz-structured";
 
 type RouteParams = {
   params: Promise<{ token: string }>;
@@ -105,13 +106,19 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
           instructions: quiz.instructions,
           createdAt: quiz.createdAt,
           questions: shuffledQuestions.map((q) => ({
+            ...(() => {
+              const decoded = decodeStoredAnswer(q.answer);
+              const structure = toPublicStructure(decoded.structure);
+              return {
+                structure,
+                questionType:
+                  structure?.type ??
+                  inferQuizQuestionType(q.question, q.options),
+              };
+            })(),
             id: q.id,
             question: q.question,
             options: q.options,
-            questionType: inferQuizQuestionType(
-              q.question,
-              q.options
-            ),
           })),
         },
         availability: {

@@ -72,3 +72,85 @@ Sprint KPI Targets
 - Export failure rate < 5%
 - Error reports include requestId 100% of time
 - D7 retention baseline available in admin
+
+Production Readiness Audit (2026-03-19)
+
+Current status:
+- Close, but not production-ready yet.
+
+Blocking issues before production release:
+
+1) PR-001 - Fix Google token audience verification
+- Priority: P0
+- Size: S
+- File:
+  - app/api/google_auth/route.ts
+- Problem:
+  - verifyIdToken() uses NEXT_PUBLIC_GOOGLE_CLIENT_ID in server-side audience check.
+- Done when:
+  - Server-side verification uses GOOGLE_CLIENT_ID.
+  - Google login works on localhost and production callback domains.
+
+2) PR-002 - Gate/disable reviewer bootstrap endpoint in production
+- Priority: P0
+- Size: S
+- File:
+  - app/api/admin/reviewer-account/route.ts
+- Problem:
+  - Reviewer credential bootstrap route is deployable and callable with a shared secret header.
+- Done when:
+  - Route is disabled by default in production (explicit feature flag required), or removed post-review.
+  - Access attempts return 404/403 when disabled.
+
+3) PR-003 - Move async generation to a true background worker
+- Priority: P0
+- Size: L
+- Files:
+  - app/api/generate-quiz/route.ts
+  - lib/async-job-dispatch.ts
+  - app/api/generation-jobs/[id]/process/route.ts
+- Problem:
+  - Current "async" flow still performs heavy generation via internal fetch in request chain.
+- Done when:
+  - Queue + worker pattern is used (no long AI processing in request/response path).
+  - Job retries and timeout behavior are explicit.
+
+Non-blocking but recommended:
+
+4) PR-004 - Remove leftover Super Race status messages
+- Priority: P1
+- Size: XS
+- File:
+  - components/quiz/student-bingo-game.tsx
+- Problem:
+  - "Lane locked in." / "Wrong lane. Pick again." still shown.
+- Done when:
+  - Messages are removed from UI and state logic.
+
+5) PR-005 - Complete structured logging migration
+- Priority: P1
+- Size: M
+- Files:
+  - app/api/* (multiple)
+  - lib/* (multiple)
+- Problem:
+  - Many console.log/warn/error calls remain in hot paths.
+- Done when:
+  - Hot paths use lib/logger.ts with redaction + sampling.
+  - Raw debug logs removed from production code paths.
+
+6) PR-006 - Remove hardcoded reviewer allowlist default
+- Priority: P1
+- Size: XS
+- File:
+  - lib/auth-allowlist.ts
+- Problem:
+  - Reviewer email is hardcoded in allowlist list.
+- Done when:
+  - Allowlist is env-driven only.
+
+Release gate checklist:
+- npm run typecheck passes
+- npm run lint passes
+- npm run build passes
+- Smoke test (quiz generate, lesson generate, student share submit, auth login) passes

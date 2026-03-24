@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
+import { stripStructuredMeta } from "@/lib/quiz-structured";
 
 export async function GET() {
   try {
@@ -107,8 +108,18 @@ export async function GET() {
       }
     }
 
+    const responseQuiz = quiz
+      ? {
+          ...quiz,
+          questions: quiz.questions.map((q) => ({
+            ...q,
+            answer: stripStructuredMeta(q.answer),
+          })),
+        }
+      : null;
+
     return NextResponse.json({
-      quiz: quiz ?? null,
+      quiz: responseQuiz,
       shareSettings: quiz?.shareSettings ?? null,
       sources,
       sourceTrace,

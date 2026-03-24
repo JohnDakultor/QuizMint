@@ -273,6 +273,7 @@ export async function generateQuizAIWithMeta(
      text.includes("quiz about") ||
      text.split(' ').length < 100); // Short text is likely a prompt
   const gamifiedMode = options?.gamifiedMode || "puzzle";
+  const gamifiedLabel = gamifiedMode === "bingo" ? "SUPER_RACE" : gamifiedMode.toUpperCase();
 
   const systemPrompt = `
 You are Quizmints AI, a quiz generator.
@@ -310,7 +311,7 @@ RULES:
   - Matching: ${typePlan.matchingTarget}
   - Essay with Rubric: ${typePlan.essayRubricTarget}
   - Worksheet (subject-based): ${typePlan.worksheetTarget}
-  - Gamified (Bingo/Sudoku/Puzzle): ${typePlan.gamifiedTarget}
+  - Gamified (Super Race/Sudoku/Puzzle): ${typePlan.gamifiedTarget}
 - For MCQ:
   - Exactly 4 options per question.
 - For True/False:
@@ -329,6 +330,14 @@ RULES:
   - Options must be an empty array [].
   - Question should clearly ask to match pairs.
   - Answer must list key pairs in plain text lines (e.g., "A -> 1; B -> 2").
+  - Set "questionType": "matching".
+  - Include a "structure" object:
+    {
+      "type": "matching",
+      "left": [{"id":"1","text":"..."},{"id":"2","text":"..."}],
+      "right": [{"id":"A","text":"..."},{"id":"B","text":"..."}],
+      "pairs": [{"leftId":"1","rightId":"A"},{"leftId":"2","rightId":"B"}]
+    }
 - For Essay with Rubric:
   - Options must be an empty array [].
   - Question should be open-ended.
@@ -337,11 +346,19 @@ RULES:
   - Options must be an empty array [].
   - Question can be math, science, chemistry, or other subject worksheet style.
   - Answer must provide the expected final response (value, term, formula, or short result).
+  - Set "questionType": "worksheet".
+  - Include a "structure" object:
+    {
+      "type": "worksheet",
+      "instructions": "optional brief instruction",
+      "parts": [{"id":"p1","prompt":"...","answer":"..."},{"id":"p2","prompt":"...","answer":"..."}]
+    }
 - For Gamified:
   - Can be MCQ-style with 4 options OR open-answer with options [].
   - Keep puzzle/game context but still objectively answerable.
-  - Use the selected game style: ${gamifiedMode.toUpperCase()}.
-  - The question text MUST start with "Game Challenge [${gamifiedMode.toUpperCase()}]:" so renderer can detect it reliably.
+  - Answer must be exactly one word (no spaces).
+  - Use the selected game style: ${gamifiedLabel}.
+  - The question text MUST start with "Game Challenge [${gamifiedLabel}]:" so renderer can detect it reliably.
 
 Difficulty: ${difficultyPrompt}
 ${adaptivePrompt}
@@ -363,8 +380,10 @@ JSON SCHEMA (MUST MATCH EXACTLY):
   "questions": [
     {
       "question": "string",
+      "questionType": "mcq|true_false|fill_blank|short_answer|matching|essay_rubric|worksheet|gamified",
       "options": ["string"],
       "answer": "string",
+      "structure": {},
       "explanation": "string",
       "hint": "string"
     }
@@ -560,6 +579,7 @@ JSON SCHEMA (MUST MATCH EXACTLY):
   }
 
   if (!parsed) throw new Error("AI did not return valid JSON");
+  normalizeGamifiedAnswersInParsed(parsed);
 
   if (!meetsQuestionTypePlan(parsed, typePlan)) {
     const strictMixInstruction = `RETRY WITH STRICT COMPLIANCE:
@@ -571,10 +591,13 @@ JSON SCHEMA (MUST MATCH EXACTLY):
 - Fill in the Blank must include "____" in the question, use options [], and provide the missing term as answer.
 - Short Answer must use options [] and provide a concise answer key.
 - Matching must use options [] and provide pair mappings in answer text.
+- Matching must include questionType "matching" and structure.type "matching" with left/right/pairs.
 - Essay with Rubric must use options [] and provide a concise model answer/rubric hint.
 - Worksheet (subject-based) must use options [] and provide the expected final answer.
+- Worksheet must include questionType "worksheet" and structure.type "worksheet" with parts[].
 - Gamified can use 4 options or options [] but must be objectively gradable.
-- Gamified questions must include the prefix "Game Challenge [${gamifiedMode.toUpperCase()}]:" in the question text.
+- Gamified questions must include the prefix "Game Challenge [${gamifiedLabel}]:" in the question text.
+- Gamified answers must be exactly one word.
 - Return JSON only.`;
 
     try {
@@ -589,6 +612,7 @@ JSON SCHEMA (MUST MATCH EXACTLY):
         estimatedCostUsd += aiCall.cost.estimatedCostUsd;
       }
       parsed = safeExtractJSON(raw);
+      normalizeGamifiedAnswersInParsed(parsed);
     } catch {
       fallbackUsed = true;
       const aiCall = await callOpenRouter(fallbackModel, strictMixInstruction);
@@ -602,6 +626,7 @@ JSON SCHEMA (MUST MATCH EXACTLY):
         estimatedCostUsd += aiCall.cost.estimatedCostUsd;
       }
       parsed = safeExtractJSON(raw);
+      normalizeGamifiedAnswersInParsed(parsed);
     }
 
     if (!parsed || !meetsQuestionTypePlan(parsed, typePlan)) {
@@ -617,10 +642,12 @@ JSON SCHEMA (MUST MATCH EXACTLY):
         estimatedCostUsd += aiCall.cost.estimatedCostUsd;
       }
       parsed = safeExtractJSON(raw);
+      normalizeGamifiedAnswersInParsed(parsed);
     }
   }
 
   if (!parsed) throw new Error("AI did not return valid JSON");
+  normalizeGamifiedAnswersInParsed(parsed);
 
   if (!meetsQuestionTypePlan(parsed, typePlan)) {
     let mergedQuestions = Array.isArray(parsed?.questions) ? [...parsed.questions] : [];
@@ -656,6 +683,7 @@ Return strict JSON with title, instructions, and questions array only.`;
     }
 
     parsed.questions = normalizeQuestionsToPlan(typePlan, mergedQuestions);
+    normalizeGamifiedAnswersInParsed(parsed);
   }
 
   if (!meetsQuestionTypePlan(parsed, typePlan)) {
@@ -864,7 +892,7 @@ function buildQuestionTypePlan(
     /\bworksheet\b|solve|calculate|compute|balance equation|scientific method|experiment|hypothesis|lab/i.test(
       normalized
     );
-  const includeGamified = /\bgamified\b|bingo|sudoku|puzzle|game[-\s]*based/i.test(normalized);
+  const includeGamified = /\bgamified\b|super race|case challenge|bingo|sudoku|puzzle|game[-\s]*based/i.test(normalized);
   const requestedMixed =
     /\bmixed\b|\bmix\b|\bvaried\b|\bcombination\b|\ball types\b|\bdifferent types\b/i.test(normalized);
   const wantsTrueFalse = includeTrueFalse || requestedMixed;
@@ -989,17 +1017,24 @@ function isShortAnswerQuestion(question: any): boolean {
 }
 
 function isMatchingQuestion(question: any): boolean {
+  const explicitType = normalizeQuestionType(question?.questionType);
+  if (explicitType === "matching") return true;
   const questionText = String(question?.question || "").toLowerCase();
   const options = Array.isArray(question?.options) ? question.options : [];
   const answer = String(question?.answer || "").trim();
+  const hasMatchingSignal = /matching|match the following|pair|connect/i.test(
+    questionText
+  );
   return (
-    options.length === 0 &&
     answer.length > 0 &&
-    /matching|match the following|pair/.test(questionText)
+    hasMatchingSignal &&
+    (options.length === 0 || options.length === 4)
   );
 }
 
 function isEssayRubricQuestion(question: any): boolean {
+  const explicitType = normalizeQuestionType(question?.questionType);
+  if (explicitType === "essay_rubric") return true;
   const questionText = String(question?.question || "").toLowerCase();
   const options = Array.isArray(question?.options) ? question.options : [];
   const answer = String(question?.answer || "").trim();
@@ -1012,23 +1047,30 @@ function isEssayRubricQuestion(question: any): boolean {
 }
 
 function isWorksheetQuestion(question: any): boolean {
+  const explicitType = normalizeQuestionType(question?.questionType);
+  if (explicitType === "worksheet") return true;
   const questionText = String(question?.question || "").toLowerCase();
   const options = Array.isArray(question?.options) ? question.options : [];
   const answer = String(question?.answer || "").trim();
+  const hasWorksheetSignal =
+    /worksheet|solve|calculate|compute|simplify|balance|equation|algebra|math|chem|science/.test(
+      questionText
+    ) || /[0-9]\s*[\+\-\*\/\^]\s*[0-9]/.test(questionText);
   return (
-    options.length === 0 &&
     answer.length > 0 &&
-    (/solve|calculate|simplify|balance|equation|algebra|math|chem/.test(questionText) ||
-      /[0-9]\s*[\+\-\*\/\^]\s*[0-9]/.test(questionText))
+    hasWorksheetSignal &&
+    (options.length === 0 || options.length === 4)
   );
 }
 
 function isGamifiedQuestion(question: any): boolean {
+  const explicitType = normalizeQuestionType(question?.questionType);
+  if (explicitType === "gamified") return true;
   const questionText = String(question?.question || "").toLowerCase();
   const options = Array.isArray(question?.options) ? question.options : [];
   const answer = String(question?.answer || "").trim();
   if (!answer) return false;
-  const hasGameSignal = /bingo|sudoku|puzzle|riddle|game|gamified/.test(questionText);
+  const hasGameSignal = /super race|case challenge|bingo|sudoku|puzzle|riddle|game|gamified/.test(questionText);
   if (!hasGameSignal) return false;
   return options.length === 0 || options.length === 4;
 }
@@ -1086,6 +1128,18 @@ type PlanTypeKey =
   | "essay_rubric"
   | "worksheet"
   | "gamified";
+
+function normalizeQuestionType(value: unknown): PlanTypeKey | null {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === "truefalse" || raw === "true_false" || raw === "true/false") return "true_false";
+  if (raw === "fillblank" || raw === "fill_blank" || raw === "fill-in-the-blank") return "fill_blank";
+  if (raw === "shortanswer" || raw === "short_answer") return "short_answer";
+  if (raw === "essayrubric" || raw === "essay_rubric") return "essay_rubric";
+  if (raw === "mcq" || raw === "multiple_choice") return "mcq";
+  if (raw === "matching" || raw === "worksheet" || raw === "gamified") return raw;
+  return null;
+}
 
 function detectPlanType(question: any): PlanTypeKey {
   if (isTrueFalseQuestion(question)) return "true_false";
@@ -1190,7 +1244,111 @@ function normalizeQuestionsToPlan(plan: QuestionTypePlan, questions: any[]) {
     if (needed <= 0) continue;
     out.push(...buckets[key].slice(0, needed));
   }
+
+  // If strict mix is still short, coerce from overflow so generation does not hard-fail.
+  if (out.length < plan.totalCount) {
+    const overflow: any[] = [];
+    for (const key of ordered) {
+      const needed = getTargetForType(plan, key);
+      if (needed < buckets[key].length) {
+        overflow.push(...buckets[key].slice(needed));
+      }
+    }
+
+    const currentCounts: Record<PlanTypeKey, number> = {
+      mcq: 0,
+      true_false: 0,
+      fill_blank: 0,
+      short_answer: 0,
+      matching: 0,
+      essay_rubric: 0,
+      worksheet: 0,
+      gamified: 0,
+    };
+    for (const q of out) currentCounts[detectPlanType(q)] += 1;
+
+    const patchers: Record<PlanTypeKey, (q: any) => any> = {
+      mcq: (q) => ({
+        ...q,
+        questionType: "mcq",
+        options:
+          Array.isArray(q?.options) && q.options.length === 4
+            ? q.options
+            : ["Option A", "Option B", "Option C", "Option D"],
+      }),
+      true_false: (q) => ({
+        ...q,
+        questionType: "true_false",
+        options: ["True", "False"],
+        answer:
+          String(q?.answer || "").toLowerCase() === "false" ? "False" : "True",
+      }),
+      fill_blank: (q) => ({
+        ...q,
+        questionType: "fill_blank",
+        question: String(q?.question || "").includes("____")
+          ? String(q.question)
+          : `${String(q?.question || "Complete the statement").trim()} ____`,
+        options: [],
+      }),
+      short_answer: (q) => ({ ...q, questionType: "short_answer", options: [] }),
+      matching: (q) => ({
+        ...q,
+        questionType: "matching",
+        question: /matching|match the following|pair|connect/i.test(String(q?.question || ""))
+          ? String(q.question)
+          : `Match the following: ${String(q?.question || "").trim()}`,
+        options: [],
+      }),
+      essay_rubric: (q) => ({ ...q, questionType: "essay_rubric", options: [] }),
+      worksheet: (q) => ({
+        ...q,
+        questionType: "worksheet",
+        question: /worksheet/i.test(String(q?.question || ""))
+          ? String(q.question)
+          : `Worksheet: ${String(q?.question || "").trim()}`,
+        options: [],
+      }),
+      gamified: (q) => ({ ...q, questionType: "gamified" }),
+    };
+
+    for (const key of ordered) {
+      const target = getTargetForType(plan, key);
+      while (currentCounts[key] < target && overflow.length > 0) {
+        const donor = overflow.shift();
+        const fixed = patchers[key](donor);
+        out.push(fixed);
+        currentCounts[key] += 1;
+      }
+    }
+  }
   return out;
+}
+
+function normalizeGamifiedAnswerWord(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const cleaned = raw
+    .replace(/^answer\s*:\s*/i, "")
+    .replace(/^the answer is\s*/i, "")
+    .replace(/["'`]/g, "")
+    .trim();
+  const oneWord = cleaned.split(/\s+/)[0] || "";
+  return oneWord.replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+function normalizeGamifiedAnswersInParsed(parsed: any) {
+  if (!parsed || !Array.isArray(parsed.questions)) return;
+  parsed.questions = parsed.questions.map((q: any) => {
+    if (!q) return q;
+    if (isGamifiedQuestion(q) || String(q?.questionType || "").toLowerCase() === "gamified") {
+      return {
+        ...q,
+        answer: normalizeGamifiedAnswerWord(q.answer),
+      };
+    }
+    return q;
+  });
 }
 
 function safeExtractJSON(raw: string) {

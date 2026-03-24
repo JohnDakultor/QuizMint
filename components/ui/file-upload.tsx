@@ -31,6 +31,7 @@ export default function FileUpload({
 
       <div className="flex items-center gap-1.5">
         <button
+          id="quiz-upload-local"
           type="button"
           onClick={handleIconClick}
           title="Upload local file"
@@ -40,7 +41,7 @@ export default function FileUpload({
           <FileUp className="h-3.5 w-3.5" />
           Local
         </button>
-        <GoogleDrivePickerButton onPicked={onFileSelect} />
+        <GoogleDrivePickerButton id="quiz-upload-drive" onPicked={onFileSelect} />
       </div>
     </div>
   );

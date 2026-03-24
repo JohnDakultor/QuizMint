@@ -35,7 +35,7 @@ export default function RootLayout({
   const gaId = process.env.NEXT_PUBLIC_GA_ID || "";
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         {adProvider === "monetag" && monetagScriptSrc && (
           <script

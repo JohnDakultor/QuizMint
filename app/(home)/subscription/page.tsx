@@ -41,11 +41,11 @@
 //       if (data.url) {
 //         window.location.href = data.url;
 //       } else {
-//         alert("Failed to create checkout session. Please try again.");
+//         showNotice("Checkout Failed", "Failed to create checkout session. Please try again.", "error");
 //       }
 //     } catch (err) {
 //       console.error(err);
-//       alert("An error occurred. Please try again.");
+//       showNotice("Request Failed", "An error occurred. Please try again.", "error");
 //     } finally {
 //       setLoading(false);
 //     }
@@ -212,7 +212,7 @@
 //       else alert("Failed to create Stripe session");
 //     } catch (err) {
 //       console.error(err);
-//       alert("An error occurred. Please try again.");
+//       showNotice("Request Failed", "An error occurred. Please try again.", "error");
 //     } finally {
 //       setLoading(false);
 //       setShowPaymentModal(false);
@@ -347,6 +347,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { PopoutCard } from "@/components/ui/popout-card";
 import { trackGaEvent } from "@/lib/ga-client";
 
 type CurrencyData = {
@@ -466,6 +467,21 @@ export default function Subscription() {
   >(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
     useState<string>("");
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const [noticeTitle, setNoticeTitle] = useState("");
+  const [noticeMessage, setNoticeMessage] = useState("");
+  const [noticeVariant, setNoticeVariant] = useState<"success" | "error" | "info">("info");
+
+  const showNotice = (
+    title: string,
+    message = "",
+    variant: "success" | "error" | "info" = "info"
+  ) => {
+    setNoticeTitle(title);
+    setNoticeMessage(message);
+    setNoticeVariant(variant);
+    setNoticeOpen(true);
+  };
 
   // const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID!;
   // const PAYPAL_ENV =
@@ -526,11 +542,11 @@ export default function Subscription() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert("Failed to create checkout session. Please try again.");
+        showNotice("Checkout Failed", "Failed to create checkout session. Please try again.", "error");
       }
     } catch (err) {
       console.error(err);
-      alert("An error occurred. Please try again.");
+      showNotice("Request Failed", "An error occurred. Please try again.", "error");
     } finally {
       setLoading(false);
     }
@@ -568,8 +584,10 @@ export default function Subscription() {
         console.log("Redirecting to PayPal approval page:", data.approvalLink);
         window.location.href = data.approvalLink;
       } else if (data.subscriptionId) {
-        alert(
-          `✅ Subscription created! ID: ${data.subscriptionId}\nPlan ID: ${data.planId}`
+        showNotice(
+          "Subscription Created",
+          `ID: ${data.subscriptionId} - Plan: ${data.planId}`,
+          "success"
         );
         setShowPaymentModal(false);
         const subRes = await fetch("/api/subscription");
@@ -580,7 +598,7 @@ export default function Subscription() {
       }
     } catch (err: any) {
       console.error("PayPal subscription error:", err);
-      alert(`❌ Error: ${err.message}\n\nCheck console for details.`);
+      showNotice("PayPal Error", err.message || "Unable to complete subscription.", "error");
     } finally {
       setLoading(false);
     }
@@ -597,18 +615,18 @@ export default function Subscription() {
   // Handle proceed button click
   const handleProceed = () => {
     if (!selectedPaymentMethod) {
-      alert("Please select a payment method");
+      showNotice("Select Payment Method", "Please select a payment method.", "info");
       return;
     }
 
     if (!planToSubscribe) {
-      alert("No plan selected");
+      showNotice("No Plan Selected", "Choose a plan first.", "info");
       return;
     }
 
     const method = paymentMethods.find((m) => m.id === selectedPaymentMethod);
     if (!method?.available) {
-      alert(`${method?.name} is coming soon! Please select PayPal for now.`);
+      showNotice("Method Unavailable", `${method?.name} is coming soon. Please select PayPal for now.`, "info");
       return;
     }
 
@@ -634,28 +652,45 @@ export default function Subscription() {
         handleApplePay(planToSubscribe);
         break;
       case "gcash":
-        alert("GCash is temporarily unavailable. Please use PayPal, Google Pay, or Apple Pay.");
+        showNotice("GCash Unavailable", "Please use PayPal, Google Pay, or Apple Pay.", "info");
         setLoading(false);
         break;
       default:
-        alert("Invalid payment method selected");
+        showNotice("Invalid Selection", "Invalid payment method selected.", "error");
         setLoading(false);
     }
   };
 
   return (
     // <PayPalScriptProvider options={initialOptions}>
-    <div>
-      <div className="max-w-4xl mx-auto mt-20 px-4 text-center">
-        <h1 className="text-4xl font-bold mb-12">
+    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 bg-transparent">
+      <PopoutCard
+        open={noticeOpen}
+        onClose={() => setNoticeOpen(false)}
+        variant={noticeVariant}
+        title={noticeTitle}
+        message={noticeMessage}
+      />
+      <div className="max-w-5xl mx-auto pt-14 pb-10 px-4 text-center">
+        <div className="relative overflow-hidden rounded-3xl border border-indigo-200/60 bg-linear-to-r from-slate-950 via-indigo-900 to-cyan-800 p-6 sm:p-8 text-white shadow-[0_20px_55px_-20px_rgba(30,64,175,0.65)] mb-8">
+          <div className="pointer-events-none absolute -top-10 -right-8 h-32 w-32 rounded-full bg-cyan-300/20 blur-2xl" />
+          <h1 className="text-3xl sm:text-4xl font-bold mb-2">
           Choose Your Subscription Plan
-        </h1>
+          </h1>
+          <p className="text-cyan-100 text-sm sm:text-base">
+            Premium billing experience with secure checkout and flexible payment options.
+          </p>
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {plans.map((plan) => (
             <div
               key={plan.id}
-              className="border p-8 rounded-xl shadow hover:shadow-lg transition-all duration-300 relative bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
+              className={`border p-8 rounded-2xl shadow-[0_16px_38px_-24px_rgba(15,23,42,0.55)] hover:shadow-[0_20px_45px_-22px_rgba(59,130,246,0.45)] transition-all duration-300 relative bg-white border-zinc-200 dark:border-slate-700 dark:bg-slate-900 ${
+                plan.id === "premium"
+                  ? "ring-1 ring-violet-300/70 bg-linear-to-b from-violet-50/50 to-white dark:from-slate-900 dark:to-slate-800"
+                  : "bg-linear-to-b from-sky-50/40 to-white dark:from-slate-900 dark:to-slate-800"
+              }`}
             >
               {selectedPlan === plan.id && loading && (
                 <div className="absolute inset-0 bg-black/20 flex items-center justify-center rounded-xl z-10">
@@ -663,15 +698,15 @@ export default function Subscription() {
                 </div>
               )}
 
-              <h2 className="text-2xl font-semibold">{plan.title}</h2>
-              <p className="text-zinc-600 dark:text-zinc-400 mt-2">
+              <h2 className="text-2xl font-semibold text-zinc-900 dark:text-slate-100">{plan.title}</h2>
+              <p className="text-zinc-600 mt-2 dark:text-slate-300">
                 {plan.description}
               </p>
 
-              <p className="text-3xl font-bold mt-4">
+              <p className="text-3xl font-bold mt-4 text-zinc-900 dark:text-slate-100">
                 {SYMBOLS[currencyData.currency] || currencyData.currency}
                 {currencyData.prices[plan.id]}.00
-                <span className="text-base font-medium">/ month</span>
+                <span className="text-base font-medium text-zinc-600 dark:text-slate-300">/ month</span>
               </p>
 
               <Button
@@ -705,7 +740,7 @@ export default function Subscription() {
               </Button>
 
               {plan.id === "premium" && (
-                <Badge className="absolute top-4 right-4 bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-100 px-2 py-1">
+                <Badge className="absolute top-4 right-4 bg-violet-100 text-violet-800 px-2 py-1 border border-violet-200">
                   Popular
                 </Badge>
               )}
@@ -715,9 +750,9 @@ export default function Subscription() {
 
         {showPaymentModal && planToSubscribe && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3">
-            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl max-w-xs sm:max-w-sm w-full overflow-hidden border border-gray-300 dark:border-gray-700">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-xs sm:max-w-sm w-full overflow-hidden border border-gray-200 dark:bg-slate-900 dark:border-slate-700">
               {/* Modal Header - Ultra Compact */}
-              <div className="bg-linear-to-r from-gray-900 to-black p-3 text-white">
+              <div className="bg-linear-to-r from-slate-950 via-indigo-900 to-cyan-800 p-3 text-white">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
                     <CreditCard className="w-5 h-5" />
@@ -746,7 +781,7 @@ export default function Subscription() {
               </div>
 
               {/* Payment Methods - Ultra Compact */}
-              <div className="p-3 space-y-2 max-h-[50vh] overflow-y-auto">
+              <div className="p-3 space-y-2 max-h-[50vh] overflow-y-auto bg-linear-to-b from-white to-slate-50/50">
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1">
                     <Zap className="w-3.5 h-3.5 text-yellow-500" />
@@ -1152,7 +1187,7 @@ export default function Subscription() {
 //       else alert("Failed to create Stripe session");
 //     } catch (err) {
 //       console.error(err);
-//       alert("An error occurred. Please try again.");
+//       showNotice("Request Failed", "An error occurred. Please try again.", "error");
 //     } finally {
 //       setLoading(false);
 //       setShowPaymentModal(false);
@@ -1412,6 +1447,7 @@ export default function Subscription() {
 //     </PayPalScriptProvider>
 //   );
 // }
+
 
 
 

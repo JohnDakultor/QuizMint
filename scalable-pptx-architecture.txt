@@ -1,0 +1,161 @@
+Scalable PPTX Generator Architecture
+
+Goal
+Turn the current PPTX generation flow into a queue-first, worker-based system that can scale to high traffic safely.
+
+Current State
+- Next.js API can generate PPTX directly in-request.
+- Async job support already exists, but it is not the default path.
+- PPTX buffers are returned directly from the app server.
+- Image generation depends on external AI providers.
+- Some caching exists in process memory only.
+
+Why Current Architecture Will Not Scale Well
+- Long-running synchronous requests tie up app server resources.
+- Large PPTX buffers increase memory pressure on API instances.
+- Provider-backed image generation can become the bottleneck.
+- In-memory caches do not help across multiple instances.
+- Direct downloads from the app server do not scale as well as object storage.
+
+Recommended Target Flow
+1. User clicks Download PPTX.
+2. API validates auth, quota, and input.
+3. API creates a generation job record.
+4. API pushes the job to a queue.
+5. Worker picks up the job.
+6. Worker generates the PPTX.
+7. Worker uploads the file to object storage.
+8. Worker marks the job completed with a file URL.
+9. Client polls job status and downloads when ready.
+
+Recommended Components
+- API layer: Next.js route handlers only for validation, queuing, and status reads
+- Queue: Redis/BullMQ, AWS SQS, or Google Cloud Tasks
+- Workers: dedicated Node workers for PPTX and AI-dependent processing
+- Database: Postgres for job metadata and user usage tracking
+- Storage: S3, Cloudflare R2, or Google Cloud Storage for finished files
+- Cache and rate limiting: Redis
+- Monitoring: logs, metrics, queue depth, job latency, provider failures
+
+Architecture Principles
+- Keep web requests short.
+- Move heavy work out of request/response cycles.
+- Store generated files outside the app server.
+- Make retries explicit and safe.
+- Centralize provider throttling.
+- Scale workers horizontally.
+
+Best Design For This Repo
+- Make async PPTX generation the default path.
+- Keep the API route responsible for:
+  - auth
+  - quota checks
+  - input validation
+  - job creation
+  - status responses
+- Move actual PPTX generation into a worker process.
+- Upload completed PPTX files to object storage instead of returning large buffers directly.
+
+Suggested Job States
+- queued
+- processing
+- completed
+- failed
+- expired
+
+Suggested Job Payload
+- userId
+- deck or lesson-plan input
+- requestId
+- generation options
+- source
+- createdAt
+
+Suggested Job Result
+- fileUrl
+- fileName
+- mimeType
+- byteSize
+- completedAt
+- telemetry
+
+What To Change First
+1. Make /api/generate-lesson-pptx queue jobs by default.
+2. Add a job status endpoint.
+3. Add a worker that processes queued PPTX jobs.
+4. Upload finished files to object storage.
+5. Change the client to poll and download from the completed result.
+
+Important Provider Controls
+- Limit concurrent image-generation calls globally.
+- Add per-user rate limits.
+- Add retry with backoff for transient provider failures.
+- Add provider timeouts.
+- Add circuit-breaker style fail-safe behavior if provider latency spikes.
+
+Recommended Storage Pattern
+- Store final PPTX in object storage.
+- Save only metadata and URL in the database.
+- Add TTL or cleanup for old files.
+- Optionally keep a content hash to avoid regenerating identical exports.
+
+Recommended Caching
+- Do not rely on in-process Map for shared caching.
+- Use Redis or persistent storage for reusable generation artifacts.
+- Cache by normalized prompt/input hash when safe.
+- Add TTL and size limits.
+
+Scaling Strategy
+- API instances scale for request volume.
+- Worker instances scale for generation volume.
+- Storage/CDN handles file delivery.
+- Redis handles queue and shared throttling.
+
+Operational Metrics To Track
+- jobs queued
+- jobs in progress
+- jobs completed
+- jobs failed
+- average generation latency
+- P95 generation latency
+- provider error rate
+- queue wait time
+- worker utilization
+- average file size
+
+Failure Handling
+- If worker fails, job moves to failed with error details.
+- Retry only idempotent jobs.
+- Avoid duplicate output by using a deterministic input hash where useful.
+- Surface status cleanly to the client.
+
+Recommended Client UX
+- Download button becomes "Prepare PPTX"
+- Show:
+  - queued
+  - generating
+  - ready
+  - failed
+- Poll job status every few seconds
+- Offer final download only when completed
+
+Capacity Mindset
+Do not plan around total registered users.
+Plan around:
+- concurrent export requests
+- jobs per minute
+- provider throughput
+- worker CPU and memory
+- storage bandwidth
+
+Practical Conclusion
+The current implementation is okay for low to moderate traffic.
+It is not enough for very large-scale concurrent usage as-is.
+To make it robust at scale, this repo should move to:
+- queue-first generation
+- worker-based processing
+- object-storage delivery
+- shared rate limiting and caching
+
+Recommended Next Step For This Codebase
+Implement queue-first PPTX generation as the default download path.

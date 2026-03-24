@@ -17,7 +17,7 @@ export function QuizPageHeader({ isPremiumAdaptiveEnabled, onToggleAdaptive }: Q
             id="quiz-adaptive-toggle"
             type="button"
             onClick={onToggleAdaptive}
-            className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 shadow-sm hover:bg-indigo-100"
+            className="inline-flex items-center gap-1.5 rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 dark:border-indigo-400/40 dark:bg-indigo-500/20 dark:text-indigo-100 dark:hover:bg-indigo-500/30"
             title="Adaptive suggestions"
           >
             <BrainCircuit className="h-3.5 w-3.5 shrink-0" />
@@ -28,10 +28,10 @@ export function QuizPageHeader({ isPremiumAdaptiveEnabled, onToggleAdaptive }: Q
           <LiteModeBadge />
         </div>
       </div>
-      <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+      <h1 className="mb-2 bg-linear-to-r from-blue-500 via-indigo-400 to-fuchsia-400 bg-clip-text text-3xl font-bold text-transparent md:text-4xl">
         Quiz Generator
       </h1>
-      <p className="text-gray-600 text-lg max-w-3xl mx-auto">
+      <p className="mx-auto max-w-3xl text-lg text-slate-600 dark:text-slate-300">
         Generate structured quizzes from prompt, links, or uploaded content with shareable templates.
       </p>
     </div>

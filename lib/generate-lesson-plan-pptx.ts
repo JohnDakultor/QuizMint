@@ -1,6 +1,7 @@
 // lib/generate-lesson-plan-pptx.ts
 import pptxgen from "pptxgenjs";
-import type { PptDeck } from "@/lib/lesson-plan-ppt-ai";
+import type { PptDeck, PptSlide } from "@/lib/lesson-plan-ppt-ai";
+import { buildSlideRenderModel, getBlockTextStyle, getPreferredSlideImage } from "@/lib/pptx";
 
 const OR_IMAGE_MODEL =
   process.env.OPENROUTER_IMAGE_MODEL ||
@@ -68,7 +69,7 @@ async function extractOpenRouterImageDataUrl(data: any): Promise<string | null> 
   return null;
 }
 
-async function generateSlideImage(
+export async function generateSlideImage(
   prompt: string,
   options?: { liteMode?: boolean }
 ): Promise<string | null> {
@@ -241,75 +242,95 @@ function addTitleSlide(pptx: pptxgen, title: string, subtitle?: string) {
 
 function addBulletedSlide(
   pptx: pptxgen,
-  title: string,
-  bullets: string[],
-  notes?: string,
-  body?: string,
+  slideInput: PptSlide,
   imageData?: string
 ) {
   const slide = pptx.addSlide();
-  slide.addText(title, {
-    x: 0.6,
-    y: 0.4,
-    w: 12.2,
-    h: 0.6,
-    fontSize: 30,
-    bold: true,
-    color: "111827",
-    fontFace: "Aptos",
+  const renderModel = buildSlideRenderModel({
+    ...slideInput,
+    imageData: imageData || slideInput.imageData,
   });
+  slide.background = {
+    color: renderModel.backgroundColor.replace(/^#/, ""),
+  };
 
-  const cleanBullets = bullets
-    .map((b) => (b || "").trim())
-    .filter((b) => b.length > 0)
-    .map((b) => (b.length > 160 ? b.slice(0, 159) + "…" : b));
-  const bodyText = (body || "").trim();
-  const showBullets = cleanBullets.length > 0;
+  if (renderModel.backgroundImage) {
+    slide.addImage({
+      data: renderModel.backgroundImage.imageData,
+      x: renderModel.backgroundImage.box.x,
+      y: renderModel.backgroundImage.box.y,
+      w: renderModel.backgroundImage.box.w,
+      h: renderModel.backgroundImage.box.h,
+      transparency: renderModel.backgroundImage.transparency,
+    });
+  }
 
-  const textW = imageData ? 6.4 : 12.0;
-  const textX = imageData ? 0.7 : 0.9;
-  if (bodyText) {
-    slide.addText(bodyText, {
-      x: textX,
-      y: 1.2,
-      w: textW,
-      h: showBullets ? 2.0 : 4.8,
-      fontSize: 18,
-      color: "1F2937",
-      fontFace: "Aptos",
+  slide.addText(renderModel.title.text, {
+    x: renderModel.title.box.x,
+    y: renderModel.title.box.y,
+    w: renderModel.title.box.w,
+    h: renderModel.title.box.h,
+    fontSize: renderModel.title.fontSize,
+    bold: getBlockTextStyle(slideInput as any, "title").bold,
+    italic: getBlockTextStyle(slideInput as any, "title").italic,
+    color: renderModel.title.color,
+    fontFace: renderModel.fontFace,
+    align: renderModel.title.textAlign,
+  });
+  renderModel.bodyBlocks.forEach((block) => {
+    const textStyle = getBlockTextStyle(slideInput as any, block.key);
+    slide.addText(block.text, {
+      x: block.box.x,
+      y: block.box.y,
+      w: block.box.w,
+      h: block.box.h,
+      fontSize: block.fontSize,
+      bold: textStyle.bold,
+      italic: textStyle.italic,
+      color: block.color,
+      fontFace: renderModel.fontFace,
+      align: block.textAlign,
+      margin: 0,
       valign: "top",
     });
-  }
-
-  const content = showBullets ? cleanBullets : ["See lesson plan for details."];
-  const runs = content.map((text) => ({
-    text,
-    options: { bullet: { indent: 22 }, hanging: 6 },
-  }));
-
-  slide.addText(runs, {
-    x: textX,
-    y: bodyText ? 3.3 : 1.6,
-    w: textW,
-    h: bodyText ? 3.4 : 5.4,
-    fontSize: 18,
-    color: "1F2937",
-    fontFace: "Aptos",
-    valign: "top",
   });
 
-  if (notes) {
-    slide.addNotes(notes);
-  }
-
-  if (imageData) {
-    slide.addImage({
-      data: imageData,
-      x: 7.2,
-      y: 1.3,
-      w: 5.5,
-      h: 4.6,
+  renderModel.bullets.forEach((bullet) => {
+    const textStyle = getBlockTextStyle(slideInput as any, bullet.key);
+    slide.addText(`• ${bullet.text}`, {
+      x: bullet.box.x,
+      y: bullet.box.y,
+      w: bullet.box.w,
+      h: bullet.box.h,
+      fontSize: bullet.fontSize,
+      bold: textStyle.bold,
+      italic: textStyle.italic,
+      color: bullet.color,
+      fontFace: renderModel.fontFace,
+      align: bullet.textAlign,
+      margin: 0,
+      valign: "middle",
     });
+  });
+
+  renderModel.visuals.forEach((visual) => {
+    if (visual.imageData) {
+      const inset = visual.imageInset ?? 0;
+      const imageHeight = inset === 0
+        ? visual.box.h
+        : Math.max(0.8, Math.min(visual.box.h, visual.box.h * (visual.imageHeightRatio ?? 0.72)));
+      slide.addImage({
+        data: visual.imageData,
+        x: visual.box.x + inset,
+        y: visual.box.y + inset,
+        w: Math.max(0.4, visual.box.w - inset * 2),
+        h: imageHeight,
+      });
+    }
+  });
+
+  if (renderModel.notes) {
+    slide.addNotes(renderModel.notes);
   }
 }
 
@@ -328,27 +349,8 @@ export async function generateLessonPlanPptx(
 
   for (let i = 0; i < deck.slides.length; i++) {
     const slide = deck.slides[i];
-    let imageData: string | null = null;
-    const imageLimit = options?.liteMode ? 2 : 5;
-    if (i < imageLimit) {
-      const promptParts =
-        slide.imagePrompt ||
-        [deck.title, slide.title, slide.body].filter(Boolean).join(" - ").slice(0, 300);
-      if (promptParts) {
-        imageData = await generateSlideImage(
-          `Educational illustration about ${promptParts}`,
-          { liteMode: Boolean(options?.liteMode) }
-        );
-      }
-    }
-    addBulletedSlide(
-      pptx,
-      slide.title,
-      slide.bullets || [],
-      slide.notes,
-      slide.body,
-      imageData || undefined
-    );
+    const imageData = getPreferredSlideImage(slide) || undefined;
+    addBulletedSlide(pptx, slide, imageData);
   }
 
   const buffer = await pptx.write({
@@ -356,3 +358,4 @@ export async function generateLessonPlanPptx(
 }) as Buffer;
   return buffer;
 }
+

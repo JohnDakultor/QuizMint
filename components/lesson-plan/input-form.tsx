@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import LoadingProgress from "@/components/ui/loading-progress";
+import { LESSON_PLAN_FRAMEWORKS, type LessonPlanFrameworkId } from "@/lib/lesson-plan-frameworks";
 import {
   AlertCircle,
   BookOpen,
@@ -24,6 +25,7 @@ import {
 import type { FormEvent, RefObject } from "react";
 
 type LessonTemplateDefaults = {
+  framework: LessonPlanFrameworkId;
   topic: string;
   subject: string;
   grade: string;
@@ -43,6 +45,7 @@ type LessonMaterialUsage = {
 type LessonPlanInputFormProps = {
   lessonTemplateKey: string;
   lessonTemplateDefaults: LessonTemplateDefaults;
+  selectedFramework: LessonPlanFrameworkId;
   lessonFormRef: RefObject<HTMLFormElement | null>;
   loading: boolean;
   loadingSlides: boolean;
@@ -65,11 +68,13 @@ type LessonPlanInputFormProps = {
   onShareTemplateLink: () => void;
   onOpenUploadPicker: () => void;
   onHandleFileUpload: (file: File) => void;
+  onFrameworkChange: (framework: LessonPlanFrameworkId) => void;
 };
 
 export function LessonPlanInputForm({
   lessonTemplateKey,
   lessonTemplateDefaults,
+  selectedFramework,
   lessonFormRef,
   loading,
   loadingSlides,
@@ -92,17 +97,18 @@ export function LessonPlanInputForm({
   onShareTemplateLink,
   onOpenUploadPicker,
   onHandleFileUpload,
+  onFrameworkChange,
 }: LessonPlanInputFormProps) {
   return (
-    <Card className="shadow-xl border-2 border-gray-200 overflow-hidden">
-      <div className="bg-linear-to-r from-blue-600 to-purple-600 p-4">
+    <Card className="shadow-[0_20px_55px_-24px_rgba(30,64,175,0.55)] border border-indigo-200/80 overflow-hidden rounded-2xl bg-gradient-to-b from-white to-zinc-50 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+      <div className="bg-gradient-to-r from-slate-950 via-indigo-900 to-cyan-800 p-4">
         <h2 className="text-xl font-bold text-white text-center">Generate Your Lesson Plan</h2>
       </div>
       <CardContent className="p-6">
         <form key={lessonTemplateKey} ref={lessonFormRef} onSubmit={onSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
                 <Target className="h-4 w-4 text-blue-600" />
                 Lesson Topic *
               </label>
@@ -112,11 +118,11 @@ export function LessonPlanInputForm({
                 placeholder="e.g., Photosynthesis, World War II, Quadratic Equations"
                 defaultValue={lessonTemplateDefaults.topic}
                 required
-                className="h-12 border-2 focus:border-blue-500"
+                className="h-12 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
             <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
                 <BookOpen className="h-4 w-4 text-purple-600" />
                 Subject *
               </label>
@@ -126,14 +132,37 @@ export function LessonPlanInputForm({
                 placeholder="e.g., Science, History, Mathematics"
                 defaultValue={lessonTemplateDefaults.subject}
                 required
-                className="h-12 border-2 focus:border-purple-500"
+                className="h-12 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
           </div>
 
+          <div className="space-y-3">
+            <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-indigo-600" />
+              Instructional Framework *
+            </label>
+            <select
+              id="lessonplan-framework"
+              name="framework"
+              value={selectedFramework}
+              onChange={(event) => onFrameworkChange(event.target.value as LessonPlanFrameworkId)}
+              className="h-12 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            >
+              {Object.values(LESSON_PLAN_FRAMEWORKS).map((framework) => (
+                <option key={framework.id} value={framework.id}>
+                  {framework.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {LESSON_PLAN_FRAMEWORKS[selectedFramework].description}
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
                 <Users className="h-4 w-4 text-green-600" />
                 Grade Level *
               </label>
@@ -143,11 +172,11 @@ export function LessonPlanInputForm({
                 placeholder="e.g., Grade 7, Senior High School"
                 defaultValue={lessonTemplateDefaults.grade}
                 required
-                className="h-12 border-2 focus:border-green-500"
+                className="h-12 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
             <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
                 <Clock className="h-4 w-4 text-amber-600" />
                 Number of Days *
               </label>
@@ -160,11 +189,11 @@ export function LessonPlanInputForm({
                 placeholder="Days"
                 defaultValue={lessonTemplateDefaults.days}
                 required
-                className="h-12 border-2 focus:border-amber-500"
+                className="h-12 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
             <div className="space-y-3">
-              <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
                 <Zap className="h-4 w-4 text-red-600" />
                 Minutes per Day *
               </label>
@@ -176,13 +205,13 @@ export function LessonPlanInputForm({
                 max="120"
                 defaultValue={lessonTemplateDefaults.minutesPerDay}
                 required
-                className="h-12 border-2 focus:border-red-500"
+                className="h-12 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
           </div>
 
           <div className="space-y-3">
-            <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
               <Lightbulb className="h-4 w-4 text-indigo-600" />
               Learning Objectives (optional)
             </label>
@@ -191,12 +220,12 @@ export function LessonPlanInputForm({
               name="objectives"
               placeholder="Enter specific learning objectives, one per line..."
               defaultValue={lessonTemplateDefaults.objectives}
-              className="min-h-30 border-2 focus:border-indigo-500"
+              className="min-h-30 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
 
           <div className="space-y-3">
-            <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-gray-600" />
               Special Constraints (optional)
             </label>
@@ -205,7 +234,7 @@ export function LessonPlanInputForm({
               name="constraints"
               placeholder="Any specific requirements or constraints..."
               defaultValue={lessonTemplateDefaults.constraints}
-              className="min-h-25 border-2 focus:border-gray-500"
+              className="min-h-25 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
 
@@ -215,7 +244,7 @@ export function LessonPlanInputForm({
               type="button"
               variant="outline"
               onClick={onCopyTemplateLink}
-              className="text-xs"
+              className="text-xs border-indigo-200 bg-white hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-indigo-500/20 dark:hover:border-indigo-400/50"
             >
               <FileText className="mr-1 h-3.5 w-3.5" />
               Copy Template Link
@@ -225,7 +254,7 @@ export function LessonPlanInputForm({
               type="button"
               variant="outline"
               onClick={onShareTemplateLink}
-              className="text-xs"
+              className="text-xs border-indigo-200 bg-white hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-indigo-500/20 dark:hover:border-indigo-400/50"
             >
               <Share2 className="mr-1 h-3.5 w-3.5" />
               Share Template
@@ -236,7 +265,7 @@ export function LessonPlanInputForm({
               variant="outline"
               onClick={onOpenUploadPicker}
               disabled={loadingSlides || (isFree && (lessonMaterialUploadUsage?.remaining ?? 3) <= 0)}
-              className="text-xs"
+              className="text-xs border-indigo-200 bg-white hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-indigo-500/20 dark:hover:border-indigo-400/50"
             >
               <FileUp className="mr-1 h-3.5 w-3.5" />
               Upload Lesson Plan File
@@ -254,7 +283,7 @@ export function LessonPlanInputForm({
           </div>
 
           {isFree && lessonMaterialUploadUsage && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            <div className="rounded-lg border border-indigo-200 bg-gradient-to-r from-indigo-50 to-cyan-50 px-3 py-2 text-xs text-indigo-800 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800 dark:text-slate-200">
               File-to-PPTX uploads: {lessonMaterialUploadUsage.used}/{lessonMaterialUploadUsage.limit} used
               {" • "}
               {lessonMaterialUploadUsage.remaining} remaining
@@ -280,18 +309,18 @@ export function LessonPlanInputForm({
             <Button
               id="lessonplan-generate"
               type="submit"
-              className="w-full sm:w-auto h-14 text-lg font-bold bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg"
+              className="h-14 w-full rounded-xl bg-blue-600 text-lg font-bold text-white shadow-[0_10px_24px_-12px_rgba(37,99,235,0.9)] transition hover:bg-blue-700 sm:w-auto"
               disabled={loading}
             >
               {loading ? (
                 <>
                   <Loader2 className="animate-spin mr-3" />
-                  <span className="text-white">Generating 4A's Lesson Plan...</span>
+                  <span className="text-white">Generating Lesson Plan...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="mr-3" />
-                  <span className="text-white">Generate 4A's Lesson Plan</span>
+                  <span className="text-white">Generate Lesson Plan</span>
                 </>
               )}
             </Button>
@@ -300,7 +329,7 @@ export function LessonPlanInputForm({
                 type="button"
                 variant="outline"
                 onClick={onPause}
-                className="w-full sm:w-auto h-14 border-amber-300 text-amber-700 hover:bg-amber-50"
+                className="w-full sm:w-auto h-14 border-amber-300 text-amber-700 hover:bg-amber-50 bg-white dark:border-amber-400/50 dark:bg-slate-900 dark:text-amber-200 dark:hover:bg-amber-500/20 dark:hover:border-amber-300"
               >
                 <PauseCircle className="mr-2 h-5 w-5" />
                 Pause

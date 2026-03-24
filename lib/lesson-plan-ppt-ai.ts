@@ -14,8 +14,26 @@ export interface PptSlide {
   title: string;
   bullets: string[];
   body?: string;
+  bodyBlocks?: string[];
   notes?: string;
+  backgroundColor?: string;
   imagePrompt?: string;
+  imageData?: string;
+  textBold?: boolean;
+  textItalic?: boolean;
+  textAlignments?: Record<string, "left" | "center" | "right">;
+  textStyles?: Record<string, { bold?: boolean; italic?: boolean }>;
+  visualItems?: Array<{ id: string; prompt: string; imageData?: string }>;
+  bulletLayouts?: Record<string, { x: number; y: number; w: number; h: number }>;
+  bodyBlockLayouts?: Record<string, { x: number; y: number; w: number; h: number }>;
+  visualItemLayouts?: Record<string, { x: number; y: number; w: number; h: number }>;
+  layoutStyle?: "title-body" | "two-column" | "visual-focus";
+  accentTone?: "indigo" | "emerald" | "amber" | "rose";
+  imagePlacement?: "right" | "background" | "spotlight";
+  canvasLayout?: Partial<
+    Record<"title" | "body" | "bullets" | "visual" | "notes", { x: number; y: number; w: number; h: number }>
+  >;
+  canvasOrder?: Array<"title" | "body" | "bullets" | "visual" | "notes">;
 }
 
 export interface PptDeck {

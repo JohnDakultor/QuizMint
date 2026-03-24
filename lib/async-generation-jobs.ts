@@ -4,7 +4,8 @@ import { randomUUID } from "crypto";
 export type AsyncJobType =
   | "quiz_generate"
   | "lesson_plan_generate"
-  | "lesson_material_upload";
+  | "lesson_material_upload"
+  | "lesson_pptx_generate";
 
 export type AsyncJobStatus = "queued" | "processing" | "completed" | "failed";
 
@@ -95,4 +96,34 @@ export async function failAsyncGenerationJob(jobId: string, userId: string, erro
     RETURNING *
   `;
   return rows[0] ?? null;
+}
+
+export async function requeueAsyncGenerationJob(jobId: string, userId: string, error: string) {
+  const rows = await prisma.$queryRaw<AsyncGenerationJobRow[]>`
+    UPDATE "AsyncGenerationJob"
+    SET
+      "status" = 'queued',
+      "error" = ${error},
+      "startedAt" = NULL,
+      "completedAt" = NULL,
+      "updatedAt" = NOW()
+    WHERE "id" = ${jobId}
+      AND "userId" = ${userId}
+    RETURNING *
+  `;
+  return rows[0] ?? null;
+}
+
+export async function listQueuedAsyncGenerationJobs(limit = 10) {
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+  const rows = await prisma.$queryRaw<
+    Array<{ id: string; userId: string; type: AsyncJobType; attemptCount: number }>
+  >`
+    SELECT "id", "userId", "type", COALESCE("attemptCount", 0) AS "attemptCount"
+    FROM "AsyncGenerationJob"
+    WHERE "status" = 'queued'
+    ORDER BY "createdAt" ASC
+    LIMIT ${safeLimit}
+  `;
+  return rows;
 }

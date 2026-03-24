@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import { Buffer } from "buffer";
+import { getLessonPlanFramework } from "@/lib/lesson-plan-frameworks";
 
 export interface LessonPlanDay {
   day: number;
@@ -55,6 +56,8 @@ export interface LessonPlanDay {
 
 export interface LessonPlanData {
   title: string;
+  framework?: string;
+  frameworkLabel?: string;
   grade: string;
   duration: string;
   objectives: string[];
@@ -213,6 +216,7 @@ export async function generateLessonPlanPDF(
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
+      const framework = getLessonPlanFramework(lessonPlan?.framework);
       const doc = new PDFDocument({
         margin: MARGIN,
         size: "A4",
@@ -249,7 +253,7 @@ export async function generateLessonPlanPDF(
 
       for (const day of lessonPlan?.days || []) {
         heading(doc, `Day ${day.day}: ${sanitize(day.topic)}`, 2);
-        heading(doc, "4A's Pedagogical Framework", 3);
+        heading(doc, lessonPlan?.frameworkLabel || framework.sectionTitle, 3);
         for (const phase of day["4asModel"] || []) {
           heading(
             doc,
@@ -262,7 +266,9 @@ export async function generateLessonPlanPDF(
           labeledParagraph(doc, "Materials", (phase.materials || []).join(", "));
         }
 
-        renderSpecificActivities(doc, day.specificActivities || {});
+        if (Object.keys(day.specificActivities || {}).length > 0) {
+          renderSpecificActivities(doc, day.specificActivities || {});
+        }
 
         if ((day.assessment || []).length) {
           heading(doc, "Assessment and Rubrics", 2);

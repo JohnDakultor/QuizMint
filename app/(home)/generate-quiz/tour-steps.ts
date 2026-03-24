@@ -24,6 +24,30 @@ export const quizTourSteps = [
     },
   },
   {
+    element: "#quiz-item-mix",
+    popover: {
+      title: "Item Mix Card",
+      description:
+        "Configure the exact distribution of question types. If you set values here, generation prioritizes this mix.",
+    },
+  },
+  {
+    element: "#quiz-item-mix-clear",
+    popover: {
+      title: "Clear Item Mix",
+      description:
+        "Reset all item mix fields back to zero when you want a fresh configuration.",
+    },
+  },
+  {
+    element: "#quiz-gamified-mode",
+    popover: {
+      title: "Game Type",
+      description:
+        "When Gamified count is above zero, choose the mode: Puzzle, Super Race, or Sudoku-style logic.",
+    },
+  },
+  {
     element: "#quiz-input",
     popover: {
       title: "Paste or type",
@@ -32,10 +56,17 @@ export const quizTourSteps = [
     },
   },
   {
-    element: "#quiz-upload",
+    element: "#quiz-upload-local",
     popover: {
-      title: "Upload a file",
-      description: "Upload a document to generate questions from your content.",
+      title: "Local Upload",
+      description: "Upload a file from your device to generate a quiz from the document content.",
+    },
+  },
+  {
+    element: "#quiz-upload-drive",
+    popover: {
+      title: "Google Drive Upload",
+      description: "Pick a file from Google Drive and import it directly into quiz generation.",
     },
   },
   {

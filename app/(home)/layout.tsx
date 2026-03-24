@@ -26,12 +26,14 @@ export default async function HomeLayout({ children }: { children: React.ReactNo
   return (
     <>
       <div
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-white text-gray-900 flex flex-col min-h-screen`}
+        id="auth-theme-root"
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen flex flex-col bg-linear-to-br from-slate-50 via-white to-indigo-50 text-slate-900 antialiased transition-colors dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/40 dark:text-slate-100`}
       >
         <ClientLayout>
           <Navigation />
           <main
           className="
+            app-shell
             transition-all duration-300
             px-4 pt-6
             pb-28 sm:pb-6

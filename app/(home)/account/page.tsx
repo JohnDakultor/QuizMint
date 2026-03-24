@@ -5,9 +5,10 @@ import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PopoutCard } from "@/components/ui/popout-card";
+import SkeletonLoading from "@/components/ui/skeleton-loading";
 import Tour from "@/components/ui/tour";
 import {
-  Loader2,
   CheckCircle,
   XCircle,
   CreditCard,
@@ -33,6 +34,7 @@ export default function Account() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveNoticeOpen, setSaveNoticeOpen] = useState(false);
 
   const [difficulty, setDifficulty] =
     useState<UserSubscription["aiDifficulty"]>("medium");
@@ -81,7 +83,7 @@ export default function Account() {
       if (!res.ok) throw new Error(data.error || "Failed to save settings");
       applyLiteMode(liteMode);
       await fetchAccount();
-      alert("Settings updated");
+      setSaveNoticeOpen(true);
     } catch (err: any) {
       setError(err.message || "Failed to save settings");
     } finally {
@@ -95,8 +97,62 @@ export default function Account() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin text-sky-500" />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 space-y-8">
+        <div className="rounded-3xl border border-indigo-200/60 bg-linear-to-r from-slate-950 via-indigo-900 to-cyan-800 p-6 shadow-[0_20px_55px_-20px_rgba(30,64,175,0.65)]">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-3">
+              <SkeletonLoading className="h-10 w-44 bg-white/20 dark:bg-white/15" />
+              <SkeletonLoading className="h-5 w-72 bg-white/15 dark:bg-white/10" />
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="space-y-2">
+                <SkeletonLoading className="h-4 w-16 bg-white/15 dark:bg-white/10" />
+                <SkeletonLoading className="h-7 w-24 bg-white/20 dark:bg-white/15" />
+              </div>
+              <SkeletonLoading className="h-14 w-14 rounded-full bg-white/20 dark:bg-white/15" />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+          <div className="rounded-2xl border border-zinc-200 bg-white/90 p-6 shadow-[0_20px_40px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-900">
+            <div className="space-y-4">
+              <SkeletonLoading className="h-7 w-32" />
+              <SkeletonLoading className="h-5 w-48" />
+              <SkeletonLoading className="h-5 w-24" />
+              <SkeletonLoading className="h-11 w-full rounded-xl" />
+              <SkeletonLoading className="h-16 w-full rounded-xl" />
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 rounded-2xl border border-indigo-200/70 bg-white/90 p-6 shadow-[0_18px_42px_-22px_rgba(99,102,241,0.45)] dark:border-slate-700 dark:bg-slate-900">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <SkeletonLoading className="h-7 w-40" />
+                  <SkeletonLoading className="h-4 w-64" />
+                </div>
+                <SkeletonLoading className="h-8 w-20 rounded-full" />
+              </div>
+              <SkeletonLoading className="h-24 w-full rounded-xl" />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <SkeletonLoading className="h-14 rounded-xl" />
+                <SkeletonLoading className="h-14 rounded-xl" />
+                <SkeletonLoading className="h-14 rounded-xl" />
+              </div>
+              <div className="flex gap-3">
+                <SkeletonLoading className="h-11 w-44 rounded-xl" />
+                <SkeletonLoading className="h-11 w-28 rounded-xl" />
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <SkeletonLoading className="h-20 rounded-xl" />
+                <SkeletonLoading className="h-20 rounded-xl" />
+                <SkeletonLoading className="h-20 rounded-xl" />
+                <SkeletonLoading className="h-20 rounded-xl" />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -112,7 +168,14 @@ export default function Account() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 bg-transparent">
+      <PopoutCard
+        open={saveNoticeOpen}
+        onClose={() => setSaveNoticeOpen(false)}
+        variant="success"
+        title="Preferences Saved"
+        message="Your account settings were updated successfully."
+      />
       <Tour
         tourId="account"
         steps={[
@@ -167,27 +230,28 @@ export default function Account() {
       {/* Header */}
       <div
         id="account-header"
-        className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10"
+        className="relative overflow-hidden rounded-3xl border border-indigo-200/60 bg-linear-to-r from-slate-950 via-indigo-900 to-cyan-800 p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10 shadow-[0_20px_55px_-20px_rgba(30,64,175,0.65)]"
       >
+        <div className="pointer-events-none absolute -top-10 -right-8 h-32 w-32 rounded-full bg-cyan-300/20 blur-2xl" />
         <div className="min-w-0">
-          <h1 className="text-3xl md:text-4xl font-extrabold text-zinc-900 dark:text-zinc-50 wrap-break-word">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-white wrap-break-word">
             Account
           </h1>
-          <p className="text-zinc-500 mt-1 wrap-break-word">
+          <p className="text-blue-100 mt-1 wrap-break-word">
             Manage your subscription, billing, and AI preferences.
           </p>
         </div>
 
         <div className="flex items-center gap-4 flex-wrap">
           <div className="text-right">
-            <div className="text-sm text-zinc-500">Status</div>
+            <div className="text-sm text-blue-100">Status</div>
             <div className="flex items-center gap-2 flex-wrap">
               {isActive ? (
                 <Badge className="bg-green-600 text-white px-3 py-1">
                   Active
                 </Badge>
               ) : (
-                <Badge className="bg-gray-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 px-3 py-1">
+                <Badge className="bg-white/20 text-white border border-white/30 px-3 py-1">
                   Inactive
                 </Badge>
               )}
@@ -200,7 +264,7 @@ export default function Account() {
             transition={{ type: "spring", stiffness: 160, damping: 18 }}
             className="rounded-full p-1 bg-linear-to-br from-sky-400 to-violet-500 shadow-md"
           >
-            <div className="h-12 w-12 rounded-full bg-white/95 dark:bg-zinc-900/90 flex items-center justify-center">
+            <div className="h-12 w-12 rounded-full bg-white/95 flex items-center justify-center">
               <Sparkles className="w-6 h-6 text-violet-600" />
             </div>
           </motion.div>
@@ -216,10 +280,10 @@ export default function Account() {
           transition={{ duration: 0.28 }}
           className={`relative rounded-2xl p-6 border min-w-0 ${
             isPremium
-              ? "border-purple-600/30 shadow-[0_20px_40px_rgba(124,58,237,0.08)] bg-linear-to-br from-white/60 to-purple-50/20 dark:from-zinc-900/60 dark:to-zinc-900/40"
+              ? "border-purple-600/30 shadow-[0_20px_40px_rgba(124,58,237,0.12)] bg-linear-to-br from-white to-purple-50/50 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800"
               : isPro
-              ? "border-green-600/30 shadow-[0_20px_40px_rgba(34,197,94,0.06)]"
-              : "border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/60"
+              ? "border-emerald-600/30 shadow-[0_20px_40px_rgba(16,185,129,0.12)] bg-linear-to-br from-white to-emerald-50/40 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800"
+              : "border-zinc-200 bg-linear-to-br from-white to-slate-50/70 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800"
           }`}
         >
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 min-w-0 flex-wrap">
@@ -293,7 +357,7 @@ export default function Account() {
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 onClick={() => router.push("/subscription")}
-                className="flex-1 bg-sky-600 hover:bg-sky-700 text-white"
+                className="flex-1 bg-linear-to-r from-indigo-600 to-cyan-600 hover:from-indigo-700 hover:to-cyan-700 text-white"
                 disabled={isActive}
               >
                 {isActive ? "Subscribed" : "Upgrade / Subscribe"}
@@ -321,7 +385,7 @@ export default function Account() {
           initial={{ y: 8, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.05 }}
-          className="lg:col-span-2 rounded-2xl p-6 border bg-white/60 dark:bg-zinc-900/60 border-zinc-200 dark:border-zinc-800 backdrop-blur-xl shadow min-w-0"
+          className="lg:col-span-2 rounded-2xl p-6 border bg-linear-to-br from-white to-indigo-50/40 border-indigo-200/70 backdrop-blur-xl shadow-[0_18px_42px_-22px_rgba(99,102,241,0.45)] min-w-0 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800"
         >
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="min-w-0">
@@ -351,7 +415,7 @@ export default function Account() {
 
           <div
             id="account-lite-mode"
-            className="mt-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/50 px-4 py-3"
+            className="mt-4 rounded-lg border border-indigo-200/80 bg-linear-to-r from-indigo-50 to-cyan-50 px-4 py-3 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
@@ -382,7 +446,7 @@ export default function Account() {
           {/* Rest of form remains the same */}
           <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-2 min-w-0">
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 wrap-break-word">
+              <label className="block text-sm font-medium text-zinc-700 wrap-break-word">
                 Difficulty
               </label>
               <div className="mt-2 flex gap-2 flex-wrap">
@@ -394,7 +458,7 @@ export default function Account() {
                     className={`flex-1 py-2 rounded-lg border min-w-0 ${
                       difficulty === level
                         ? "bg-sky-600 text-white border-transparent"
-                        : "bg-transparent border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200"
+                        : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                     }`}
                     disabled={!isPro && !isPremium}
                   >
@@ -446,11 +510,11 @@ export default function Account() {
             <Button
               id="account-save"
               type="submit"
-              className="bg-violet-600 hover:bg-violet-700 text-white"
+              className="bg-linear-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
               disabled={saving}
             >
               {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                <PopoutCard open={true} title="Saving" message="Saving..." onClose={() => {}} />
               ) : null}
               {saving ? "Saving..." : "Save Preferences"}
             </Button>
@@ -499,7 +563,7 @@ export default function Account() {
         </motion.form>
       </div>
 
-      <section className="mt-10">
+      <section className="mt-10 rounded-2xl border border-sky-200/70 bg-linear-to-br from-sky-50 to-indigo-50/50 p-5 shadow-[0_14px_30px_-22px_rgba(14,116,144,0.45)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
         <div className="flex items-center gap-2 mb-4">
           <Settings2 className="w-5 h-5 text-sky-600" />
           <h2 className="text-xl font-semibold">Teacher Toolkit</h2>
@@ -509,7 +573,7 @@ export default function Account() {
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-white/60 dark:bg-zinc-900/60">
+          <div className="rounded-xl border border-zinc-200 p-4 bg-white/90 shadow-[0_8px_18px_-14px_rgba(2,132,199,0.5)] dark:border-slate-700 dark:bg-slate-900">
             <h3 className="font-medium mb-2">1) Build Lesson Plans</h3>
             <p className="text-sm text-zinc-500 mb-3">
               Create structured, classroom-ready lesson plans with export options for docs, PDF, and slides.
@@ -519,7 +583,7 @@ export default function Account() {
             </Button>
           </div>
 
-          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 bg-white/60 dark:bg-zinc-900/60">
+          <div className="rounded-xl border border-zinc-200 p-4 bg-white/90 shadow-[0_8px_18px_-14px_rgba(79,70,229,0.45)] dark:border-slate-700 dark:bg-slate-900">
             <h3 className="font-medium mb-2">2) Generate Assessments</h3>
             <p className="text-sm text-zinc-500 mb-3">
               Produce quiz items quickly by topic, file upload, or source links for formative and summative checks.
@@ -550,11 +614,11 @@ function FeatureRow({
     <div
       className={`p-4 rounded-lg border flex items-center justify-between min-w-0 cursor-${
         enabled && onClick ? "pointer" : "default"
-      } bg-white/50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800`}
+      } bg-linear-to-r from-white to-slate-50 border-zinc-200 shadow-[0_8px_18px_-14px_rgba(71,85,105,0.35)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800`}
       onClick={enabled && onClick ? onClick : undefined}
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div className="p-2 rounded-md bg-white/80 dark:bg-zinc-800/80 shadow-sm">
+        <div className="p-2 rounded-md bg-white shadow-sm border border-zinc-200 dark:bg-slate-900 dark:border-slate-700">
           {icon}
         </div>
         <div className="min-w-0">
@@ -573,7 +637,7 @@ function FeatureRow({
         {enabled ? (
           <Badge className="bg-green-600 text-white">On</Badge>
         ) : (
-          <Badge className="bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-100">
+          <Badge className="bg-zinc-200 text-zinc-700">
             Locked
           </Badge>
         )}

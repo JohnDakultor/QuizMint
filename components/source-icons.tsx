@@ -76,7 +76,7 @@ export function SourceIcons({
               rel="noreferrer"
               className={
                 isPills
-                  ? "inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1 text-sm text-black/80 hover:bg-black/5 max-w-full"
+                  ? "inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1 text-sm text-black/80 hover:bg-black/5 max-w-full dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                   : "inline-flex items-center"
               }
               title={showTooltips ? label : undefined}
@@ -84,7 +84,7 @@ export function SourceIcons({
               role="listitem"
             >
               <span
-                className="inline-flex items-center justify-center rounded-full border border-black/10 bg-white shrink-0"
+                className="inline-flex items-center justify-center rounded-full border border-black/10 bg-white shrink-0 dark:border-slate-600 dark:bg-slate-900"
                 style={{ width: iconSize, height: iconSize }}
               >
                 {favicon ? (
@@ -96,7 +96,7 @@ export function SourceIcons({
                     className="block object-contain"
                   />
                 ) : (
-                  <span className="text-xs text-black/60">
+                  <span className="text-xs text-black/60 dark:text-slate-300">
                     {label.charAt(0).toUpperCase()}
                   </span>
                 )}
@@ -114,7 +114,7 @@ export function SourceIcons({
           <button
             type="button"
             onClick={() => setExpanded(true)}
-            className="inline-flex items-center justify-center rounded-full border border-black/10 bg-white text-xs text-black/60 px-2 py-1 hover:bg-black/5"
+            className="inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-2 py-1 text-xs text-black/60 hover:bg-black/5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             aria-label={`${hiddenCount} more sources`}
             title={`${hiddenCount} more sources`}
           >
@@ -125,7 +125,7 @@ export function SourceIcons({
           <button
             type="button"
             onClick={() => setExpanded(false)}
-            className="inline-flex items-center justify-center rounded-full border border-black/10 bg-white text-xs text-black/60 px-2 py-1 hover:bg-black/5"
+            className="inline-flex items-center justify-center rounded-full border border-black/10 bg-white px-2 py-1 text-xs text-black/60 hover:bg-black/5 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             aria-label="Show fewer sources"
             title="Show fewer sources"
           >

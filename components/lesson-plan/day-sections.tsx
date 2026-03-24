@@ -2,6 +2,7 @@
 
 import { AlertCircle, Brain, CheckCircle2, ClipboardCheck, FileQuestion, Users } from "lucide-react";
 import { ReactNode } from "react";
+import { getLessonPlanFramework } from "@/lib/lesson-plan-frameworks";
 
 type LessonPlanDaySectionsProps = {
   lessonPlan: any;
@@ -18,9 +19,19 @@ export function LessonPlanDaySections({
   renderFourAsPhaseCard,
   renderSpecificActivityCard,
 }: LessonPlanDaySectionsProps) {
+  const framework = getLessonPlanFramework(lessonPlan?.framework);
   return (
     <>
-      {lessonPlan.days?.map((day: any, dayIndex: number) => (
+      {lessonPlan.days?.map((day: any, dayIndex: number) => {
+        const phases = Array.isArray(day?.["4asModel"]) ? day["4asModel"] : [];
+        const totalMinutes = phases.reduce(
+          (sum: number, phase: any) => sum + Number(phase?.timeMinutes || 0),
+          0
+        );
+        const safeTotalMinutes =
+          totalMinutes > 0 ? totalMinutes : Number(lessonPlan?.minutesPerDay || 0) || 0;
+
+        return (
         <div
           key={day.day || dayIndex + 1}
           className="pdf-day-card mt-8 pt-8 border-t-2 border-gray-300 first:border-t-0 first:pt-0"
@@ -45,18 +56,22 @@ export function LessonPlanDaySections({
                   Day {day.day || dayIndex + 1}: {day.topic}
                 </h3>
               </div>
-              <p className="text-gray-600 ml-13">Total duration: 40 minutes</p>
+              <p className="text-gray-600 ml-13">Total duration: {safeTotalMinutes} minutes</p>
             </div>
-            <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-4 py-2 rounded-full">40 minutes total</span>
+            <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-4 py-2 rounded-full">
+              {safeTotalMinutes} minutes total
+            </span>
           </div>
 
           <div className="mb-10 pdf-section-page" data-pdf-keep data-page-keep="1">
             <div className="flex items-center justify-between mb-6">
               <h4 className="pdf-section-title text-xl font-bold text-gray-900 flex items-center gap-2">
                 <Brain className="h-5 w-5 text-blue-600" />
-                4A&apos;s Pedagogical Framework
+                {lessonPlan?.frameworkLabel || framework.sectionTitle}
               </h4>
-              <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">4 Phases - 10 min each</div>
+              <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                {framework.sectionBadgeText} - {day["4asModel"]?.length || 0} segment{(day["4asModel"]?.length || 0) === 1 ? "" : "s"}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -66,7 +81,7 @@ export function LessonPlanDaySections({
             </div>
           </div>
 
-          {day.specificActivities && (
+          {day.specificActivities && Object.keys(day.specificActivities).length > 0 && (
             <div
               className="mb-10 pdf-section-page"
               data-pdf-keep
@@ -75,9 +90,9 @@ export function LessonPlanDaySections({
               <div className="flex items-center justify-between mb-6">
                 <h4 className="pdf-section-title text-xl font-bold text-gray-900 flex items-center gap-2">
                   <ClipboardCheck className="h-5 w-5 text-purple-600" />
-                  Specific Activity Types
+                  {framework.specificActivitiesTitle}
                 </h4>
-                <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">Linked to 4A&apos;s Phases</div>
+                <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">{framework.specificActivitiesBadge}</div>
               </div>
 
               <div className="space-y-8">
@@ -167,7 +182,8 @@ export function LessonPlanDaySections({
             )}
           </div>
         </div>
-      ))}
+        );
+      })}
     </>
   );
 }

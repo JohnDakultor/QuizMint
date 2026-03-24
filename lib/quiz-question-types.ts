@@ -25,7 +25,7 @@ export function inferQuizQuestionType(question: string, options: string[]): Quiz
   if (/essay|in your own words|justify|reflect|explain why|rubric|long answer/.test(q)) {
     return "essay_rubric";
   }
-  if (/game challenge|sudoku|bingo|puzzle|riddle|gamified|game[-\s]*based/.test(q)) {
+  if (/game challenge|super race|case challenge|sudoku|bingo|puzzle|riddle|gamified|game[-\s]*based/.test(q)) {
     return "gamified";
   }
   if (q.includes("____") && hasNoOptions) return "fill_blank";
@@ -44,6 +44,8 @@ export function inferQuizQuestionType(question: string, options: string[]): Quiz
 export function inferGamifiedMode(question: string): GamifiedMode {
   const q = String(question || "").toLowerCase();
   if (/\[sudoku\]|sudoku/.test(q)) return "sudoku";
+  if (/\[super_race\]|\[super race\]|super race/.test(q)) return "bingo";
+  if (/\[case_challenge\]|\[case challenge\]|case challenge/.test(q)) return "bingo";
   if (/\[bingo\]|bingo/.test(q)) return "bingo";
   return "puzzle";
 }

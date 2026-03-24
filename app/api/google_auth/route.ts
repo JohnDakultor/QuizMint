@@ -57,7 +57,9 @@ export async function POST(req: Request) {
 
     const ticket = await client.verifyIdToken({
       idToken: credential,
-      audience: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+      audience:
+        process.env.GOOGLE_CLIENT_ID ||
+        process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();

@@ -7,10 +7,15 @@ import {
   completeAsyncGenerationJob,
   failAsyncGenerationJob,
   getAsyncGenerationJob,
+  requeueAsyncGenerationJob,
 } from "@/lib/async-generation-jobs";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
+const MAX_JOB_ATTEMPTS = Math.max(
+  1,
+  Math.min(10, Number(process.env.GENERATION_JOB_MAX_ATTEMPTS || 3))
+);
 
 function getBaseUrl(req: NextRequest) {
   const forwardedHost = req.headers.get("x-forwarded-host");
@@ -46,6 +51,20 @@ function getInternalSecretValue(): string | null {
     process.env.INTERNAL_API_SECRET ||
     null
   );
+}
+
+function extractFilenameFromDisposition(value: string | null) {
+  if (!value) return null;
+  const utfMatch = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1]);
+    } catch {
+      return utfMatch[1];
+    }
+  }
+  const plainMatch = value.match(/filename=\"?([^\";]+)\"?/i);
+  return plainMatch?.[1] || null;
 }
 
 export async function POST(
@@ -178,26 +197,59 @@ export async function POST(
         },
         body: formData,
       });
+    } else if (claimed.type === "lesson_pptx_generate") {
+      response = await fetch(`${baseUrl}/api/generate-lesson-pptx`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          ...internalHeaders,
+        },
+        body: JSON.stringify({ ...(requestBody.body as Record<string, unknown>), async: false }),
+      });
     } else {
       await failAsyncGenerationJob(id, userId, `Unsupported job type: ${claimed.type}`);
       return apiError(400, "Unsupported job type", requestId);
     }
 
-    const payload = await response.json().catch(() => ({}));
+    const contentType = response.headers.get("content-type") || "";
+    let payload: Record<string, unknown> = {};
+    if (contentType.includes("application/json")) {
+      payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    } else if (claimed.type === "lesson_pptx_generate") {
+      const binary = Buffer.from(await response.arrayBuffer());
+      payload = {
+        fileName:
+          extractFilenameFromDisposition(response.headers.get("content-disposition")) ||
+          "Lesson_Plan.pptx",
+        mimeType:
+          contentType ||
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        fileBase64: binary.toString("base64"),
+        size: binary.byteLength,
+      };
+    } else {
+      const text = await response.text().catch(() => "");
+      payload = text ? { message: text.slice(0, 1200) } : {};
+    }
     if (!response.ok) {
       const message =
         typeof payload?.error === "string"
           ? payload.error
           : `Job failed with status ${response.status}`;
-      const failed = await failAsyncGenerationJob(id, userId, message);
+      const shouldRetry = claimed.attemptCount < MAX_JOB_ATTEMPTS;
+      const failed = shouldRetry
+        ? await requeueAsyncGenerationJob(id, userId, message)
+        : await failAsyncGenerationJob(id, userId, message);
       return NextResponse.json(
         {
           ok: false,
+          retrying: shouldRetry,
           job: failed,
           requestId,
         },
         {
-          status: 500,
+          status: shouldRetry ? 202 : 500,
           headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
         }
       );
@@ -215,6 +267,26 @@ export async function POST(
       }
     );
   } catch (err) {
+    try {
+      const { id } = await params;
+      const rows = await prisma.$queryRaw<Array<{ userId: string; attemptCount: number }>>`
+        SELECT "userId", COALESCE("attemptCount", 0) AS "attemptCount"
+        FROM "AsyncGenerationJob"
+        WHERE "id" = ${id}
+        LIMIT 1
+      `;
+      const row = rows[0];
+      if (row?.userId) {
+        const message = err instanceof Error ? err.message : "Job processing error";
+        if (row.attemptCount < MAX_JOB_ATTEMPTS) {
+          await requeueAsyncGenerationJob(id, row.userId, message);
+        } else {
+          await failAsyncGenerationJob(id, row.userId, message);
+        }
+      }
+    } catch {
+      // no-op; fallback API error below
+    }
     logApiError(requestId, "generation-jobs/[id]/process", err);
     return apiError(500, "Failed to process job", requestId);
   }

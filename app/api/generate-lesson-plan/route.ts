@@ -18,6 +18,11 @@ import { dispatchAsyncGenerationJob } from "@/lib/async-job-dispatch";
 import { log } from "@/lib/logger";
 import { enhanceLessonPlanWithContext } from "@/lib/lesson-plan-context-enhancer";
 import {
+  buildFrameworkPhaseModel,
+  getLessonPlanFramework,
+  normalizeLessonPlanFramework,
+} from "@/lib/lesson-plan-frameworks";
+import {
   hydrateLessonPlanUsageWindow,
   incrementLessonPlanUsageAtomic,
   LESSON_PLAN_FREE_LIMIT,
@@ -39,6 +44,7 @@ function hashString(value: string) {
 }
 
 function buildLessonPrompt(input: {
+  framework: string;
   topic: string;
   subject: string;
   grade: string;
@@ -47,8 +53,9 @@ function buildLessonPrompt(input: {
   objectives?: string;
   constraints?: string;
 }) {
+  const framework = getLessonPlanFramework(input.framework);
   return [
-    `Create a ${input.days}-day lesson plan for ${input.topic} in ${input.subject} for ${input.grade} students.`,
+    `Create a ${input.days}-day lesson plan using the ${framework.label} for ${input.topic} in ${input.subject} for ${input.grade} students.`,
     `Each day should be ${input.minutesPerDay} minutes.`,
     `Objectives: ${input.objectives?.trim() || "None specified"}`,
     `Constraints: ${input.constraints?.trim() || "None specified"}`,
@@ -150,7 +157,9 @@ export async function POST(req: NextRequest) {
     const minutesPerDay = Number(body.minutesPerDay);
     const objectives = body.objectives || "";
     const constraints = body.constraints || "";
+    const framework = normalizeLessonPlanFramework(body.framework);
     const format = typeof body.format === "string" ? body.format.toLowerCase().trim() : "json";
+    const frameworkConfig = getLessonPlanFramework(framework);
 
     if (!topic || !subject || !grade || !days || !minutesPerDay) {
       return apiError(400, "Missing required fields", requestId);
@@ -198,8 +207,9 @@ export async function POST(req: NextRequest) {
     const duration = `${days} day(s), ${minutesPerDay} minutes per day`;
 
     // Create a cache key
-    const cacheKey = `${user.id}:${topic}:${subject}:${grade}:${days}`;
+    const cacheKey = `${user.id}:${framework}:${topic}:${subject}:${grade}:${days}`;
     const basePrompt = buildLessonPrompt({
+      framework,
       topic,
       subject,
       grade,
@@ -208,7 +218,9 @@ export async function POST(req: NextRequest) {
       objectives,
       constraints,
     });
-    const namespaceSeed = normalizeForEmbedding(`${topic}|${subject}|${grade}`) || `${topic}|${subject}|${grade}`;
+    const namespaceSeed =
+      normalizeForEmbedding(`${framework}|${topic}|${subject}|${grade}`) ||
+      `${framework}|${topic}|${subject}|${grade}`;
     const namespace = `lesson:${user.id}:${hashString(namespaceSeed)}`;
 
     let lessonPlan: any;
@@ -291,10 +303,17 @@ export async function POST(req: NextRequest) {
         // Generate lesson plan using 4A's format with separate sections
         log.debug("lesson_plan_ai_start", { userId: user.id, namespace });
         if (cachedResponse) {
-          lessonPlan = JSON.parse(cachedResponse);
+          const parsedCached = JSON.parse(cachedResponse);
+          const cachedFramework = normalizeLessonPlanFramework(parsedCached?.framework);
+          if (cachedFramework === framework) {
+            lessonPlan = parsedCached;
+          } else {
+            cachedResponse = null;
+          }
         } else {
           const aiStartedAt = Date.now();
           const lessonAIResult = await generateLessonPlanAIWithMeta({
+            framework,
             topic,
             subject,
             grade,
@@ -328,7 +347,7 @@ export async function POST(req: NextRequest) {
         stageMs.cacheWrite = cacheStage.cacheWrite;
 
         // ENHANCE THE LESSON PLAN WITH CONTEXT
-        if (lessonPlan && lessonPlan.days && lessonPlan.days.length > 0) {
+        if (frameworkConfig.supportsSpecificActivities && lessonPlan && lessonPlan.days && lessonPlan.days.length > 0) {
           lessonPlan = enhanceLessonPlanWithContext(lessonPlan, topic, subject, grade);
           log.debug("lesson_plan_context_enhanced", { userId: user.id });
         }
@@ -345,6 +364,8 @@ export async function POST(req: NextRequest) {
         // Create a basic lesson plan structure when AI fails
         lessonPlan = {
           title: `${topic} - ${subject}`,
+          framework,
+          frameworkLabel: frameworkConfig.label,
           grade: grade,
           duration: duration,
           objectives: objectives 
@@ -358,65 +379,13 @@ export async function POST(req: NextRequest) {
           days: Array.from({ length: days }, (_, i) => ({
             day: i + 1,
             topic: `${topic} - Day ${i + 1}`,
-            "4asModel": [
-              {
-                phase: "ACTIVITY",
-                title: "Engagement Phase",
-                timeMinutes: 10,
-                description: `Activate prior knowledge about ${topic} through discussion and real-world examples related to ${subject}. Engage ${grade} students with thought-provoking questions and interactive activities.`,
-                teacherRole: `Facilitate discussion about ${topic}, ask probing questions, provide relevant examples from ${subject}, and connect to students' prior knowledge.`,
-                studentRole: `Participate actively in discussions, share personal experiences related to ${topic}, ask questions, and make connections to previous learning in ${subject}.`,
-                materials: [
-                  `Whiteboard or chart paper for ${topic} concepts`,
-                  `Printed resources about ${subject}`,
-                  `Visual aids related to ${topic}`,
-                  `Student notebooks`
-                ]
-              },
-              {
-                phase: "ANALYSIS",
-                title: "Exploration Phase",
-                timeMinutes: 10,
-                description: `Guide ${grade} students through analyzing key aspects of ${topic}. Present case studies, data sets, or scenarios related to ${subject} for critical examination and collaborative problem-solving.`,
-                teacherRole: `Provide analytical frameworks for examining ${topic}, facilitate small group discussions, ask guiding questions, and help students identify patterns and relationships in ${subject}.`,
-                studentRole: `Work collaboratively to analyze ${topic} concepts, ask critical questions, examine evidence, and formulate initial hypotheses about ${subject} principles.`,
-                materials: [
-                  `Case studies about ${topic}`,
-                  `Graphic organizers for analysis`,
-                  `Discussion prompts on cards`,
-                  `Data sets related to ${subject}`
-                ]
-              },
-              {
-                phase: "ABSTRACTION",
-                title: "Concept Development",
-                timeMinutes: 10,
-                description: `Develop comprehensive understanding of ${topic} concepts through direct instruction, visual aids, and worked examples. Address common misconceptions about ${topic} in ${subject}.`,
-                teacherRole: `Explain core concepts of ${topic} clearly, use visual representations, provide worked examples, address misconceptions, and offer mnemonic devices for ${grade} students.`,
-                studentRole: `Take organized notes on ${topic} concepts, ask clarifying questions, practice explaining ideas to peers, and create visual summaries of ${subject} principles.`,
-                materials: [
-                  `Presentation slides on ${topic}`,
-                  `Visual diagrams and charts`,
-                  `Worked example handouts`,
-                  `Concept cards for ${subject}`
-                ]
-              },
-              {
-                phase: "APPLICATION",
-                title: "Practice & Assessment",
-                timeMinutes: 10,
-                description: `${grade} students apply their understanding of ${topic} to solve authentic problems, complete tasks, and demonstrate mastery. Include formative assessment to gauge learning progress.`,
-                teacherRole: `Provide practice opportunities for applying ${topic} concepts, give immediate feedback, assess understanding through various methods, and differentiate support based on student needs.`,
-                studentRole: `Apply ${topic} knowledge to solve problems, complete practice tasks, self-assess understanding, demonstrate learning through products or presentations in ${subject}.`,
-                materials: [
-                  `Practice worksheets for ${topic}`,
-                  `Assessment tools and rubrics`,
-                  `Exit tickets or quick checks`,
-                  `Technology tools for application`
-                ]
-              }
-            ],
-            specificActivities: {
+            "4asModel": buildFrameworkPhaseModel(framework, {
+              topic,
+              subject,
+              grade,
+              minutesPerDay,
+            }),
+            specificActivities: frameworkConfig.supportsSpecificActivities ? {
               ACTIVITY: {
                 type: "Reading Comprehension",
                 readingPassage: `Understanding ${topic} is essential in the study of ${subject}. For ${grade} students, this involves examining how ${topic} functions in various contexts and its real-world applications. Mastering ${topic} concepts provides a foundation for more advanced learning in ${subject} and develops critical thinking skills that transfer to other areas. Students who deeply engage with ${topic} demonstrate improved analytical abilities and practical application skills.`,
@@ -519,7 +488,7 @@ export async function POST(req: NextRequest) {
                   answers: ["Core Principle", "Application", "Analysis"]
                 }
               }
-            },
+            } : {},
             assessment: [
               {
                 criteria: `Understanding of ${topic} Concepts`,
@@ -585,50 +554,20 @@ export async function POST(req: NextRequest) {
     // Validate and ensure proper separation
     if (lessonPlan.days && Array.isArray(lessonPlan.days)) {
       lessonPlan.days.forEach((day: any, index: number) => {
-        // Ensure 4A's model exists
+        day.framework = framework;
+        day.frameworkLabel = frameworkConfig.label;
+        // Ensure framework phase model exists
         if (!day["4asModel"] || !Array.isArray(day["4asModel"])) {
-          day["4asModel"] = [
-            {
-              phase: "ACTIVITY",
-              title: "Engagement Phase",
-              timeMinutes: 10,
-              description: `Activate prior knowledge about ${topic} and generate interest through interactive discussion.`,
-              teacherRole: "Facilitator, motivator",
-              studentRole: "Active participants, questioners",
-              materials: ["Whiteboard", "Markers"]
-            },
-            {
-              phase: "ANALYSIS",
-              title: "Exploration Phase",
-              timeMinutes: 10,
-              description: `Develop critical thinking through guided exploration of ${topic} concepts.`,
-              teacherRole: "Questioner, guide",
-              studentRole: "Critical thinkers, collaborators",
-              materials: ["Whiteboard", "Markers"]
-            },
-            {
-              phase: "ABSTRACTION",
-              title: "Concept Development Phase",
-              timeMinutes: 10,
-              description: `Formal presentation of ${topic} concepts and principles with examples.`,
-              teacherRole: "Expert, explainer",
-              studentRole: "Concept mappers, note-takers",
-              materials: ["Whiteboard", "Markers"]
-            },
-            {
-              phase: "APPLICATION",
-              title: "Practice & Assessment Phase",
-              timeMinutes: 10,
-              description: `Apply ${topic} knowledge and demonstrate understanding through practice.`,
-              teacherRole: "Coach, assessor",
-              studentRole: "Problem solvers, demonstrators",
-              materials: ["Whiteboard", "Markers"]
-            }
-          ];
+          day["4asModel"] = buildFrameworkPhaseModel(framework, {
+            topic,
+            subject,
+            grade,
+            minutesPerDay,
+          });
         }
 
-        // Ensure specific activities exist and are properly linked
-        if (!day.specificActivities || typeof day.specificActivities !== "object") {
+        // Ensure specific activities exist and are properly linked for 4A's only
+        if (frameworkConfig.supportsSpecificActivities && (!day.specificActivities || typeof day.specificActivities !== "object")) {
           day.specificActivities = {
             ACTIVITY: {
               type: "Reading Comprehension",
@@ -687,10 +626,13 @@ export async function POST(req: NextRequest) {
           };
         }
 
-        // Ensure all 4 phases have corresponding activities
-        const phases = ["ACTIVITY", "ANALYSIS", "ABSTRACTION", "APPLICATION"];
-        phases.forEach(phase => {
-          if (!day.specificActivities[phase]) {
+        if (!frameworkConfig.supportsSpecificActivities) {
+          day.specificActivities = {};
+        } else {
+          // Ensure all 4A phases have corresponding activities
+          const phases = ["ACTIVITY", "ANALYSIS", "ABSTRACTION", "APPLICATION"];
+          phases.forEach(phase => {
+            if (!day.specificActivities[phase]) {
             // Create default activity for missing phase
             switch (phase) {
               case "ACTIVITY":
@@ -730,20 +672,23 @@ export async function POST(req: NextRequest) {
                 };
                 break;
             }
-          }
-        });
+            }
+          });
+        }
       });
     }
 
     // Set defaults for overall lesson plan
     if (!lessonPlan.title) lessonPlan.title = `${topic} - ${subject}`;
+    lessonPlan.framework = framework;
+    lessonPlan.frameworkLabel = frameworkConfig.label;
     if (!lessonPlan.grade) lessonPlan.grade = grade;
     if (!lessonPlan.duration) lessonPlan.duration = duration;
     if (!lessonPlan.objectives || !Array.isArray(lessonPlan.objectives)) {
       lessonPlan.objectives = objectives 
         ? objectives.split('\n').filter((obj: string) => obj.trim())
         : [
-            `Understand ${topic} in ${subject} through the 4A's instructional model`,
+            `Understand ${topic} in ${subject} through the ${frameworkConfig.label}`,
             `Apply ${topic} concepts to real-world situations`,
             `Analyze the significance of ${topic} in ${subject}`,
             `Develop critical thinking skills through ${topic} exploration`

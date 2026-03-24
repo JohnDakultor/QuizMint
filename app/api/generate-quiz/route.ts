@@ -24,6 +24,11 @@ import {
   normalizeQuestionCountInput,
 } from "@/lib/quiz-source-service";
 import { buildQuizAdaptiveGuidance } from "@/lib/quiz-adaptive-service";
+import {
+  buildStoredStructureFromAI,
+  encodeAnswerWithStructure,
+  stripStructuredMeta,
+} from "@/lib/quiz-structured";
 
 const COOLDOWN_HOURS = 3;
 const FREE_QUIZ_LIMIT = 3;
@@ -61,7 +66,7 @@ function normalizeMixCountInput(value: unknown): number {
 
 function hasQuestionTypeIntent(prompt: string): boolean {
   const p = String(prompt || "").toLowerCase();
-  return /mcq|multiple\s*choice|true\s*\/?\s*false|fill\s*in\s*the\s*blank|short\s*answer|matching|match\s*the\s*following|essay|rubric|worksheet|gamified|bingo|sudoku|puzzle|mix|mixed/i.test(
+  return /mcq|multiple\s*choice|true\s*\/?\s*false|fill\s*in\s*the\s*blank|short\s*answer|matching|match\s*the\s*following|essay|rubric|worksheet|gamified|super race|case challenge|bingo|sudoku|puzzle|mix|mixed/i.test(
     p
   );
 }
@@ -709,6 +714,8 @@ export async function POST(req: NextRequest) {
       question: string;
       options: string[];
       answer: string;
+      questionType?: string | null;
+      structure?: unknown;
       explanation?: string | null;
       hint?: string | null;
     }) => ({
@@ -716,7 +723,15 @@ export async function POST(req: NextRequest) {
       options: Array.isArray(q.options)
         ? q.options.map((opt) => stripInlineAnswerArtifacts(String(opt || ""))).filter(Boolean)
         : [],
-      answer: stripInlineAnswerArtifacts(String(q.answer || "")),
+      answer: encodeAnswerWithStructure(
+        stripInlineAnswerArtifacts(String(q.answer || "")),
+        buildStoredStructureFromAI({
+          question: String(q.question || ""),
+          answer: String(q.answer || ""),
+          questionType: q.questionType ?? null,
+          structure: q.structure,
+        })
+      ),
       explanation: safeAdaptive ? q.explanation ?? null : null,
       hint: safeAdaptive ? q.hint ?? null : null,
     }));
@@ -733,6 +748,13 @@ export async function POST(req: NextRequest) {
       },
       include: { questions: true },
     });
+    const responseQuiz = {
+      ...savedQuiz,
+      questions: savedQuiz.questions.map((q) => ({
+        ...q,
+        answer: stripStructuredMeta(q.answer),
+      })),
+    };
 
     let nextQuizUsage: number | null = null;
     if (isFree) {
@@ -807,7 +829,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       message: "Quiz generated successfully",
-      quiz: savedQuiz,
+      quiz: responseQuiz,
       ...(liteMode
         ? {}
         : {

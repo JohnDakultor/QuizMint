@@ -77,9 +77,9 @@ export function LessonPlanOutputPanel({
   children,
 }: LessonPlanOutputPanelProps) {
   return (
-    <div id="lessonplan-print-root" ref={lessonPlanRef} className="bg-white">
-      <Card className="shadow-2xl border-2 border-gray-300 overflow-hidden">
-        <div className="bg-linear-to-r from-blue-600 to-purple-600 p-4">
+    <div id="lessonplan-print-root" ref={lessonPlanRef} className="bg-white dark:bg-slate-950">
+      <Card className="shadow-[0_22px_60px_-26px_rgba(30,64,175,0.58)] border border-indigo-200/80 overflow-hidden rounded-2xl bg-gradient-to-b from-white to-zinc-50 dark:border-slate-700 dark:from-slate-900 dark:to-slate-950">
+        <div className="bg-gradient-to-r from-slate-950 via-indigo-900 to-cyan-800 p-4">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
               <h2 className="text-2xl font-bold text-white">{lessonPlan.title}</h2>
@@ -137,7 +137,7 @@ export function LessonPlanOutputPanel({
               onClick={onLoadPptxSlidesForEdit}
               disabled={loadingSlides || !isPremium}
               variant="ghost"
-              className="text-purple-700 hover:text-purple-800 hover:bg-transparent p-0 h-auto font-semibold underline underline-offset-4 self-start"
+              className="p-0 h-auto self-start font-semibold underline underline-offset-4 text-indigo-700 hover:text-indigo-800 hover:bg-transparent dark:text-white dark:hover:text-slate-200"
               data-print-hidden
             >
               {loadingSlides
@@ -156,18 +156,18 @@ export function LessonPlanOutputPanel({
 
           {lessonPlan.objectives && lessonPlan.objectives.length > 0 && (
             <div
-              className="bg-linear-to-r from-blue-50 to-indigo-50 p-6 rounded-2xl border-2 border-blue-200"
+              className="bg-gradient-to-r from-indigo-50 to-cyan-50 p-6 rounded-2xl border border-indigo-200 shadow-[0_12px_24px_-18px_rgba(30,64,175,0.5)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800"
               data-pdf-keep
             >
-              <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2">
-                <Lightbulb className="h-5 w-5 text-blue-600" />
+              <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2 dark:text-sky-200">
+                <Lightbulb className="h-5 w-5 text-blue-600 dark:text-cyan-300" />
                 Learning Objectives
               </h3>
               <ul className="space-y-3 ml-2">
                 {lessonPlan.objectives.map((obj: string, i: number) => (
                   <li key={i} className="flex items-start gap-3">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 mt-2"></div>
-                    <span className="text-gray-700 font-medium">{obj}</span>
+                    <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 dark:bg-cyan-300"></div>
+                    <span className="text-gray-700 font-medium dark:text-slate-200">{obj}</span>
                   </li>
                 ))}
               </ul>

@@ -149,8 +149,9 @@ async function fetchDriveFileAsBlob(doc: PickerDoc, accessToken: string) {
 export function GoogleDrivePickerButton(props: {
   onPicked: (file: File) => void;
   disabled?: boolean;
+  id?: string;
 }) {
-  const { onPicked, disabled } = props;
+  const { onPicked, disabled, id } = props;
   const [loading, setLoading] = useState(false);
 
   const openPicker = async () => {
@@ -227,6 +228,7 @@ export function GoogleDrivePickerButton(props: {
 
   return (
     <button
+      id={id}
       type="button"
       onClick={openPicker}
       disabled={Boolean(disabled) || loading}

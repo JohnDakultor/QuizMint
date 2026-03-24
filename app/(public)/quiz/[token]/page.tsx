@@ -6,11 +6,31 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StudentGamifiedQuestion } from "@/components/quiz/student-gamified-question";
+import { StudentMatchingLineRenderer } from "@/components/quiz/student-matching-line-renderer";
+import { StudentWorksheetQuestion } from "@/components/quiz/student-worksheet-question";
 
 type SharedQuestion = {
   id: number;
   question: string;
   options: string[];
+  structure?:
+    | {
+        type: "matching";
+        left: Array<{ id: string; text: string }>;
+        right: Array<{ id: string; text: string }>;
+      }
+    | {
+        type: "worksheet";
+        instructions?: string;
+        parts: Array<{ id: string; prompt: string }>;
+      }
+    | {
+        type: "gamified";
+        mode?: "bingo" | "sudoku" | "puzzle";
+        puzzleKey?: string;
+        answerKey?: string;
+      }
+    | null;
   questionType:
     | "mcq"
     | "true_false"
@@ -260,7 +280,8 @@ export default function StudentQuizPage() {
                     (q.questionType === "gamified" && safeOptions.length >= 2);
                   const useLongTextMode =
                     q.questionType === "matching" || q.questionType === "essay_rubric";
-                  const useShortInputMode = !useChoiceMode && !useLongTextMode;
+                  const useShortInputMode =
+                    !useChoiceMode && !useLongTextMode && q.questionType !== "worksheet";
                   return (
                     <div key={q.id} className="rounded-lg border bg-white p-4 shadow-xs">
                       <p className="font-medium">
@@ -273,6 +294,16 @@ export default function StudentQuizPage() {
                             questionId={q.id}
                             question={q.question}
                             options={safeOptions}
+                            answerKey={
+                              q.structure?.type === "gamified"
+                                ? q.structure.answerKey
+                                : undefined
+                            }
+                            puzzleKey={
+                              q.structure?.type === "gamified"
+                                ? q.structure.puzzleKey
+                                : undefined
+                            }
                             value={answers[String(q.id)] || ""}
                             disabled={Boolean(result)}
                             onChange={(next) =>
@@ -307,11 +338,7 @@ export default function StudentQuizPage() {
                         {useShortInputMode && q.questionType !== "gamified" && (
                           <input
                             type="text"
-                            placeholder={
-                              q.questionType === "worksheet"
-                                ? "Enter your worksheet answer"
-                                : "Type your answer"
-                            }
+                            placeholder="Type your answer"
                             value={answers[String(q.id)] || ""}
                             onChange={(e) =>
                               setAnswers((prev) => ({
@@ -323,19 +350,40 @@ export default function StudentQuizPage() {
                             className="w-full rounded border px-3 py-2 text-sm"
                           />
                         )}
-                        {q.questionType === "matching" && (
-                          <textarea
-                            placeholder="Enter matches one per line, e.g. Term - Definition"
+                        {q.questionType === "worksheet" && (
+                          <StudentWorksheetQuestion
+                            structure={
+                              q.structure?.type === "worksheet"
+                                ? q.structure
+                                : null
+                            }
                             value={answers[String(q.id)] || ""}
-                            onChange={(e) =>
+                            disabled={Boolean(result)}
+                            onChange={(next) =>
                               setAnswers((prev) => ({
                                 ...prev,
-                                [String(q.id)]: e.target.value,
+                                [String(q.id)]: next,
                               }))
                             }
+                          />
+                        )}
+                        {q.questionType === "matching" && (
+                          <StudentMatchingLineRenderer
+                            question={q.question}
+                            options={safeOptions}
+                            structure={
+                              q.structure?.type === "matching"
+                                ? q.structure
+                                : null
+                            }
+                            value={answers[String(q.id)] || ""}
                             disabled={Boolean(result)}
-                            rows={4}
-                            className="w-full rounded border px-3 py-2 text-sm"
+                            onChange={(next) =>
+                              setAnswers((prev) => ({
+                                ...prev,
+                                [String(q.id)]: next,
+                              }))
+                            }
                           />
                         )}
                         {q.questionType === "essay_rubric" && (

@@ -188,3 +188,42 @@ html[data-lite-mode="true"] *::after {
 html[data-lite-mode="true"] .premium-scrollbar {
   scrollbar-color: #94a3b8 #f8fafc;
 }
+
+/* Home-app dark mode harmonizer for legacy light utility classes */
+.dark .app-shell [class*="bg-white"] {
+  background-color: rgb(15 23 42 / 0.88) !important;
+}
+
+.dark .app-shell [class*="text-zinc-9"],
+.dark .app-shell [class*="text-zinc-8"],
+.dark .app-shell [class*="text-zinc-7"],
+.dark .app-shell [class*="text-gray-9"],
+.dark .app-shell [class*="text-gray-8"],
+.dark .app-shell [class*="text-gray-7"],
+.dark .app-shell [class*="text-slate-9"],
+.dark .app-shell [class*="text-slate-8"],
+.dark .app-shell [class*="text-slate-7"] {
+  color: rgb(226 232 240) !important;
+}
+
+.dark .app-shell [class*="border-zinc-1"],
+.dark .app-shell [class*="border-zinc-2"],
+.dark .app-shell [class*="border-gray-1"],
+.dark .app-shell [class*="border-gray-2"],
+.dark .app-shell [class*="border-slate-1"],
+.dark .app-shell [class*="border-slate-2"] {
+  border-color: rgb(71 85 105 / 0.75) !important;
+}
+
+.dark .app-shell :is(div, section, article)[class*="rounded"][class*="border"]:not([class*="bg-transparent"]) {
+  background-color: rgb(15 23 42 / 0.9) !important;
+}
+
+.dark .app-shell :is(h1, h2, h3, h4, h5, h6)[class*="text-"] {
+  color: rgb(248 250 252) !important;
+}
+
+.dark .app-shell [class*="from-"][class*="to-"][class*="rounded"][class*="border"] {
+  background-image: none !important;
+  background-color: rgb(15 23 42 / 0.92) !important;
+}

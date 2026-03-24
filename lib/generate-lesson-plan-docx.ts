@@ -1,5 +1,6 @@
 // lib/generate-lesson-plan-docx.ts
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
+import { getLessonPlanFramework } from "@/lib/lesson-plan-frameworks";
 
 type HeadingLevelType = (typeof HeadingLevel)[keyof typeof HeadingLevel];
 
@@ -50,6 +51,7 @@ function paragraph(text: string, after = 120, indent = 0) {
 
 export async function generateLessonPlanDocx(lessonPlan: any): Promise<Buffer> {
   const children: Paragraph[] = [];
+  const framework = getLessonPlanFramework(lessonPlan?.framework);
 
   const title = safeString(lessonPlan?.title, "Lesson Plan");
   children.push(
@@ -88,11 +90,10 @@ export async function generateLessonPlanDocx(lessonPlan: any): Promise<Buffer> {
     const dayTopic = safeString(day?.topic, "Lesson Day");
     children.push(heading(`Day ${dayNumber}: ${dayTopic}`, HeadingLevel.HEADING_1, 200, 200));
 
-    // 4A's Pedagogical Framework
-    children.push(heading("4A's Pedagogical Framework", HeadingLevel.HEADING_2, 120));
+    children.push(heading(lessonPlan?.frameworkLabel || framework.sectionTitle, HeadingLevel.HEADING_2, 120));
     const phases = safeArray<any>(day?.["4asModel"]);
     if (phases.length === 0) {
-      children.push(paragraph("No 4A's phases provided.", 120));
+      children.push(paragraph("No framework phases provided.", 120));
     } else {
       phases.forEach((phase) => {
         const phaseTitle = safeString(phase?.phase, "PHASE");
@@ -122,10 +123,8 @@ export async function generateLessonPlanDocx(lessonPlan: any): Promise<Buffer> {
 
     // Specific Activities
     const activities = day?.specificActivities;
-    children.push(heading("Specific Activity Types", HeadingLevel.HEADING_2, 120, 200));
-    if (!activities || typeof activities !== "object") {
-      children.push(paragraph("No specific activities provided.", 120));
-    } else {
+    if (activities && typeof activities === "object" && Object.keys(activities).length > 0) {
+      children.push(heading(framework.specificActivitiesTitle, HeadingLevel.HEADING_2, 120, 200));
       Object.entries(activities).forEach(([phase, activity]: [string, any]) => {
         const activityType = safeString(activity?.type, "Activity");
         children.push(heading(`${phase}: ${activityType}`, HeadingLevel.HEADING_3, 80, 120));

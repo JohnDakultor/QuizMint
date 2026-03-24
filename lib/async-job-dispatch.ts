@@ -27,25 +27,23 @@ export async function dispatchAsyncGenerationJob(
 ): Promise<boolean> {
   const secret = getInternalJobSecret();
   if (!secret) return false;
+  const eagerDispatchEnabled = ["1", "true", "yes", "on"].includes(
+    String(process.env.GENERATION_JOB_EAGER_DISPATCH || "")
+      .trim()
+      .toLowerCase()
+  );
+  if (!eagerDispatchEnabled) return false;
 
   const baseUrl = resolveBaseUrl(req);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1500);
+  // Fire-and-forget dispatch (best effort): this avoids blocking the user request.
+  void fetch(`${baseUrl}/api/generation-jobs/${jobId}/process`, {
+    method: "POST",
+    headers: {
+      "x-generation-job-secret": secret,
+    },
+    cache: "no-store",
+  }).catch(() => null);
 
-  try {
-    await fetch(`${baseUrl}/api/generation-jobs/${jobId}/process`, {
-      method: "POST",
-      headers: {
-        "x-generation-job-secret": secret,
-      },
-      signal: controller.signal,
-      cache: "no-store",
-    });
-    return true;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return true;
 }
 
