@@ -511,7 +511,15 @@ export async function POST(req: Request) {
           instructions:
             visionQuiz.instructions ||
             "Answer the questions using the image-derived content provided in each question.",
-          questions: visionQuiz.questions.map((q) => ({
+          questions: visionQuiz.questions.map((q: {
+            question: string;
+            options: string[];
+            answer: string;
+            questionType?: string | null;
+            structure?: unknown;
+            explanation?: string | null;
+            hint?: string | null;
+          }) => ({
             question: stripInlineAnswerArtifacts(String(q.question ?? "")),
             options: Array.isArray(q.options)
               ? q.options
