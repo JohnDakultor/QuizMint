@@ -130,15 +130,17 @@ function worksheetMatches(selected: string, expected: string) {
 
 function gradeTimelineOrder(selectedRaw: string, timelineItems: string[]) {
   if (!Array.isArray(timelineItems) || timelineItems.length < 3) return false;
-  const normalizedExpected = timelineItems.map((item) => normalizeForCompare(item));
-  if (normalizedExpected.some((item) => !item)) return false;
+  const normalizedExpected = timelineItems.map((item: string) => normalizeForCompare(item));
+  if (normalizedExpected.some((item: string) => !item)) return false;
 
   try {
     const parsed = JSON.parse(String(selectedRaw || ""));
-    const order = Array.isArray(parsed?.order) ? parsed.order : [];
-    const normalizedSelected = order.map((item) => normalizeForCompare(String(item || "")));
+    const order: unknown[] = Array.isArray(parsed?.order) ? parsed.order : [];
+    const normalizedSelected = order.map((item: unknown) =>
+      normalizeForCompare(String(item || ""))
+    );
     if (normalizedSelected.length !== normalizedExpected.length) return false;
-    return normalizedSelected.every((item, idx) => item === normalizedExpected[idx]);
+    return normalizedSelected.every((item: string, idx: number) => item === normalizedExpected[idx]);
   } catch {
     return false;
   }
