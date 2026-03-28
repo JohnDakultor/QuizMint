@@ -546,7 +546,13 @@ export async function POST(req: Request) {
             instructions: safeQuiz.instructions,
             userId: user.id,
             questions: {
-              create: safeQuiz.questions.map((q) => ({
+              create: safeQuiz.questions.map((q: {
+                question: string;
+                options: string[];
+                answer: string;
+                explanation?: string | null;
+                hint?: string | null;
+              }) => ({
                 question: q.question,
                 options: q.options,
                 answer: q.answer,
