@@ -1,0 +1,418 @@
+Teacher Workflow Implementation Plan
+
+Purpose
+This file translates the high-level teacher workflow roadmap into concrete repo changes for the current QuizMint codebase.
+
+Current Repo Strengths To Reuse
+
+1. Quiz generation already exists
+- app/api/generate-quiz/route.ts
+- app/(home)/generate-quiz/page.tsx
+
+2. Lesson plan generation already exists
+- app/(home)/lessonPlan/page.tsx
+- app/api/generate-lesson-plan/route.ts
+
+3. Student sharing and submission already exist
+- app/api/quiz-share/[token]/route.ts
+- app/api/quiz-share/[token]/submit/route.ts
+- app/(public)/quiz/[token]/page.tsx
+
+4. Dashboard already exists
+- app/(home)/home/page.tsx
+- app/api/dashboard/summary/route.ts
+
+5. Async job infrastructure already exists
+- lib/async-generation-jobs.ts
+- app/api/generation-jobs/[id]/process/route.ts
+
+This means the teacher workflow should be built by extending existing flows, not replacing them.
+
+Phase 1: Data Model Foundation
+
+Goal
+Introduce class and assignment entities without breaking current personal generation flows.
+
+Prisma models to add first
+
+1. Class
+Suggested fields:
+- id String @id @default(cuid())
+- userId String
+- user User @relation(...)
+- name String
+- subject String?
+- gradeLevel String?
+- section String?
+- schoolYear String?
+- archived Boolean @default(false)
+- createdAt DateTime @default(now())
+- updatedAt DateTime @updatedAt
+
+Suggested indexes:
+- @@index([userId, createdAt])
+- @@index([userId, archived])
+
+2. ClassStudent
+Suggested fields:
+- id String @id @default(cuid())
+- classId String
+- class Class @relation(...)
+- studentName String
+- studentEmail String?
+- studentNumber String?
+- notes String?
+- createdAt DateTime @default(now())
+- updatedAt DateTime @updatedAt
+
+Suggested indexes:
+- @@index([classId, createdAt])
+- @@index([classId, studentEmail])
+
+3. Assignment
+Suggested fields:
+- id String @id @default(cuid())
+- userId String
+- user User @relation(...)
+- classId String
+- class Class @relation(...)
+- quizId Int?
+- quiz Quiz? @relation(...)
+- lessonPlanId String?
+- lessonPlan LessonPlan? @relation(...)
+- title String
+- instructions String?
+- status String @default("draft")
+- availableFrom DateTime?
+- dueAt DateTime?
+- closedAt DateTime?
+- shareToken String? @unique
+- createdAt DateTime @default(now())
+- updatedAt DateTime @updatedAt
+
+Suggested indexes:
+- @@index([userId, createdAt])
+- @@index([classId, status])
+- @@index([quizId])
+- @@index([lessonPlanId])
+
+4. Extend StudentQuizAttempt
+Add:
+- assignmentId String?
+- assignment Assignment? @relation(...)
+
+Why:
+- current attempts only belong to quiz
+- workflow needs attempts to belong to assigned classroom work
+
+Minimum migration principle
+- do not remove current personal quiz flow
+- keep assignment linkage optional at first
+
+Phase 2: First Teacher Workflow Loop
+
+Goal
+Turn generated quiz -> assigned work -> student submission -> teacher review into one connected loop.
+
+Step 1. Build Class CRUD
+
+Add pages:
+- app/(home)/classes/page.tsx
+- app/(home)/classes/[id]/page.tsx
+
+Add API routes:
+- app/api/classes/route.ts
+- app/api/classes/[id]/route.ts
+
+Minimum teacher actions:
+- create class
+- edit class
+- archive class
+- view class details
+
+Step 2. Build Basic Roster Management
+
+Add API routes:
+- app/api/classes/[id]/students/route.ts
+- app/api/classes/[id]/students/[studentId]/route.ts
+
+Minimum teacher actions:
+- add student manually
+- remove student
+- optional bulk paste list of names/emails
+
+UI location:
+- class detail page
+
+Step 3. Build Assignment Creation From Quiz
+
+Best reuse path:
+- keep Quiz model unchanged
+- create assignment after quiz generation or from saved recent quiz
+
+Add API routes:
+- app/api/assignments/route.ts
+- app/api/assignments/[id]/route.ts
+
+Teacher flow:
+1. generate quiz
+2. click "Assign to Class"
+3. choose class
+4. set title, availability, due date
+5. system creates Assignment linked to Quiz
+
+UI changes:
+- add "Assign to Class" action in components/quiz/quiz-output-card.tsx
+- add assignment modal similar to current quiz share modal
+
+Step 4. Reuse Existing Quiz Share Flow For Assignments
+
+Current share flow:
+- creates shareable student link for quiz
+
+Workflow adaptation:
+- assignment should own the share link, not just the bare quiz
+
+Recommended approach:
+- keep current quiz token logic temporarily
+- add assignment-aware share route next
+
+Target routes:
+- app/api/assignments/[id]/share/route.ts
+- app/(public)/assignment/[token]/page.tsx
+
+Short-term simpler path:
+- continue using quiz share infrastructure
+- include assignmentId in share metadata or token resolution
+
+Longer-term better path:
+- dedicated assignment share token
+- cleaner analytics and submission tracking
+
+Step 5. Attach Submissions To Assignment
+
+Update:
+- app/api/quiz-share/[token]/submit/route.ts
+
+Changes:
+- when share link belongs to assignment context
+- save assignmentId into StudentQuizAttempt
+
+This unlocks:
+- submissions per class
+- missing student tracking
+- assignment dashboard
+
+Phase 3: Teacher Dashboard Transformation
+
+Goal
+Make the dashboard a teaching workspace, not just an activity summary.
+
+Primary file to evolve
+- app/(home)/home/page.tsx
+
+Primary summary API to extend
+- app/api/dashboard/summary/route.ts
+
+Add these dashboard sections:
+
+1. Active Classes
+- class name
+- subject
+- number of students
+- active assignments count
+
+2. Active Assignments
+- title
+- class
+- due date
+- submitted / total
+- status
+
+3. Recent Student Results
+- assignment title
+- class
+- average score
+- missing submissions
+
+4. Continue Working
+- latest draft quiz
+- latest draft lesson plan
+- latest class assignment
+
+Keep old summary cards if useful, but the home page should start feeling like:
+- planning
+- assigning
+- reviewing
+
+Phase 4: Content Library
+
+Goal
+Turn generated assets into reusable teaching resources.
+
+Add pages:
+- app/(home)/library/page.tsx
+
+Possible sections:
+- Quizzes
+- Lesson Plans
+- Assignments
+- Templates
+
+Filters:
+- class
+- subject
+- grade
+- date
+- status
+
+Actions:
+- duplicate
+- edit
+- assign
+- archive
+
+Current models to reuse:
+- Quiz
+- LessonPlan
+
+Add lightweight tagging later if needed.
+
+Phase 5: Results And Follow-Up
+
+Goal
+Use submissions to drive next teacher actions.
+
+Short-term additions
+
+1. Assignment analytics endpoint
+- app/api/assignments/[id]/results/route.ts
+
+Return:
+- average score
+- submission count
+- missing students
+- hardest questions
+
+2. Class overview endpoint
+- app/api/classes/[id]/overview/route.ts
+
+Return:
+- active assignments
+- recent results
+- student count
+- missing submissions
+
+3. Follow-up actions in UI
+Examples:
+- "Generate reteach quiz"
+- "Create follow-up lesson plan"
+- "Review missed concepts"
+
+These actions should reuse current generation tools rather than invent new engines.
+
+Example:
+- from low-performing assignment
+- pass missed-topic summary into lesson plan generation
+
+Phase 6: Weekly Teacher Workspace
+
+Goal
+Increase repeat visits through continuing work.
+
+Could be a dashboard mode or separate page:
+- app/(home)/workspace/page.tsx
+
+Useful widgets:
+- today's classes
+- assignments due soon
+- recent submissions
+- low-score alerts
+- unfinished drafts
+- suggested next action
+
+This is where the product starts feeling like a true teacher workflow platform.
+
+Recommended Order Of Engineering Work
+
+Milestone 1
+- Prisma: Class, ClassStudent, Assignment, StudentQuizAttempt.assignmentId
+- CRUD routes for classes
+- class pages
+
+Milestone 2
+- assignment create/edit routes
+- "Assign to Class" from quiz output
+- assignment list on class page
+
+Milestone 3
+- connect student submissions to assignmentId
+- teacher assignment results page
+- missing submission counts
+
+Milestone 4
+- dashboard summary overhaul
+- active classes + active assignments + recent results
+
+Milestone 5
+- library page
+- duplicate/reassign flows
+
+Milestone 6
+- follow-up recommendations
+- weekly workspace
+
+What Not To Do First
+
+Do not start with:
+- organization billing
+- team roles
+- school-wide admin controls
+- SSO
+
+Why:
+- those are valuable later, but they do not solve the immediate retention problem
+- teacher workflow stickiness comes first
+
+Feature Checks To Update Later
+
+Today many checks use:
+- user.subscriptionPlan === "premium"
+- user.subscriptionPlan === "pro"
+
+Teacher workflow phase does not require replacing those yet.
+But once classes and assignments exist, start shifting thinking from:
+- feature access only
+
+to:
+- workflow state + feature access
+
+Example:
+- a user can create a quiz
+- but assignment creation should also depend on whether classes exist
+
+Suggested First UI Wins
+
+1. Add Classes in sidebar/menu
+2. Add Assign To Class button in quiz output
+3. Show Active Assignments on dashboard
+4. Show submissions per assignment
+
+These four changes alone will make the app feel much more like a workflow product.
+
+Success Criteria For This Repo
+
+You are moving from tool to workflow when:
+- quiz generation is no longer the end of the user journey
+- lesson plans can be linked to classes or assignments
+- student attempts are visible in class context
+- dashboard opens into teaching operations, not only generation utilities
+- teachers return to manage assigned work, not only generate new content
+
+Final Product Principle
+
+The platform becomes sticky when a teacher says:
+- "My class is managed here"
+
+not just:
+- "I can generate something here"

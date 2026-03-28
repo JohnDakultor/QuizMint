@@ -210,7 +210,339 @@ function renderSpecificActivities(doc: PDFKit.PDFDocument, activities: LessonPla
   }
 }
 
-export async function generateLessonPlanPDF(
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderList(items: unknown[], ordered = false) {
+  const clean = (items || []).map((item) => sanitize(item)).filter(Boolean);
+  if (!clean.length) return "";
+  const tag = ordered ? "ol" : "ul";
+  return `<${tag}>${clean.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</${tag}>`;
+}
+
+function contentLength(value: unknown) {
+  return sanitize(value).length;
+}
+
+function shouldAvoidBreak(value: unknown, threshold = 420) {
+  return contentLength(value) > 0 && contentLength(value) <= threshold;
+}
+
+function renderCard(
+  title: string,
+  body: string,
+  options?: { threshold?: number; extraClass?: string }
+) {
+  const threshold = options?.threshold ?? 420;
+  const cardClass = shouldAvoidBreak(`${title} ${body}`, threshold)
+    ? "card avoid-break"
+    : "card";
+  return `
+    <div class="${cardClass}${options?.extraClass ? ` ${options.extraClass}` : ""}">
+      <h4>${escapeHtml(title)}</h4>
+      ${body}
+    </div>
+  `;
+}
+
+function renderSpecificActivitiesHtml(activities: LessonPlanDay["specificActivities"]) {
+  const entries = Object.entries(activities || {}).filter(([, value]) => Boolean(value));
+  if (!entries.length) return "";
+  return `
+    <section class="section">
+      <h3>Specific Activities</h3>
+      ${entries.map(([phase, raw]) => {
+        const activity = raw as any;
+        if (!activity) return "";
+        if (phase === "ACTIVITY") {
+          const cards: string[] = [];
+          if (sanitize(activity.readingPassage)) {
+            cards.push(renderCard(
+              `${phase} - ${activity.type || "Activity"} Reading`,
+              `<p><strong>Reading Passage:</strong> ${escapeHtml(activity.readingPassage)}</p>`,
+              { threshold: 700 }
+            ));
+          }
+          (activity.questions || []).forEach((q: any, index: number) => {
+            cards.push(renderCard(
+              `${phase} Question ${index + 1}`,
+              `<p><strong>Q${index + 1}:</strong> ${escapeHtml(q?.question)}</p><p class="item"><strong>Answer:</strong> ${escapeHtml(q?.answer)}</p>`
+            ));
+          });
+          return cards.join("");
+        }
+        if (phase === "ANALYSIS") {
+          const cards: string[] = [];
+          (activity.trueFalse || []).forEach((tf: any, index: number) => {
+            cards.push(renderCard(
+              `${phase} Item ${index + 1}`,
+              `<p><strong>${index + 1}.</strong> ${escapeHtml(tf?.statement)}</p><p class="item"><strong>Expected:</strong> ${escapeHtml(tf?.answer)}</p><p class="item"><strong>Explanation:</strong> ${escapeHtml(tf?.explanation)}</p>`
+            ));
+          });
+          if ((activity.checklist || []).length) {
+            cards.push(renderCard(
+              `${phase} Checklist`,
+              renderList(activity.checklist),
+              { threshold: 650 }
+            ));
+          }
+          return cards.join("");
+        }
+        if (phase === "ABSTRACTION") {
+          const cards: string[] = [];
+          if ((activity.pairs || []).length) {
+            cards.push(renderCard(
+              `${phase} Pairs`,
+              `<ul>${(activity.pairs || []).map((pair: any) => `<li>${escapeHtml(pair?.left)} &rarr; ${escapeHtml(pair?.right)}</li>`).join("")}</ul>`,
+              { threshold: 650 }
+            ));
+          }
+          if (sanitize(activity.explanation)) {
+            cards.push(renderCard(
+              `${phase} Explanation`,
+              `<p><strong>Explanation:</strong> ${escapeHtml(activity.explanation)}</p>`,
+              { threshold: 700 }
+            ));
+          }
+          return cards.join("");
+        }
+        if (phase === "APPLICATION") {
+          const cards: string[] = [];
+          (activity.multipleChoice || []).forEach((mc: any, index: number) => {
+            cards.push(renderCard(
+              `${phase} Question ${index + 1}`,
+              `
+                <p><strong>Q${index + 1}:</strong> ${escapeHtml(mc?.question)}</p>
+                ${renderList((mc?.options || []).map((option: string, optionIndex: number) => `${String.fromCharCode(97 + optionIndex)}) ${option}`))}
+                <p class="item"><strong>Answer:</strong> ${escapeHtml(mc?.answer)}</p>
+                <p class="item"><strong>Explanation:</strong> ${escapeHtml(mc?.explanation)}</p>
+              `,
+              { threshold: 720 }
+            ));
+          });
+          const clues = activity.identification?.clues || [];
+          const answers = activity.identification?.answers || [];
+          clues.forEach((clue: string, index: number) => {
+            cards.push(renderCard(
+              `${phase} Clue ${index + 1}`,
+              `<p><strong>Clue ${index + 1}:</strong> ${escapeHtml(clue)}</p><p class="item"><strong>Answer:</strong> ${escapeHtml(answers[index])}</p>`
+            ));
+          });
+          return cards.join("");
+        }
+        return "";
+      }).join("")}
+    </section>
+  `;
+}
+
+function renderLessonPlanPdfHtml(lessonPlan: LessonPlanData, topic: string) {
+  const framework = getLessonPlanFramework(lessonPlan?.framework);
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        @page { size: A4; margin: 18mm 14mm 18mm 14mm; }
+        :root { color-scheme: light; }
+        body {
+          font-family: Arial, Helvetica, sans-serif;
+          color: #1e293b;
+          margin: 0;
+          font-size: 11px;
+          line-height: 1.45;
+          background: white;
+        }
+        h1,h2,h3,h4,p,ul,ol { margin: 0; }
+        h1, h2, h3, h4 {
+          break-after: avoid-page;
+          page-break-after: avoid;
+        }
+        p, li {
+          orphans: 3;
+          widows: 3;
+        }
+        .page { display: block; }
+        .hero {
+          padding: 18px 20px;
+          border-radius: 16px;
+          background: linear-gradient(135deg, #eff6ff, #ffffff);
+          border: 1px solid #dbeafe;
+          margin-bottom: 18px;
+        }
+        .hero h1 {
+          font-size: 24px;
+          line-height: 1.15;
+          color: #0f172a;
+          margin-bottom: 8px;
+        }
+        .meta {
+          color: #475569;
+          font-size: 11px;
+        }
+        .section {
+          margin-bottom: 18px;
+          break-inside: auto;
+        }
+        .section > h2, .section > h3 {
+          color: #1e3a8a;
+          margin-bottom: 8px;
+        }
+        .section > h2 { font-size: 16px; }
+        .section > h3 { font-size: 13px; }
+        .day { margin-bottom: 22px; }
+        .phase-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 10px;
+        }
+        .card, .phase-card {
+          border: 1px solid #dbe4f0;
+          border-radius: 12px;
+          padding: 12px 14px;
+          background: #ffffff;
+          box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+        }
+        .phase-card h4, .card h4 {
+          color: #0f172a;
+          font-size: 12px;
+          margin-bottom: 6px;
+        }
+        .item { margin-top: 8px; }
+        ul, ol { padding-left: 18px; margin-top: 6px; }
+        li { margin: 4px 0; }
+        .avoid-break { break-inside: avoid; page-break-inside: avoid; }
+        .keep-with-next {
+          break-after: avoid-page;
+          page-break-after: avoid;
+        }
+        .section > h2 + *,
+        .section > h3 + *,
+        .card > h4 + *,
+        .phase-card > h4 + * {
+          break-before: avoid-page;
+          page-break-before: avoid;
+        }
+        .muted { color: #64748b; }
+        .footer {
+          position: running(pageFooter);
+        }
+      </style>
+    </head>
+    <body>
+      <main class="page">
+        <section class="hero avoid-break">
+          <h1>${escapeHtml(sanitize(lessonPlan?.title) || "Lesson Plan")}</h1>
+          <p class="meta">Grade: ${escapeHtml(lessonPlan?.grade)} | Duration: ${escapeHtml(lessonPlan?.duration)}</p>
+          ${sanitize(topic) ? `<p class="meta" style="margin-top:4px;">Topic: ${escapeHtml(topic)}</p>` : ""}
+          <p class="meta" style="margin-top:4px;">Framework: ${escapeHtml(lessonPlan?.frameworkLabel || framework.label)}</p>
+        </section>
+
+        ${(lessonPlan?.objectives || []).length ? `
+          <section class="section avoid-break">
+            <h2>Learning Objectives</h2>
+            ${renderList(lessonPlan.objectives, true)}
+          </section>
+        ` : ""}
+
+        ${(lessonPlan?.days || []).map((day) => `
+          <section class="day">
+            <div class="section keep-with-next">
+              <h2>Day ${day.day}: ${escapeHtml(day.topic)}</h2>
+              <p class="muted">${escapeHtml(lessonPlan?.frameworkLabel || framework.sectionTitle)}</p>
+            </div>
+
+            <section class="section">
+              <div class="phase-grid">
+                ${(day["4asModel"] || []).map((phase) => `
+                  <div class="${shouldAvoidBreak(`${phase.phase} ${phase.title} ${phase.description} ${phase.teacherRole} ${phase.studentRole} ${(phase.materials || []).join(" ")}`, 620) ? "phase-card avoid-break" : "phase-card"}">
+                    <h4>${escapeHtml(phase.phase)} - ${escapeHtml(phase.title)} (${Number(phase.timeMinutes || 0)} min)</h4>
+                    <p><strong>Description:</strong> ${escapeHtml(phase.description)}</p>
+                    <p class="item"><strong>Teacher Role:</strong> ${escapeHtml(phase.teacherRole)}</p>
+                    <p class="item"><strong>Student Role:</strong> ${escapeHtml(phase.studentRole)}</p>
+                    <p class="item"><strong>Materials:</strong> ${escapeHtml((phase.materials || []).join(", "))}</p>
+                  </div>
+                `).join("")}
+              </div>
+            </section>
+
+            ${renderSpecificActivitiesHtml(day.specificActivities || {})}
+
+            ${(day.assessment || []).length ? `
+              <section class="section">
+                <h3>Assessment and Rubrics</h3>
+                ${(day.assessment || []).map((assessment) => `
+                  ${renderCard(
+                    assessment.criteria || "Assessment",
+                    `<p><strong>Description:</strong> ${escapeHtml(assessment.description)}</p>
+                    <p class="item"><strong>Excellent:</strong> ${escapeHtml(assessment.rubricLevel?.excellent || "")}</p>
+                    <p class="item"><strong>Satisfactory:</strong> ${escapeHtml(assessment.rubricLevel?.satisfactory || "")}</p>
+                    <p class="item"><strong>Needs Improvement:</strong> ${escapeHtml(assessment.rubricLevel?.needsImprovement || "")}</p>`,
+                    { threshold: 760 }
+                  )}
+                `).join("")}
+              </section>
+            ` : ""}
+
+            ${sanitize(day.differentiation) ? `
+              <section class="section ${shouldAvoidBreak(day.differentiation, 700) ? "avoid-break" : ""}">
+                <h3>Differentiation</h3>
+                <p>${escapeHtml(day.differentiation)}</p>
+              </section>
+            ` : ""}
+
+            ${sanitize(day.closure) ? `
+              <section class="section ${shouldAvoidBreak(day.closure, 700) ? "avoid-break" : ""}">
+                <h3>Closure</h3>
+                <p>${escapeHtml(day.closure)}</p>
+              </section>
+            ` : ""}
+          </section>
+        `).join("")}
+      </main>
+    </body>
+  </html>`;
+}
+
+async function generateLessonPlanPDFWithHtml(
+  lessonPlan: LessonPlanData,
+  topic: string
+): Promise<Buffer> {
+  const html = renderLessonPlanPdfHtml(lessonPlan, topic);
+  const playwrightModule = await import("playwright").catch(() => null as any);
+  if (!playwrightModule?.chromium) {
+    throw new Error("Playwright is not available for HTML PDF generation.");
+  }
+  const browser = await playwrightModule.chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle" });
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: {
+        top: "12mm",
+        right: "10mm",
+        bottom: "12mm",
+        left: "10mm",
+      },
+    });
+    return Buffer.from(pdf);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function generateLessonPlanPDFWithPdfKit(
   lessonPlan: LessonPlanData,
   topic: string
 ): Promise<Buffer> {
@@ -297,4 +629,19 @@ export async function generateLessonPlanPDF(
       reject(error);
     }
   });
+}
+
+export async function generateLessonPlanPDF(
+  lessonPlan: LessonPlanData,
+  topic: string
+): Promise<Buffer> {
+  const preferHtml = process.env.LESSON_PLAN_PDF_ENGINE !== "pdfkit";
+  if (preferHtml) {
+    try {
+      return await generateLessonPlanPDFWithHtml(lessonPlan, topic);
+    } catch (error) {
+      console.warn("[lesson-plan-pdf] html export failed, falling back to PDFKit:", error);
+    }
+  }
+  return generateLessonPlanPDFWithPdfKit(lessonPlan, topic);
 }

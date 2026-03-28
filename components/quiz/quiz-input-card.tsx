@@ -1,12 +1,13 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import FileUpload from "@/components/ui/file-upload";
 import LoadingProgress from "@/components/ui/loading-progress";
 import AdUnlockButton from "@/components/ad-unlock-button";
-import { ArrowRight, Copy, PauseCircle, Share2, Sparkles } from "lucide-react";
+import { ArrowRight, ChevronDown, Copy, FileText, PauseCircle, Share2, Sparkles, X } from "lucide-react";
 
 type AdUnlockInfo = {
   available: boolean;
@@ -30,8 +31,8 @@ type QuizInputCardProps = {
   infoMessage: string;
   error: string;
   adUnlockInfo: AdUnlockInfo;
-  uploadedFile: File | null;
-  setUploadedFile: (file: File | null) => void;
+  uploadedFiles: File[];
+  setUploadedFiles: (files: File[]) => void;
   onPaste: () => void;
   onGenerate: () => void;
   onPause: () => void;
@@ -42,6 +43,7 @@ type QuizInputCardProps = {
 };
 
 export function QuizInputCard(props: QuizInputCardProps) {
+  const [toolsOpen, setToolsOpen] = useState(false);
   const {
     prompt,
     setPrompt,
@@ -53,8 +55,8 @@ export function QuizInputCard(props: QuizInputCardProps) {
     infoMessage,
     error,
     adUnlockInfo,
-    uploadedFile,
-    setUploadedFile,
+    uploadedFiles,
+    setUploadedFiles,
     onPaste,
     onGenerate,
     onPause,
@@ -63,6 +65,34 @@ export function QuizInputCard(props: QuizInputCardProps) {
     onShowSubscribe,
     onAdUnlocked,
   } = props;
+  const uploadedPreviewUrls = useMemo(
+    () =>
+      uploadedFiles.map((file) => ({
+        name: file.name,
+        url: file.type?.startsWith("image/") ? URL.createObjectURL(file) : null,
+      })),
+    [uploadedFiles]
+  );
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ open?: boolean }>;
+      setToolsOpen(Boolean(custom.detail?.open));
+    };
+    window.addEventListener("quiz-input-tools-visibility", handler as EventListener);
+    return () =>
+      window.removeEventListener("quiz-input-tools-visibility", handler as EventListener);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      uploadedPreviewUrls.forEach((item) => {
+        if (item.url) {
+          URL.revokeObjectURL(item.url);
+        }
+      });
+    };
+  }, [uploadedPreviewUrls]);
 
   return (
     <Card className="h-137.5 w-full overflow-hidden border border-indigo-200/80 bg-linear-to-b from-white to-indigo-50/40 shadow-[0_24px_60px_-24px_rgba(30,64,175,0.45)] lg:flex-1 flex flex-col dark:border-indigo-400/25 dark:from-slate-950/80 dark:to-indigo-950/45 dark:shadow-[0_24px_60px_-24px_rgba(30,64,175,0.75)]">
@@ -166,24 +196,89 @@ export function QuizInputCard(props: QuizInputCardProps) {
             )}
           </div>
 
-          <div className="flex gap-2">
-            <Button id="quiz-copy-template-link" size="sm" variant="outline" onClick={onCopyTemplateLink} className="border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-slate-500/70 dark:bg-slate-900/55 dark:text-slate-100 dark:hover:bg-slate-800">
-              <Copy className="w-4 h-4 mr-1" /> Copy Template
-            </Button>
-            <Button id="quiz-share-template-link" size="sm" variant="outline" onClick={onShareTemplateLink} className="border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-slate-500/70 dark:bg-slate-900/55 dark:text-slate-100 dark:hover:bg-slate-800">
-              <Share2 className="w-4 h-4 mr-1" /> Share Template
-            </Button>
-            <FileUpload
-              onFileSelect={(file) => {
-                if (!user || user.subscriptionPlan !== "premium") {
-                  onShowSubscribe();
-                  return;
-                }
-                setUploadedFile(file);
-              }}
-            />
+          <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/70 dark:border-slate-700 dark:bg-slate-900/45">
+            <button
+              id="quiz-input-tools-toggle"
+              type="button"
+              onClick={() => setToolsOpen((prev) => !prev)}
+              className="flex w-full items-center justify-center px-3 py-2 text-zinc-700 transition hover:bg-white/70 dark:text-slate-200 dark:hover:bg-slate-800/60"
+              aria-expanded={toolsOpen}
+              aria-controls="quiz-input-tools-panel"
+              aria-label={toolsOpen ? "Collapse input actions" : "Expand input actions"}
+              title={toolsOpen ? "Collapse actions" : "Expand actions"}
+            >
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${toolsOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+            <div
+              id="quiz-input-tools-panel"
+              className={`overflow-hidden border-t border-zinc-200/80 px-3 transition-all duration-200 dark:border-slate-700 ${
+                toolsOpen
+                  ? "max-h-40 py-3 opacity-100"
+                  : "max-h-0 py-0 opacity-0 pointer-events-none"
+              }`}
+            >
+              <div className="flex flex-wrap gap-2">
+                <Button id="quiz-copy-template-link" size="sm" variant="outline" onClick={onCopyTemplateLink} className="border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-slate-500/70 dark:bg-slate-900/55 dark:text-slate-100 dark:hover:bg-slate-800">
+                  <Copy className="w-4 h-4 mr-1" /> Copy Template
+                </Button>
+                <Button id="quiz-share-template-link" size="sm" variant="outline" onClick={onShareTemplateLink} className="border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50 dark:border-slate-500/70 dark:bg-slate-900/55 dark:text-slate-100 dark:hover:bg-slate-800">
+                  <Share2 className="w-4 h-4 mr-1" /> Share Template
+                </Button>
+                <FileUpload
+                  onFilesSelect={(files) => {
+                    if (!user || user.subscriptionPlan !== "premium") {
+                      onShowSubscribe();
+                      return;
+                    }
+                    setUploadedFiles([...uploadedFiles, ...files]);
+                  }}
+                />
+              </div>
+            </div>
           </div>
-          {uploadedFile && <div className="truncate text-xs text-zinc-600 dark:text-slate-300">File: {uploadedFile.name}</div>}
+          {uploadedFiles.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {uploadedFiles.map((uploadedFile, index) => {
+                const preview = uploadedPreviewUrls.find((item) => item.name === uploadedFile.name)?.url ?? null;
+                return (
+                  <div
+                    key={`${uploadedFile.name}-${index}`}
+                    className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-zinc-200/80 bg-white/90 px-1.5 py-0.5 shadow-sm dark:border-slate-700 dark:bg-slate-900/70"
+                  >
+                    {preview ? (
+                      <img
+                        src={preview}
+                        alt={uploadedFile.name}
+                        className="h-6 w-6 shrink-0 rounded-md border border-zinc-200 object-cover dark:border-slate-700"
+                      />
+                    ) : (
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 dark:border-slate-700 dark:bg-slate-800">
+                        <FileText className="h-3 w-3 text-zinc-500 dark:text-slate-300" />
+                      </div>
+                    )}
+                    <span className="max-w-[150px] truncate text-[11px] font-medium text-zinc-700 dark:text-slate-200">
+                      {uploadedFile.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setUploadedFiles(
+                          uploadedFiles.filter((_, fileIndex) => fileIndex !== index)
+                        )
+                      }
+                      className="inline-flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                      aria-label="Remove uploaded file"
+                      title="Remove uploaded file"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {adUnlockInfo && (

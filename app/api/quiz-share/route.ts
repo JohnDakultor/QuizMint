@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { createQuizShareToken } from "@/lib/quiz-share";
+import { trackGenerationEvent } from "@/lib/generation-events";
 
 const DEFAULT_DURATION_MINUTES = 60;
 const MIN_DURATION_MINUTES = 5;
@@ -61,6 +62,20 @@ export async function POST(req: NextRequest) {
       shuffleQuestions,
     });
     const shareUrl = `${req.nextUrl.origin}/quiz/${encodeURIComponent(token)}`;
+
+    await trackGenerationEvent({
+      userId: user.id,
+      eventType: "quiz_generated",
+      feature: "quiz_share_link",
+      status: "success",
+      metadata: {
+        quizId: quiz.id,
+        shareUrl,
+        shuffleQuestions,
+        durationMinutes,
+        expiresAt: expiresAt.toISOString(),
+      },
+    });
 
     return NextResponse.json(
       {

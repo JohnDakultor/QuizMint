@@ -11,8 +11,11 @@ type Props = {
   questionId: number;
   question: string;
   options: string[];
+  difficulty?: "easy" | "medium" | "hard";
+  mode?: "bingo" | "timeline" | "puzzle";
   answerKey?: string;
   puzzleKey?: string;
+  timelineItems?: string[];
   value: string;
   disabled?: boolean;
   onChange: (next: string) => void;
@@ -66,8 +69,20 @@ function ModeBanner({
 }
 
 export function StudentGamifiedQuestion(props: Props) {
-  const { questionId, question, options, answerKey, puzzleKey, value, disabled, onChange } = props;
-  const mode = inferGamifiedMode(question);
+  const {
+    questionId,
+    question,
+    options,
+    difficulty = "medium",
+    mode,
+    answerKey,
+    puzzleKey,
+    timelineItems,
+    value,
+    disabled,
+    onChange,
+  } = props;
+  const resolvedMode = mode || inferGamifiedMode(question);
   const safeOptions = Array.isArray(options) ? options.filter(Boolean) : [];
   const shuffled = useMemo(() => stableShuffle(safeOptions, questionId), [safeOptions, questionId]);
   const [elapsed, setElapsed] = useState(0);
@@ -94,7 +109,7 @@ export function StudentGamifiedQuestion(props: Props) {
     </div>
   );
 
-  if (mode === "bingo") {
+  if (resolvedMode === "bingo") {
     return (
       <div className="space-y-3">
         <ModeBanner title="Super Race" subtitle="Choose the fastest correct lane to win this round." tone="emerald" />
@@ -103,6 +118,7 @@ export function StudentGamifiedQuestion(props: Props) {
           questionId={questionId}
           question={question}
           options={shuffled}
+          difficulty={difficulty}
           answerKey={answerKey}
           value={value}
           disabled={Boolean(disabled)}
@@ -112,14 +128,18 @@ export function StudentGamifiedQuestion(props: Props) {
     );
   }
 
-  if (mode === "sudoku" && shuffled.length >= 4) {
+  if (resolvedMode === "timeline") {
     return (
       <div className="space-y-3">
-        <ModeBanner title="Sudoku Logic" subtitle="Find the best option that satisfies the pattern." tone="purple" />
+        <ModeBanner title="Timeline Order" subtitle="Drag the cards to place the events in chronological order." tone="purple" />
         {gameHud}
         <StudentSudokuGame
           questionId={questionId}
+          question={question}
           options={shuffled}
+          difficulty={difficulty}
+          answerKey={answerKey}
+          timelineItems={timelineItems}
           value={value}
           disabled={Boolean(disabled)}
           onPick={handlePick}
@@ -128,7 +148,7 @@ export function StudentGamifiedQuestion(props: Props) {
     );
   }
 
-  if (mode === "puzzle") {
+  if (resolvedMode === "puzzle") {
     return (
       <div className="space-y-3">
         <ModeBanner
@@ -141,6 +161,7 @@ export function StudentGamifiedQuestion(props: Props) {
           questionId={questionId}
           question={question}
           options={shuffled}
+          difficulty={difficulty}
           puzzleKey={puzzleKey}
           value={value}
           disabled={Boolean(disabled)}

@@ -1,50 +1,35 @@
 /// <reference types="cypress" />
-// ***********************************************
-// This example commands.ts shows you how to
-// create various custom commands and overwrite
-// existing commands.
-//
-// For more comprehensive examples of custom
-// commands please read more here:
-// https://on.cypress.io/custom-commands
-// ***********************************************
-//
-//
-// -- This is a parent command --
-// Cypress.Commands.add('login', (email, password) => { ... })
-//
-//
-// -- This is a child command --
-// Cypress.Commands.add('drag', { prevSubject: 'element'}, (subject, options) => { ... })
-//
-//
-// -- This is a dual command --
-// Cypress.Commands.add('dismiss', { prevSubject: 'optional'}, (subject, options) => { ... })
-//
-//
-// -- This will overwrite an existing command --
-// Cypress.Commands.overwrite('visit', (originalFn, url, options) => { ... })
-//
-// declare global {
-//   namespace Cypress {
-//     interface Chainable {
-//       login(email: string, password: string): Chainable<void>
-//       drag(subject: string, options?: Partial<TypeOptions>): Chainable<Element>
-//       dismiss(subject: string, options?: Partial<TypeOptions>): Chainable<Element>
-//       visit(originalFn: CommandOriginalFn, url: string, options: Partial<VisitOptions>): Chainable<Element>
-//     }
-//   }
-// }
 
+const DEFAULT_EMAIL = "test@quizmint.ai";
+const DEFAULT_PASSWORD = "TestPassword123!";
 
-import { NextResponse } from "next/server";
-
-export async function POST() {
-  return NextResponse.json({
-    user: {
-      id: "test-user-id",
-      email: "test@quizmint.ai",
-      role: "FREE",
-    },
-  });
+function getLoginCredentials(email?: string, password?: string) {
+  return {
+    email: email || Cypress.env("TEST_EMAIL") || DEFAULT_EMAIL,
+    password: password || Cypress.env("TEST_PASSWORD") || DEFAULT_PASSWORD,
+  };
 }
+
+Cypress.Commands.add("login", (email?: string, password?: string) => {
+  const creds = getLoginCredentials(email, password);
+
+  cy.session([creds.email], () => {
+    cy.request("POST", "/api/test-auth/seed-user", {
+      email: creds.email,
+      password: creds.password,
+    }).its("status").should("eq", 200);
+
+    cy.visit("/sign-in", {
+      onBeforeLoad(win) {
+        win.localStorage.setItem("cypress-test-mode", "true");
+      },
+    });
+    cy.get("#email").clear().type(creds.email);
+    cy.get("#password").clear().type(creds.password, { log: false });
+    cy.get('input[type="checkbox"]').check({ force: true });
+    cy.contains('button[type="submit"]', "Sign In").click();
+    cy.url().should("include", "/home");
+  });
+});
+
+export {};

@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import Footer from "@/components/ui/footer";
 
 export default function PublicLayout({
@@ -8,17 +11,21 @@ export default function PublicLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isStudentQuizScreen = pathname?.startsWith("/quiz/") ?? false;
+
+  if (isStudentQuizScreen) {
+    return <>{children}</>;
+  }
+
   return (
     <>
-      {/* Navbar */}
       <nav className="flex justify-between items-center w-full max-w-6xl mx-auto px-6 py-6">
-        {/* Left: Logo + Public Links */}
         <div className="flex items-center gap-8">
           <Link
             href="/"
             className="flex items-center space-x-2 text-2xl font-bold"
           >
-            {/* <Sparkles className="text-blue-500 h-6 w-6" /> */}
             <Image
               src="/icon.png"
               alt="Logo"
@@ -51,7 +58,6 @@ export default function PublicLayout({
           </div>
         </div>
 
-        {/* Right: Auth Actions */}
         <div className="flex gap-3">
           <Button variant="ghost" asChild>
             <Link href="/sign-in">Login</Link>
@@ -62,12 +68,10 @@ export default function PublicLayout({
         </div>
       </nav>
 
-      {/* Page Content */}
       <main className="flex flex-col items-center w-full">
         {children}
       </main>
 
-      {/* Footer */}
       <Footer />
     </>
   );

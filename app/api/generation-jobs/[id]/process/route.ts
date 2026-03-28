@@ -159,6 +159,36 @@ export async function POST(
         },
         body: JSON.stringify({ ...(requestBody.body as Record<string, unknown>), async: false }),
       });
+    } else if (claimed.type === "quiz_file_upload") {
+      const files = Array.isArray(requestBody.files)
+        ? (requestBody.files as Array<{ name?: string; type?: string; base64?: string }>)
+        : [];
+      const fields = (requestBody.fields || {}) as Record<string, string>;
+      if (!files.length || files.some((file) => !file?.base64)) {
+        await failAsyncGenerationJob(id, userId, "Missing queued upload payload");
+        return apiError(400, "Invalid queued upload payload", requestId);
+      }
+      const formData = new FormData();
+      for (const file of files) {
+        const bytes = Buffer.from(String(file.base64 || ""), "base64");
+        const blob = new Blob([bytes], {
+          type: file.type || "application/octet-stream",
+        });
+        formData.append("file", blob, file.name || "upload.bin");
+      }
+      for (const [key, value] of Object.entries(fields)) {
+        formData.append(key, value);
+      }
+      formData.append("async", "false");
+
+      response = await fetch(`${baseUrl}/api/upload-file`, {
+        method: "POST",
+        headers: {
+          ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+          ...internalHeaders,
+        },
+        body: formData,
+      });
     } else if (claimed.type === "lesson_plan_generate") {
       response = await fetch(`${baseUrl}/api/generate-lesson-plan`, {
         method: "POST",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 
 type ThemePreference = "light" | "dark" | "system";
@@ -35,22 +35,37 @@ function applyTheme(preference: ThemePreference) {
   html.style.colorScheme = resolved;
 }
 
+function animateThemeChange(preference: ThemePreference) {
+  if (typeof document === "undefined") return;
+  const html = document.documentElement;
+  html.classList.add("theme-switching");
+  window.requestAnimationFrame(() => {
+    applyTheme(preference);
+    window.setTimeout(() => {
+      html.classList.remove("theme-switching");
+    }, 380);
+  });
+}
+
 export default function ThemeToggle({ compact = false }: { compact?: boolean }) {
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     const stored = (localStorage.getItem(STORAGE_KEY) as ThemePreference | null) ?? "system";
     setThemePreference(stored);
     applyTheme(stored);
+    hydratedRef.current = true;
   }, []);
 
   useEffect(() => {
+    if (!hydratedRef.current) return;
     localStorage.setItem(STORAGE_KEY, themePreference);
-    applyTheme(themePreference);
+    animateThemeChange(themePreference);
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onSystemChange = () => {
-      if (themePreference === "system") applyTheme("system");
+      if (themePreference === "system") animateThemeChange("system");
     };
     media.addEventListener("change", onSystemChange);
     return () => media.removeEventListener("change", onSystemChange);

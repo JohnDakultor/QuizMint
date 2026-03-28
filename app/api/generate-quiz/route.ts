@@ -32,7 +32,7 @@ import {
 
 const COOLDOWN_HOURS = 3;
 const FREE_QUIZ_LIMIT = 3;
-type LocalGamifiedMode = "bingo" | "sudoku" | "puzzle";
+type LocalGamifiedMode = "bingo" | "timeline" | "puzzle";
 
 function hashString(input: string) {
   let hash = 0;
@@ -66,7 +66,7 @@ function normalizeMixCountInput(value: unknown): number {
 
 function hasQuestionTypeIntent(prompt: string): boolean {
   const p = String(prompt || "").toLowerCase();
-  return /mcq|multiple\s*choice|true\s*\/?\s*false|fill\s*in\s*the\s*blank|short\s*answer|matching|match\s*the\s*following|essay|rubric|worksheet|gamified|super race|case challenge|bingo|sudoku|puzzle|mix|mixed/i.test(
+  return /mcq|multiple\s*choice|true\s*\/?\s*false|fill\s*in\s*the\s*blank|short\s*answer|matching|match\s*the\s*following|essay|rubric|worksheet|gamified|super race|case challenge|bingo|timeline|timeline order|sudoku|puzzle|mix|mixed/i.test(
     p
   );
 }
@@ -322,7 +322,7 @@ export async function POST(req: NextRequest) {
         : "";
     const gamifiedMode: LocalGamifiedMode | null =
       gamifiedModeRaw === "bingo" ||
-      gamifiedModeRaw === "sudoku" ||
+      gamifiedModeRaw === "timeline" ||
       gamifiedModeRaw === "puzzle"
         ? (gamifiedModeRaw as LocalGamifiedMode)
         : null;

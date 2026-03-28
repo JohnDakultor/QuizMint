@@ -128,6 +128,22 @@ function worksheetMatches(selected: string, expected: string) {
   return shortAnswerMatches(selected, expected);
 }
 
+function gradeTimelineOrder(selectedRaw: string, timelineItems: string[]) {
+  if (!Array.isArray(timelineItems) || timelineItems.length < 3) return false;
+  const normalizedExpected = timelineItems.map((item) => normalizeForCompare(item));
+  if (normalizedExpected.some((item) => !item)) return false;
+
+  try {
+    const parsed = JSON.parse(String(selectedRaw || ""));
+    const order = Array.isArray(parsed?.order) ? parsed.order : [];
+    const normalizedSelected = order.map((item) => normalizeForCompare(String(item || "")));
+    if (normalizedSelected.length !== normalizedExpected.length) return false;
+    return normalizedSelected.every((item, idx) => item === normalizedExpected[idx]);
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const requestId = createRequestId();
   try {
@@ -211,14 +227,11 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === "P2002"
       ) {
-        // Allow another student on the same browser/profile by rotating the session lock.
-        takeSessionId = randomUUID();
-        await prisma.studentQuizTake.create({
-          data: {
-            quizId: quiz.id,
-            takeSessionId,
-          },
-        });
+        return apiError(
+          410,
+          "This quiz session expired or was already completed. Reopen the shared link to start again.",
+          requestId
+        );
       } else {
         throw err;
       }
@@ -238,6 +251,12 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           decoded.structure?.type === "matching"
             ? gradeMatchingFromStructure(selected, decoded.structure)
             : matchingAnswersMatch(selected, expectedAnswer);
+      } else if (
+        decoded.structure?.type === "gamified" &&
+        decoded.structure.mode === "timeline" &&
+        Array.isArray(decoded.structure.timelineItems)
+      ) {
+        correct = gradeTimelineOrder(selected, decoded.structure.timelineItems);
       } else if (questionType === "worksheet") {
         correct =
           decoded.structure?.type === "worksheet"

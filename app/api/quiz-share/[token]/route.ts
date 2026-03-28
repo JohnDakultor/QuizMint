@@ -62,10 +62,40 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
       return apiError(410, "Quiz is no longer available", requestId);
     }
 
+    const eventRows = await prisma.$queryRaw<
+      Array<{ metadata: unknown; createdAt: Date }>
+    >`
+      SELECT "metadata", "createdAt"
+      FROM "GenerationEvent"
+      WHERE "eventType" = 'quiz_generated'
+        AND "status" = 'success'
+        AND ("feature" = 'quiz' OR "feature" = 'quiz_file_upload')
+        AND ("metadata"->>'quizId') = ${String(quiz.id)}
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `;
+
+    const eventMeta =
+      eventRows[0]?.metadata &&
+      typeof eventRows[0].metadata === "object" &&
+      !Array.isArray(eventRows[0].metadata)
+        ? (eventRows[0].metadata as Record<string, unknown>)
+        : null;
+    const difficultyRaw =
+      typeof eventMeta?.difficulty === "string"
+        ? eventMeta.difficulty
+        : typeof eventMeta?.effectiveDifficulty === "string"
+        ? eventMeta.effectiveDifficulty
+        : "medium";
+    const difficulty =
+      difficultyRaw === "easy" || difficultyRaw === "medium" || difficultyRaw === "hard"
+        ? difficultyRaw
+        : "medium";
+
     const cookieName = `quiz_take_${quiz.id}`;
     const existingTakeSessionId = _req.cookies.get(cookieName)?.value ?? "";
 
-    let takeSessionId = existingTakeSessionId || randomUUID();
+    const takeSessionId = existingTakeSessionId || randomUUID();
     if (existingTakeSessionId) {
       const existingTake = await prisma.studentQuizTake.findUnique({
         where: {
@@ -76,9 +106,12 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
         },
         select: { id: true },
       });
-      // Shared devices are common in classrooms; rotate session ID after a completed submit.
       if (existingTake) {
-        takeSessionId = randomUUID();
+        return apiError(
+          410,
+          "This quiz session expired or was already completed. Reopen the shared link to start again.",
+          requestId
+        );
       }
     }
 
@@ -105,6 +138,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
           title: quiz.title,
           instructions: quiz.instructions,
           createdAt: quiz.createdAt,
+          difficulty,
           questions: shuffledQuestions.map((q) => ({
             ...(() => {
               const decoded = decodeStoredAnswer(q.answer);

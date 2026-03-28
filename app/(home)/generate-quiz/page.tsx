@@ -42,7 +42,7 @@ export default function Dashboard() {
   const [showAdaptivePanel, setShowAdaptivePanel] = useState(false);
   const [forceFreshGeneration, setForceFreshGeneration] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareTimerMinutes, setShareTimerMinutes] = useState(60);
   const [shareShuffleQuestions, setShareShuffleQuestions] = useState(false);
@@ -486,7 +486,7 @@ export default function Dashboard() {
   };
 
   const generateQuizFromPrompt = async () => {
-    if (!prompt.trim() && !uploadedFile) return;
+    if (!prompt.trim() && uploadedFiles.length === 0) return;
     const mixTotal =
       questionMix.mcq +
       questionMix.trueFalse +
@@ -502,7 +502,7 @@ export default function Dashboard() {
     }
     trackGaEvent("quiz_generate", {
       action: "start",
-      source: uploadedFile ? "file_upload" : "prompt",
+      source: uploadedFiles.length > 0 ? "file_upload" : "prompt",
       number_of_items: numberOfItems,
       lite_mode: liteMode,
     });
@@ -521,9 +521,9 @@ export default function Dashboard() {
       const difficulty = user?.aiDifficulty || "easy";
       const adaptiveLearning = user?.adaptiveLearning ?? false;
 
-      if (uploadedFile) {
+      if (uploadedFiles.length > 0) {
         const formData = new FormData();
-        formData.append("file", uploadedFile);
+        uploadedFiles.forEach((file) => formData.append("file", file));
         formData.append("prompt", prompt);
         formData.append("difficulty", difficulty);
         formData.append("adaptiveLearning", adaptiveLearning.toString());
@@ -537,6 +537,7 @@ export default function Dashboard() {
         formData.append("mixWorksheet", String(questionMix.worksheet));
         formData.append("mixGamified", String(questionMix.gamified));
         formData.append("gamifiedMode", gamifiedMode);
+        formData.append("async", "true");
 
         const res = await fetch("/api/upload-file", {
           method: "POST",
@@ -544,9 +545,23 @@ export default function Dashboard() {
           signal: controller.signal,
         });
 
-        const data = await res.json();
+        let data = await res.json();
+        let requestSucceeded = res.ok;
 
-        if (!res.ok) {
+        if (res.status === 202 && data?.queued && data?.jobId) {
+          setInfoMessage("Queued. Processing your uploaded content now...");
+          if (!data?.dispatched) {
+            await fetch(`/api/generation-jobs/${data.jobId}/process`, {
+              method: "POST",
+              signal: controller.signal,
+            }).catch(() => null);
+          }
+          data = await pollAsyncGenerationJob(String(data.jobId), controller.signal);
+          setInfoMessage("");
+          requestSucceeded = true;
+        }
+
+        if (!requestSucceeded) {
           trackGaEvent("quiz_generate", {
             action: "error",
             source: "file_upload",
@@ -583,7 +598,7 @@ export default function Dashboard() {
           setLastLoaded(false);
           setShareOpen(null);
           setShareExpiresAt(null);
-          setUploadedFile(null);
+          setUploadedFiles([]);
           setQuizProgress(100);
           await new Promise((resolve) => setTimeout(resolve, 120));
         }
@@ -730,7 +745,7 @@ export default function Dashboard() {
   } catch (err: any) {
     trackGaEvent("quiz_generate", {
       action: err?.name === "AbortError" ? "aborted" : "error",
-      source: uploadedFile ? "file_upload" : "prompt",
+      source: uploadedFiles.length > 0 ? "file_upload" : "prompt",
     });
     if (err?.name === "AbortError") {
       setError("");
@@ -856,7 +871,7 @@ export default function Dashboard() {
               >
                 <option value="puzzle">Puzzle Quiz</option>
                 <option value="bingo">Super Race</option>
-                <option value="sudoku">Sudoku Logic</option>
+                <option value="timeline">Timeline Order</option>
               </select>
             </div>
           )}
@@ -876,8 +891,8 @@ export default function Dashboard() {
           infoMessage={infoMessage}
           error={error}
           adUnlockInfo={adUnlockInfo}
-          uploadedFile={uploadedFile}
-          setUploadedFile={setUploadedFile}
+          uploadedFiles={uploadedFiles}
+          setUploadedFiles={setUploadedFiles}
           onPaste={handlePaste}
           onGenerate={generateQuizFromPrompt}
           onPause={pauseQuizGeneration}

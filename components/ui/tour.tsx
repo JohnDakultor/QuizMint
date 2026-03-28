@@ -19,11 +19,36 @@ export default function Tour({
   autoStartDelayMs = 700,
   popoverClassName = "quizmint-tour",
 }: TourProps) {
+  const syncQuizInputToolsVisibility = (step: DriveStep | undefined) => {
+    const target = typeof step?.element === "string" ? step.element : "";
+    const shouldOpen =
+      target === "#quiz-input-tools-toggle" ||
+      target === "#quiz-copy-template-link" ||
+      target === "#quiz-share-template-link" ||
+      target === "#quiz-upload-local" ||
+      target === "#quiz-upload-drive";
+    window.dispatchEvent(
+      new CustomEvent("quiz-input-tools-visibility", {
+        detail: { open: shouldOpen },
+      })
+    );
+  };
+
   const startTour = () => {
     const tour = driver({
       showProgress: true,
       allowClose: true,
       popoverClass: popoverClassName,
+      onHighlightStarted: (_element, step) => {
+        syncQuizInputToolsVisibility(step as DriveStep | undefined);
+      },
+      onDestroyed: () => {
+        window.dispatchEvent(
+          new CustomEvent("quiz-input-tools-visibility", {
+            detail: { open: false },
+          })
+        );
+      },
       steps,
     });
     tour.drive();

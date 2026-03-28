@@ -1,0 +1,1 @@
+This is a Cypress sample upload file for premium upload gating tests.

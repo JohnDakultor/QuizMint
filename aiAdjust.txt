@@ -1,0 +1,88 @@
+AI game-mode update checklist for `lib/ai.ts`
+
+When adding or changing a quiz game mode, update `lib/ai.ts` in all of these places:
+
+1. Add or update the mode label mapping.
+- Check `gamifiedLabel`
+- Example:
+  - `bingo` -> `SUPER_RACE`
+  - `timeline` -> `TIMELINE_ORDER`
+  - `puzzle` -> `PUZZLE`
+
+2. Update the main system prompt game rules.
+- Add a dedicated rule block for the new mode under `- For Gamified:`
+- Do not leave it under the generic gamified rules only
+- Define:
+  - what the question should look like
+  - whether options should exist
+  - what the answer format must be
+  - whether a `structure` object is required
+
+3. Update strict retry instructions.
+- Search for `RETRY WITH STRICT COMPLIANCE`
+- Add the new game-mode-specific constraints there too
+- If the mode needs structured output, say it explicitly
+
+4. Update repair-mode expectations.
+- Search for `REPAIR MODE`
+- Make sure missing gamified questions for the new mode follow the same format rules
+
+5. Update post-processing normalization.
+- Search for `normalizeGamifiedAnswersInParsed`
+- Make sure the new mode is not accidentally normalized into the wrong answer shape
+- Example:
+  - puzzle may want a compact token
+  - super race may want a full option string
+  - timeline order may want a full ordered sequence
+
+6. Update mode inference if needed.
+- If the new game mode has a new label/tag, update inference helpers too:
+  - `lib/quiz-question-types.ts`
+  - `lib/quiz-structured.ts`
+
+7. Update structure parsing if the mode needs structured grading.
+- In `lib/quiz-structured.ts`, add:
+  - mode detection
+  - any required structure fields
+  - public structure passthrough
+
+8. Update student-side grading if the answer shape changes.
+- Check `app/api/quiz-share/[token]/submit/route.ts`
+- Add a dedicated grader if needed
+
+Prompt template for a new game mode
+
+Add something like this inside the `For Gamified` section in `lib/ai.ts`:
+
+- If the selected game style is NEW_MODE_LABEL:
+  - Explain the gameplay goal in one sentence.
+  - State whether it uses options or no options.
+  - State the exact answer format.
+  - State whether the question must be objective.
+  - State any forbidden patterns.
+  - Include a `structure` object if the frontend/grader needs one.
+
+Example prompt block
+
+- If the selected game style is NEW_MODE_LABEL:
+  - Build a clear and objective game challenge.
+  - Use only source-grounded facts.
+  - Do not use subjective ranking.
+  - Options must be ["..."] or [] depending on the mode.
+  - Answer must be "exact required format here".
+  - Include a "structure" object:
+    {
+      "type": "gamified",
+      "mode": "new_mode_key"
+    }
+
+Reminder
+
+If a new game mode is added and only the frontend is updated, generation will drift.
+Always update:
+- prompt rules
+- strict retry rules
+- repair rules
+- normalization
+- structure parsing
+- grading

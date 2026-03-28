@@ -1,9 +1,11 @@
-export function buildSolvablePuzzle(seed: number, size = 3) {
+export function buildSolvablePuzzle(seed: number, size = 3, steps?: number) {
   const cellCount = size * size;
   const solved = [...Array.from({ length: cellCount - 1 }, (_, i) => i + 1), 0];
   const next = [...solved];
   let s = seed || 1;
-  const steps = 24 + (seed % 16);
+  const moveCount = typeof steps === "number" && Number.isFinite(steps)
+    ? Math.max(8, Math.floor(steps))
+    : 24 + (seed % 16);
 
   const neighbors = (idx: number) => {
     const row = Math.floor(idx / size);
@@ -16,7 +18,7 @@ export function buildSolvablePuzzle(seed: number, size = 3) {
     return out;
   };
 
-  for (let i = 0; i < steps; i++) {
+  for (let i = 0; i < moveCount; i++) {
     const blank = next.indexOf(0);
     const opts = neighbors(blank);
     s = (s * 9301 + 49297) % 233280;

@@ -125,6 +125,29 @@ html {
   scroll-behavior: smooth;
 }
 
+html.theme-switching,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition:
+    background-color 340ms ease,
+    border-color 340ms ease,
+    color 340ms ease,
+    fill 340ms ease,
+    stroke 340ms ease,
+    box-shadow 340ms ease,
+    background 340ms ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-switching,
+  html.theme-switching *,
+  html.theme-switching *::before,
+  html.theme-switching *::after {
+    transition: none !important;
+  }
+}
+
 .grecaptcha-badge {
   visibility: hidden !important;
   display: none !important;

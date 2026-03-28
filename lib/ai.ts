@@ -273,7 +273,12 @@ export async function generateQuizAIWithMeta(
      text.includes("quiz about") ||
      text.split(' ').length < 100); // Short text is likely a prompt
   const gamifiedMode = options?.gamifiedMode || "puzzle";
-  const gamifiedLabel = gamifiedMode === "bingo" ? "SUPER_RACE" : gamifiedMode.toUpperCase();
+  const gamifiedLabel =
+    gamifiedMode === "bingo"
+      ? "SUPER_RACE"
+      : gamifiedMode === "timeline"
+      ? "TIMELINE_ORDER"
+      : gamifiedMode.toUpperCase();
 
   const systemPrompt = `
 You are Quizmints AI, a quiz generator.
@@ -311,7 +316,7 @@ RULES:
   - Matching: ${typePlan.matchingTarget}
   - Essay with Rubric: ${typePlan.essayRubricTarget}
   - Worksheet (subject-based): ${typePlan.worksheetTarget}
-  - Gamified (Super Race/Sudoku/Puzzle): ${typePlan.gamifiedTarget}
+  - Gamified (Super Race/Timeline Order/Puzzle): ${typePlan.gamifiedTarget}
 - For MCQ:
   - Exactly 4 options per question.
 - For True/False:
@@ -356,9 +361,31 @@ RULES:
 - For Gamified:
   - Can be MCQ-style with 4 options OR open-answer with options [].
   - Keep puzzle/game context but still objectively answerable.
-  - Answer must be exactly one word (no spaces).
   - Use the selected game style: ${gamifiedLabel}.
   - The question text MUST start with "Game Challenge [${gamifiedLabel}]:" so renderer can detect it reliably.
+  - If the selected game style is SUPER_RACE:
+    - Keep it as a fast lane-choice challenge.
+    - Provide 4 short distinct options.
+    - Answer must exactly match one of the options.
+    - Do not use subjective wording like "most important" or "best overall" unless the source clearly supports one objective answer.
+  - If the selected game style is PUZZLE:
+    - Answer must be a single compact word or short token that can be turned into a puzzle key.
+    - Prefer one word, no spaces when possible.
+    - Avoid long phrases.
+  - If the selected game style is TIMELINE_ORDER:
+    - Build a chronology or step-order challenge with 3 to 5 objective events/steps.
+    - Use only events/steps that have a clear correct order.
+    - Do NOT use subjective ranking like "importance", "influence", or "significance".
+    - The question should present the unordered milestones in the prompt.
+    - Options may be [].
+    - Answer must NOT be one word.
+    - Include a "structure" object:
+      {
+        "type": "gamified",
+        "mode": "timeline",
+        "timelineItems": ["first event", "second event", "third event"]
+      }
+    - The "answer" should be the full ordered sequence as a semicolon-separated list matching timelineItems.
 
 Difficulty: ${difficultyPrompt}
 ${adaptivePrompt}
@@ -597,7 +624,9 @@ JSON SCHEMA (MUST MATCH EXACTLY):
 - Worksheet must include questionType "worksheet" and structure.type "worksheet" with parts[].
 - Gamified can use 4 options or options [] but must be objectively gradable.
 - Gamified questions must include the prefix "Game Challenge [${gamifiedLabel}]:" in the question text.
-- Gamified answers must be exactly one word.
+- If ${gamifiedLabel} is SUPER_RACE, answer must exactly match one option.
+- If ${gamifiedLabel} is PUZZLE, answer should be a compact single token.
+- If ${gamifiedLabel} is TIMELINE_ORDER, answer must be the full ordered sequence and include structure.type "gamified", structure.mode "timeline", and structure.timelineItems[].
 - Return JSON only.`;
 
     try {
@@ -892,7 +921,7 @@ function buildQuestionTypePlan(
     /\bworksheet\b|solve|calculate|compute|balance equation|scientific method|experiment|hypothesis|lab/i.test(
       normalized
     );
-  const includeGamified = /\bgamified\b|super race|case challenge|bingo|sudoku|puzzle|game[-\s]*based/i.test(normalized);
+  const includeGamified = /\bgamified\b|super race|case challenge|bingo|timeline|timeline order|sudoku|puzzle|game[-\s]*based/i.test(normalized);
   const requestedMixed =
     /\bmixed\b|\bmix\b|\bvaried\b|\bcombination\b|\ball types\b|\bdifferent types\b/i.test(normalized);
   const wantsTrueFalse = includeTrueFalse || requestedMixed;
@@ -1070,7 +1099,7 @@ function isGamifiedQuestion(question: any): boolean {
   const options = Array.isArray(question?.options) ? question.options : [];
   const answer = String(question?.answer || "").trim();
   if (!answer) return false;
-  const hasGameSignal = /super race|case challenge|bingo|sudoku|puzzle|riddle|game|gamified/.test(questionText);
+  const hasGameSignal = /super race|case challenge|bingo|timeline|timeline order|sudoku|puzzle|riddle|game|gamified/.test(questionText);
   if (!hasGameSignal) return false;
   return options.length === 0 || options.length === 4;
 }
@@ -1325,6 +1354,17 @@ function normalizeQuestionsToPlan(plan: QuestionTypePlan, questions: any[]) {
   return out;
 }
 
+function inferGamifiedModeFromQuestion(question: unknown): GamifiedMode {
+  const q = String(question || "").toLowerCase();
+  if (/\[timeline_order\]|\[timeline\]|timeline order|timeline|\[sudoku\]|sudoku/.test(q)) {
+    return "timeline";
+  }
+  if (/\[super_race\]|\[super race\]|super race|\[case_challenge\]|\[case challenge\]|case challenge|\[bingo\]|bingo/.test(q)) {
+    return "bingo";
+  }
+  return "puzzle";
+}
+
 function normalizeGamifiedAnswerWord(value: unknown): string {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -1342,6 +1382,21 @@ function normalizeGamifiedAnswersInParsed(parsed: any) {
   parsed.questions = parsed.questions.map((q: any) => {
     if (!q) return q;
     if (isGamifiedQuestion(q) || String(q?.questionType || "").toLowerCase() === "gamified") {
+      const mode =
+        String(q?.structure?.mode || "").toLowerCase() ||
+        inferGamifiedModeFromQuestion(q?.question);
+      if (mode === "timeline") {
+        return {
+          ...q,
+          answer: String(q?.answer || "").trim(),
+        };
+      }
+      if (mode === "bingo") {
+        return {
+          ...q,
+          answer: String(q?.answer || "").trim(),
+        };
+      }
       return {
         ...q,
         answer: normalizeGamifiedAnswerWord(q.answer),

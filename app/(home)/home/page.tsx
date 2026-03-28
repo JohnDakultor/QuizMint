@@ -21,14 +21,15 @@ type DashboardSummary = {
   todayQuizCount: number;
   todayLessonPlanCount: number;
   recentQuizzes: {
-    id: number;
-    title: string;
-    createdAt: string;
-    shareSettings?: {
-      isOpen: boolean;
-      expiresAt: string | null;
-    } | null;
-  }[];
+      id: number;
+      title: string;
+      createdAt: string;
+      shareUrl?: string | null;
+      shareSettings?: {
+        isOpen: boolean;
+        expiresAt: string | null;
+      } | null;
+    }[];
   recentPlans: { id: string; title: string; subject: string; createdAt: string }[];
 };
 
@@ -57,10 +58,46 @@ type StudentAttemptSummary = {
   totalQuestions: number;
   submittedAt: string;
   details?: Array<{
+    questionId: number;
+    question: string;
+    questionType: string;
     selected: string;
+    correctAnswer?: string;
     correct: boolean;
   }>;
 };
+
+function formatAttemptAnswer(value: string, questionType?: string) {
+  const raw = String(value || "").trim();
+  if (!raw) return "No answer";
+
+  if (questionType === "matching") {
+    try {
+      const parsed = JSON.parse(raw) as {
+        kind?: string;
+        map?: Record<string, string>;
+      };
+      if (parsed?.kind === "matching_map" && parsed.map && typeof parsed.map === "object") {
+        return Object.entries(parsed.map)
+          .map(([left, right]) => `${left} -> ${right}`)
+          .join(", ");
+      }
+    } catch {
+      return raw.replace(/\r?\n/g, ", ");
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { kind?: string; order?: string[] };
+    if (parsed?.kind === "timeline_order" && Array.isArray(parsed.order)) {
+      return parsed.order.join(" -> ");
+    }
+  } catch {
+    // plain text answer
+  }
+
+  return raw.replace(/\r?\n/g, " ");
+}
 
 const FREE_QUIZ_LIMIT = 3;
 const COOLDOWN_HOURS = 3;
@@ -189,6 +226,7 @@ export default function HomeDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [copiedTemplate, setCopiedTemplate] = useState<string | null>(null);
+  const [copiedShareQuizId, setCopiedShareQuizId] = useState<number | null>(null);
   const [lastQuiz, setLastQuiz] = useState<LastQuiz | null>(null);
   const [lastPlan, setLastPlan] = useState<LastPlan | null>(null);
   const [studentAttempts, setStudentAttempts] = useState<StudentAttemptSummary[]>([]);
@@ -402,6 +440,16 @@ export default function HomeDashboardPage() {
       setTimeout(() => setCopiedTemplate(null), 1600);
     } catch {
       setCopiedTemplate(null);
+    }
+  }
+
+  async function copyShareLink(quizId: number, shareUrl: string) {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedShareQuizId(quizId);
+      setTimeout(() => setCopiedShareQuizId(null), 1600);
+    } catch {
+      setCopiedShareQuizId(null);
     }
   }
 
@@ -645,6 +693,22 @@ export default function HomeDashboardPage() {
                     </summary>
                     <div className="mt-3 space-y-2">
                       <div className="flex flex-wrap gap-2">
+                        {quiz.shareUrl && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void copyShareLink(quiz.id, quiz.shareUrl!)}
+                            >
+                              {copiedShareQuizId === quiz.id ? "Copied Link" : "Copy Share Link"}
+                            </Button>
+                            <Button size="sm" variant="outline" asChild>
+                              <Link href={quiz.shareUrl} target="_blank">
+                                Open Student Link
+                              </Link>
+                            </Button>
+                          </>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -782,6 +846,40 @@ export default function HomeDashboardPage() {
                             Taken: {new Date(attempt.submittedAt).toLocaleDateString()}{" "}
                             {new Date(attempt.submittedAt).toLocaleTimeString()}
                           </p>
+                          {!!attempt.details?.length && (
+                            <details className="mt-2 rounded bg-slate-50 p-2">
+                              <summary className="cursor-pointer text-[11px] font-semibold text-slate-700">
+                                View scored answers
+                              </summary>
+                              <div className="mt-2 space-y-2">
+                                {attempt.details.map((detail) => (
+                                  <div
+                                    key={`${attempt.id}-${detail.questionId}`}
+                                    className="rounded border border-slate-200 bg-white p-2"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-xs font-medium text-zinc-800">{detail.question}</p>
+                                      <span
+                                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                          detail.correct
+                                            ? "bg-emerald-100 text-emerald-700"
+                                            : "bg-rose-100 text-rose-700"
+                                        }`}
+                                      >
+                                        {detail.correct ? "Correct" : "Incorrect"}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-zinc-600">
+                                      Student: {formatAttemptAnswer(detail.selected, detail.questionType)}
+                                    </p>
+                                    <p className="text-[11px] text-zinc-500">
+                                      Expected: {formatAttemptAnswer(detail.correctAnswer || "", detail.questionType)}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
                         </div>
                       ))}
                     </div>

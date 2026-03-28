@@ -36,18 +36,25 @@ export function StudentWorksheetQuestion({ structure, value, disabled, onChange 
   }, [value]);
 
   return (
-    <div className="space-y-3 rounded-lg border bg-amber-50/60 p-3">
+    <div className="mx-auto w-full max-w-5xl space-y-4 rounded-xl border bg-amber-50/60 p-4 md:p-5">
       {structure?.instructions && (
-        <div className="rounded border bg-white p-2 text-xs text-amber-900">
+        <div className="rounded-xl border bg-white p-3 text-sm text-amber-900 shadow-sm">
           {structure.instructions}
         </div>
       )}
 
       {structure?.parts?.length ? (
-        <div className="space-y-2">
-          {structure.parts.map((part) => (
-            <div key={part.id} className="rounded border bg-white p-2">
-              <div className="mb-1 text-xs font-semibold text-amber-900">{part.prompt}</div>
+        <div className="grid grid-cols-1 gap-3 md:gap-4">
+          {structure.parts.map((part, index) => (
+            <div key={part.id} className="rounded-xl border bg-white p-3 shadow-sm">
+              <div className="mb-2 flex items-start gap-2">
+                <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">
+                  {index + 1}
+                </span>
+                <div className="pt-1 text-sm font-semibold leading-relaxed text-amber-950">
+                  {part.prompt}
+                </div>
+              </div>
               <input
                 type="text"
                 placeholder="Enter your answer"
@@ -57,14 +64,18 @@ export function StudentWorksheetQuestion({ structure, value, disabled, onChange 
                   onChange(JSON.stringify({ kind: "worksheet_parts", answers: nextAnswers }));
                 }}
                 disabled={disabled}
-                className="w-full rounded border bg-white px-3 py-2 text-sm font-medium"
+                className="w-full rounded-lg border bg-white px-3 py-2.5 text-sm font-medium"
               />
             </div>
           ))}
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-1">
+      <div className="rounded-xl border bg-white p-3 shadow-sm">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+          Quick Keys
+        </div>
+        <div className="flex flex-wrap gap-1.5">
         {quickKeys.map((k) => (
           <button
             key={k}
@@ -83,11 +94,12 @@ export function StudentWorksheetQuestion({ structure, value, disabled, onChange 
               }
               onChange(`${value || ""}${k}`);
             }}
-            className="rounded border bg-white px-2 py-1 text-xs hover:bg-zinc-50 disabled:opacity-60"
+            className="rounded-md border bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-60"
           >
             {k}
           </button>
         ))}
+        </div>
       </div>
 
       {!structure?.parts?.length && (
@@ -97,7 +109,7 @@ export function StudentWorksheetQuestion({ structure, value, disabled, onChange 
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
-          className="w-full rounded border bg-white px-3 py-2 text-sm font-medium"
+          className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-medium shadow-sm"
         />
       )}
     </div>

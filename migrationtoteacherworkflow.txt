@@ -1,0 +1,308 @@
+Migration To Teacher Workflow
+
+Goal
+Move QuizMint from a one-time AI generation tool into a teacher workflow platform where planning, assigning, tracking, reviewing, and improving classroom work all happen inside the product.
+
+Core Product Shift
+Current tool behavior:
+- Generate quiz
+- Generate lesson plan
+- Export
+
+Target workflow behavior:
+1. Teacher plans content for a class
+2. Teacher creates or refines a quiz/lesson
+3. Teacher assigns it to students or a section
+4. Students submit work
+5. Teacher reviews class performance
+6. Platform suggests next actions
+7. Teacher reuses and iterates materials
+
+Why this matters
+Teachers come back when:
+- their class structure lives here
+- their assignments live here
+- their student results live here
+- their follow-up decisions live here
+
+They leave when the app only helps with one isolated generation step.
+
+Phase 1: Teacher Workflow Foundation
+
+1. Add Classes / Sections
+Purpose:
+- Give generated content a teaching context
+
+Suggested entities:
+- Class
+- ClassMembership or StudentRosterEntry
+
+Minimum fields for Class:
+- id
+- userId
+- name
+- subject
+- gradeLevel
+- schoolYear
+- section
+- createdAt
+
+Minimum teacher UX:
+- create class
+- edit class
+- archive class
+- view class dashboard
+
+Why first:
+- quizzes and lesson plans need a home beyond the user account
+
+2. Add Assignments
+Purpose:
+- Convert generated quizzes into actual classroom tasks
+
+Suggested entity:
+- Assignment
+
+Minimum fields:
+- id
+- userId
+- classId
+- quizId nullable
+- lessonPlanId nullable
+- title
+- instructions
+- status: draft | assigned | closed | archived
+- dueAt
+- availableFrom
+- createdAt
+
+Minimum teacher UX:
+- create assignment from quiz
+- attach quiz to class
+- open/close assignment
+- duplicate assignment
+
+Why second:
+- this is the actual bridge from generator to workflow
+
+3. Connect Student Attempts To Assignments
+Purpose:
+- stop treating student activity as detached from classroom structure
+
+Current state:
+- student attempts connect to quiz
+
+Target:
+- student attempts connect to assignment and class context
+
+Suggested update:
+- add assignmentId to StudentQuizAttempt
+
+Result:
+- teachers can see performance by assignment, not only by raw quiz
+
+4. Add Basic Student Roster
+Purpose:
+- give teachers repeatable student identity in class context
+
+Suggested entity:
+- ClassStudent
+
+Minimum fields:
+- id
+- classId
+- studentName
+- studentEmail nullable
+- studentNumber nullable
+- notes nullable
+
+Minimum UX:
+- add student manually
+- bulk paste/import names
+- show missing submissions
+
+Why:
+- teachers need a class list, not just anonymous shared-link traffic
+
+Phase 2: Sticky Teacher Loop
+
+5. Build Teacher Assignment Dashboard
+Purpose:
+- make the app useful after generation
+
+Dashboard sections:
+- active assignments
+- draft assignments
+- recent submissions
+- missing students
+- average class score
+- hardest questions
+
+Key outcome:
+- teacher returns to monitor real work
+
+6. Build Content Library
+Purpose:
+- make generated output reusable instead of disposable
+
+Library types:
+- quizzes
+- lesson plans
+- templates
+
+Useful filters:
+- subject
+- grade
+- class
+- date
+- status
+- tags
+
+Essential actions:
+- duplicate
+- edit
+- assign
+- archive
+
+Why:
+- recurring reuse creates retention
+
+7. Add Weekly Teacher Workspace
+Purpose:
+- give teachers one place to continue their classroom work
+
+Possible widgets:
+- this week’s classes
+- assignments due today
+- recently generated materials
+- low-performing assignments
+- continue editing last lesson plan
+- create follow-up quiz
+
+Key effect:
+- platform starts to feel like a teaching workspace
+
+8. Add Drafts And Versioning
+Purpose:
+- teachers iterate constantly
+
+Minimum versioning:
+- save draft state
+- update timestamp
+- duplicate before editing
+- restore previous draft later
+
+Why:
+- workflow products support iteration, not one-shot generation
+
+Phase 3: Feedback-Driven Teaching
+
+9. Add Quiz-To-Lesson Feedback Loop
+Purpose:
+- connect assessment and planning products
+
+Examples:
+- low scores on topic X -> suggest reteach lesson
+- hard question cluster -> generate remediation quiz
+- strong performance -> suggest enrichment activity
+
+Why:
+- this makes the platform feel intelligent inside the teacher workflow
+
+10. Add Class Performance Views
+Purpose:
+- move from quiz results to teaching insight
+
+Views to add:
+- question difficulty summary
+- topic mastery by class
+- student performance trend
+- unsubmitted students
+- most-missed concepts
+
+Why:
+- results review is one of the strongest retention loops
+
+Phase 4: Platform Readiness Before Organizations
+
+11. Add Shared Internal Workflow Features
+Even before formal org/team billing, add:
+- teacher notes on classes
+- pinned materials
+- tags
+- saved templates
+- assignment history
+- calendar-style due dates
+
+This makes the system operationally sticky.
+
+12. Add Better Resource Linking
+Link together:
+- Class -> Assignments
+- Class -> Lesson Plans
+- Assignment -> Quiz
+- Assignment -> Attempts
+- Quiz results -> Follow-up recommendations
+
+This graph is what makes the product a platform.
+
+Recommended Build Order For This Repo
+
+Step 1
+- Add Class model and class pages
+
+Step 2
+- Add Assignment model and assignment creation from generated quiz
+
+Step 3
+- Add assignment linkage to student quiz sharing/submissions
+
+Step 4
+- Add roster and missing-submission tracking
+
+Step 5
+- Add assignment dashboard on home page
+
+Step 6
+- Add reusable quiz/lesson content library
+
+Step 7
+- Add result insights and follow-up recommendations
+
+Step 8
+- Add weekly teacher workspace
+
+Step 9
+- Only after that, start organization/team model
+
+How To Measure Success
+
+Signs it is still a tool:
+- users come only when they need a generated asset
+- weak repeat usage after export
+- no persistent classroom context
+
+Signs it is becoming a workflow platform:
+- teachers return to check assignments
+- teachers return to review submissions
+- teachers reuse prior materials
+- teachers manage classes here
+- quizzes lead to next lesson actions inside the app
+
+Practical Product Principle
+Do not ask:
+- “What else can we generate?”
+
+Ask:
+- “What does a teacher need to do next after generation?”
+
+That next-step ownership is what turns a tool into a workflow platform.
+
+Suggested First Milestone
+If only one milestone is built first, make it:
+- Classes
+- Assignments
+- Student submissions tied to assignments
+- Teacher results dashboard
+
+That is the first real teacher workflow loop.

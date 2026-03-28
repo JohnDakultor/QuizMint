@@ -12,9 +12,10 @@ export type WorksheetPublicStructure = {
 
 export type GamifiedPublicStructure = {
   type: "gamified";
-  mode?: "bingo" | "sudoku" | "puzzle";
+  mode?: "bingo" | "timeline" | "puzzle";
   puzzleKey?: string;
   answerKey?: string;
+  timelineItems?: string[];
 };
 
 type MatchingStoredStructure = MatchingPublicStructure & {
@@ -82,6 +83,87 @@ function asString(value: unknown) {
   return String(value || "").trim();
 }
 
+function extractBracketedItems(text: string) {
+  return [...String(text || "").matchAll(/\[([^\]]+)\]/g)]
+    .map((match) => String(match[1] || "").trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const normalized = item.replace(/\s+/g, "_").toUpperCase();
+      return !["TIMELINE_ORDER", "TIMELINE", "SUPER_RACE", "PUZZLE", "BINGO", "SUDOKU"].includes(
+        normalized
+      );
+    });
+}
+
+function extractLetteredTimelinePairs(text: string) {
+  const source = String(text || "").trim();
+  const afterColon = source.includes(":") ? source.split(":").slice(1).join(":") : source;
+  const pairs = [...afterColon.matchAll(/([A-Z])\)\s*(.*?)(?=\s+[A-Z]\)\s*|$)/g)]
+    .map((match) => ({
+      key: String(match[1] || "").trim().toUpperCase(),
+      value: String(match[2] || "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    }))
+    .filter((item) => item.key && item.value);
+  return pairs;
+}
+
+function extractTimelineItems(text: string) {
+  const source = String(text || "").trim();
+  const bracketed = extractBracketedItems(source);
+  if (bracketed.length >= 3) return bracketed.slice(0, 5);
+
+  const letteredPairs = extractLetteredTimelinePairs(source);
+  if (letteredPairs.length >= 3) {
+    return letteredPairs.map((item) => item.value).slice(0, 5);
+  }
+
+  const afterColon = source.includes(":") ? source.split(":").slice(1).join(":") : source;
+  const matches = [...afterColon.matchAll(/(?:^|,\s*|\s+)(\d+[\)\.]?\s*[^,]+)/g)]
+    .map((match) => String(match[1] || "").replace(/^\d+[\)\.]?\s*/, "").trim())
+    .filter(Boolean);
+  if (matches.length >= 3) return matches.slice(0, 5);
+
+  const splitByNumbering = afterColon
+    .split(/\s+\d+[\)\.]\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (splitByNumbering.length >= 3) return splitByNumbering.slice(0, 5);
+
+  return [];
+}
+
+function resolveTimelineItems(question: string, answer: string) {
+  const questionText = String(question || "").trim();
+  const answerText = String(answer || "").trim();
+  const questionLetteredPairs = extractLetteredTimelinePairs(questionText);
+  if (questionLetteredPairs.length >= 3) {
+    let answerTokens = answerText
+      .split(/\s*;\s*|\s*,\s*/)
+      .map((item) => item.replace(/[^A-Za-z0-9]/g, "").trim().toUpperCase())
+      .filter(Boolean);
+    const questionMap = new Map(questionLetteredPairs.map((item) => [item.key, item.value]));
+    if (
+      answerTokens.length === 1 &&
+      answerTokens[0].length >= 3 &&
+      answerTokens[0].length <= 5 &&
+      answerTokens[0].split("").every((token) => questionMap.has(token))
+    ) {
+      answerTokens = answerTokens[0].split("");
+    }
+    const mapped = answerTokens
+      .map((token) => questionMap.get(token))
+      .filter((item): item is string => Boolean(item));
+    if (mapped.length >= 3) return mapped.slice(0, 5);
+  }
+
+  const fromAnswer = extractTimelineItems(answerText).slice(0, 5);
+  if (fromAnswer.length >= 3) return fromAnswer;
+
+  return extractTimelineItems(questionText).slice(0, 5);
+}
+
 export function buildStoredStructureFromAI(input: {
   question: string;
   answer: string;
@@ -91,7 +173,7 @@ export function buildStoredStructureFromAI(input: {
   const hintedType = asString(input.questionType).toLowerCase();
   const structure = asObject(input.structure);
   const questionText = asString(input.question).toLowerCase();
-  const inferredGamified = /game challenge|super race|case challenge|\[puzzle\]|\[super_race\]|\[case_challenge\]|\[bingo\]|\[sudoku\]|puzzle|bingo|sudoku/.test(
+  const inferredGamified = /game challenge|super race|case challenge|\[puzzle\]|\[super_race\]|\[case_challenge\]|\[bingo\]|\[timeline\]|\[timeline_order\]|\[sudoku\]|puzzle|bingo|timeline|sudoku/.test(
     questionText
   );
   const effectiveHintType = hintedType || (inferredGamified ? "gamified" : "");
@@ -156,8 +238,8 @@ export function buildStoredStructureFromAI(input: {
     const q = String(input.question || "").toLowerCase();
     const mode = /\[puzzle\]|puzzle/.test(q)
       ? "puzzle"
-      : /\[sudoku\]|sudoku/.test(q)
-      ? "sudoku"
+      : /\[timeline\]|\[timeline_order\]|\[timeline order\]|timeline order|timeline|\[sudoku\]|sudoku/.test(q)
+      ? "timeline"
       : /\[super_race\]|\[super race\]|super race/.test(q)
       ? "bingo"
       : /\[case_challenge\]|\[case challenge\]|case challenge/.test(q)
@@ -173,7 +255,11 @@ export function buildStoredStructureFromAI(input: {
       .slice(0, 24);
     const puzzleKey =
       mode === "puzzle"
-        ? answerKey.slice(0, 8)
+        ? answerKey
+        : undefined;
+    const timelineItems =
+      mode === "timeline"
+        ? resolveTimelineItems(input.question, input.answer)
         : undefined;
 
     return {
@@ -181,6 +267,7 @@ export function buildStoredStructureFromAI(input: {
       mode,
       ...(answerKey ? { answerKey } : {}),
       ...(puzzleKey ? { puzzleKey } : {}),
+      ...(timelineItems && timelineItems.length >= 3 ? { timelineItems } : {}),
     };
   }
 
@@ -206,6 +293,7 @@ export function toPublicStructure(structure: StoredQuestionStructure | null):
       mode: structure.mode,
       puzzleKey: structure.puzzleKey,
       answerKey: structure.answerKey,
+      timelineItems: structure.timelineItems,
     };
   }
   return {

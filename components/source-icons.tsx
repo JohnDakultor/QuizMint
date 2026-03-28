@@ -19,6 +19,11 @@ interface SourceIconsProps {
 }
 
 function getHostname(rawUrl: string): string {
+  if (rawUrl.startsWith("upload://")) {
+    const [, rest = ""] = rawUrl.split("://");
+    const parts = rest.split("/");
+    return decodeURIComponent(parts.slice(1).join("/") || parts[0] || "uploaded-file");
+  }
   try {
     return new URL(rawUrl).hostname.replace(/^www\./, "");
   } catch {
@@ -27,6 +32,7 @@ function getHostname(rawUrl: string): string {
 }
 
 function getFaviconUrl(rawUrl: string, size = 32): string {
+  if (!/^https?:\/\//i.test(rawUrl)) return "";
   try {
     const hostname = new URL(rawUrl).hostname;
     return `https://www.google.com/s2/favicons?domain=${hostname}&sz=${size}`;
@@ -68,21 +74,11 @@ export function SourceIcons({
         {visible.map((s, i) => {
           const label = s.title || getHostname(s.url) || `Source ${i + 1}`;
           const favicon = s.iconUrl || getFaviconUrl(s.url, Math.max(size, 16));
-          return (
-            <a
-              key={`${s.url}-${i}`}
-              href={s.url}
-              target="_blank"
-              rel="noreferrer"
-              className={
-                isPills
-                  ? "inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1 text-sm text-black/80 hover:bg-black/5 max-w-full dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
-                  : "inline-flex items-center"
-              }
-              title={showTooltips ? label : undefined}
-              aria-label={label}
-              role="listitem"
-            >
+          const itemClass = isPills
+            ? "inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1 text-sm text-black/80 max-w-full dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            : "inline-flex items-center";
+          const content = (
+            <>
               <span
                 className="inline-flex items-center justify-center rounded-full border border-black/10 bg-white shrink-0 dark:border-slate-600 dark:bg-slate-900"
                 style={{ width: iconSize, height: iconSize }}
@@ -106,7 +102,36 @@ export function SourceIcons({
                   {label}
                 </span>
               ) : null}
-            </a>
+            </>
+          );
+
+          if (/^https?:\/\//i.test(s.url)) {
+            return (
+              <a
+                key={`${s.url}-${i}`}
+                href={s.url}
+                target="_blank"
+                rel="noreferrer"
+                className={`${itemClass} hover:bg-black/5 dark:hover:bg-slate-700`}
+                title={showTooltips ? label : undefined}
+                aria-label={label}
+                role="listitem"
+              >
+                {content}
+              </a>
+            );
+          }
+
+          return (
+            <span
+              key={`${s.url}-${i}`}
+              className={itemClass}
+              title={showTooltips ? label : undefined}
+              aria-label={label}
+              role="listitem"
+            >
+              {content}
+            </span>
           );
         })}
 

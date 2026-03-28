@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 
 export type AsyncJobType =
   | "quiz_generate"
+  | "quiz_file_upload"
   | "lesson_plan_generate"
   | "lesson_material_upload"
   | "lesson_pptx_generate";

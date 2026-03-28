@@ -1,32 +1,56 @@
 import { useRef } from "react";
-import { FileUp } from "lucide-react";
+import { FileImage, FileUp } from "lucide-react";
 import { GoogleDrivePickerButton } from "@/components/google/google-drive-picker-button";
 
 export default function FileUpload({
-  onFileSelect,
+  onFilesSelect,
 }: {
-  onFileSelect: (file: File) => void;
+  onFilesSelect: (files: File[]) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const handleIconClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      onFileSelect(e.target.files[0]);
+  const handleImageClick = () => {
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
     }
+    imageInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      onFilesSelect(Array.from(e.target.files));
+    }
+    e.target.value = "";
   };
 
   return (
     <div>
       <input
+        id="quiz-upload-input"
         type="file"
         ref={fileInputRef}
         style={{ display: "none" }}
         onChange={handleFileChange}
+        multiple
         accept=".txt,.docx,.pdf,.ppt,.pptx,.xlsx,.csv,.md"
+      />
+
+      <input
+        id="quiz-upload-image-input"
+        type="file"
+        ref={imageInputRef}
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+        multiple
+        accept=".png,.jpg,.jpeg,.webp"
       />
 
       <div className="flex items-center gap-1.5">
@@ -41,7 +65,18 @@ export default function FileUpload({
           <FileUp className="h-3.5 w-3.5" />
           Local
         </button>
-        <GoogleDrivePickerButton id="quiz-upload-drive" onPicked={onFileSelect} />
+        <button
+          id="quiz-upload-image"
+          type="button"
+          onClick={handleImageClick}
+          title="Upload image"
+          aria-label="Upload image"
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-fuchsia-200 bg-fuchsia-50 px-2 text-[11px] font-medium text-fuchsia-700 hover:bg-fuchsia-100"
+        >
+          <FileImage className="h-3.5 w-3.5" />
+          Image
+        </button>
+        <GoogleDrivePickerButton id="quiz-upload-drive" onPicked={(file) => onFilesSelect([file])} />
       </div>
     </div>
   );

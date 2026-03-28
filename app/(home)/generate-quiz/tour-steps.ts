@@ -44,7 +44,7 @@ export const quizTourSteps = [
     popover: {
       title: "Game Type",
       description:
-        "When Gamified count is above zero, choose the mode: Puzzle, Super Race, or Sudoku-style logic.",
+        "When Gamified count is above zero, choose the mode: Puzzle, Super Race, or Timeline Order.",
     },
   },
   {
@@ -53,6 +53,21 @@ export const quizTourSteps = [
       title: "Paste or type",
       description:
         "Example: Create a 10-item quiz about the water cycle. Use 5 multiple choice and 5 true/false. Or paste a youtube link here.",
+    },
+  },
+  {
+    element: "#quiz-generate",
+    popover: {
+      title: "Generate quiz",
+      description: "Click to generate your quiz using AI and your sources.",
+    },
+  },
+  {
+    element: "#quiz-input-tools-toggle",
+    popover: {
+      title: "More input actions",
+      description:
+        "Open this caret to reveal extra input tools like upload and template sharing.",
     },
   },
   {
@@ -67,13 +82,6 @@ export const quizTourSteps = [
     popover: {
       title: "Google Drive Upload",
       description: "Pick a file from Google Drive and import it directly into quiz generation.",
-    },
-  },
-  {
-    element: "#quiz-generate",
-    popover: {
-      title: "Generate quiz",
-      description: "Click to generate your quiz using AI and your sources.",
     },
   },
   {

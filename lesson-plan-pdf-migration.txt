@@ -1,0 +1,30 @@
+Lesson Plan PDF Migration
+
+Why migrate
+- Lesson plans are highly dynamic by days, hours, and variable section lengths.
+- Manual PDFKit pagination can become brittle as the schema evolves.
+- HTML-to-PDF is a better long-term fit for text-heavy dynamic documents.
+
+What was patched
+- The lesson plan PDF export now prefers an HTML-to-PDF path first.
+- It renders the lesson plan as structured HTML with print CSS.
+- It attempts to generate the PDF with Playwright if available.
+- If Playwright is unavailable or fails, export falls back to the existing PDFKit generator.
+
+Files
+- lib/lessonPlan-gen-pdf-dl.ts
+
+Runtime behavior
+- Default behavior prefers HTML rendering.
+- Set LESSON_PLAN_PDF_ENGINE=pdfkit to force the old engine.
+
+Why this is safer
+- Export does not break if Playwright is unavailable in an environment.
+- The current PDFKit implementation remains as a fallback.
+
+Recommended next steps
+1. Move Playwright from devDependencies to dependencies if HTML PDF should run in production.
+2. Test PDF generation on the real deployment target.
+3. Add page header/footer templates if needed.
+4. Improve print CSS for large lesson plans and page-break control.
+5. Once stable, remove the PDFKit fallback if desired.
