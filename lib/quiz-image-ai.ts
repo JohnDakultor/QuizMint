@@ -1,4 +1,5 @@
 import type { GamifiedMode } from "@/lib/quiz-question-types";
+import { resolveFallbackModelForFeature, resolveModelForFeature, resolvePaidPlanTier } from "@/lib/llm-models";
 
 export type QuizImageQuestionMixInput = {
   mcq?: number;
@@ -100,13 +101,16 @@ export async function generateQuizFromImageAI(input: {
     throw new Error("OPENROUTER_API_KEY is required for image quiz generation.");
   }
 
-  const primaryModel =
-    process.env.OPENROUTER_VISION_MODEL ||
-    process.env.OPENROUTER_MODEL_VISION ||
-    "mistralai/mistral-small-3.2-24b-instruct";
-  const fallbackModel =
-    process.env.OPENROUTER_VISION_FALLBACK_MODEL ||
-    "openai/gpt-4.1-mini";
+  const planTier = resolvePaidPlanTier(input.isProOrPremium);
+  const primaryModel = resolveModelForFeature({
+    feature: "vision_quiz",
+    plan: planTier,
+    defaultModel: "mistralai/mistral-small-3.2-24b-instruct",
+  });
+  const fallbackModel = resolveFallbackModelForFeature({
+    feature: "vision_quiz",
+    defaultModel: "openai/gpt-4.1-mini",
+  });
 
   const difficultyPrompt =
     input.difficulty === "easy"

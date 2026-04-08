@@ -5,6 +5,14 @@ import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 export function useRecaptcha() {
   const { executeRecaptcha } = useGoogleReCaptcha();
 
+  const waitForRecaptcha = async (timeoutMs = 3000, intervalMs = 150) => {
+    const startedAt = Date.now();
+    while (!executeRecaptcha && Date.now() - startedAt < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    return executeRecaptcha;
+  };
+
   const getToken = async (action: string) => {
     if (
       typeof window !== "undefined" &&
@@ -16,11 +24,13 @@ export function useRecaptcha() {
       return "cypress-test-token";
     }
 
-    if (!executeRecaptcha) {
-      throw new Error("reCAPTCHA not ready");
+    const recaptchaExecutor = executeRecaptcha || (await waitForRecaptcha());
+
+    if (!recaptchaExecutor) {
+      throw new Error("Security check is still loading. Please try again in a moment.");
     }
 
-    return await executeRecaptcha(action);
+    return await recaptchaExecutor(action);
   };
 
   return { getToken };

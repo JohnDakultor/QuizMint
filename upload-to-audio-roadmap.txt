@@ -1,0 +1,313 @@
+QuizMintAI Upload-To-Audio Roadmap
+
+Purpose
+- let teachers upload a book chapter, PDF, lesson handout, or similar file
+- generate student-ready narrated audio from that uploaded material
+- keep the feature aligned with teacher workflow, student sharing, and accessibility support
+
+Core Product Idea
+- teacher uploads a file
+- QuizMintAI extracts and cleans the text
+- teacher chooses the narration style
+- QuizMintAI generates audio
+- teacher previews the audio and readable content
+- teacher shares the audio and visible reading content to students
+
+Recommended Positioning
+- "Create student-ready audio learning material from teacher files"
+- "Turn lesson PDFs and reading handouts into narrated study audio"
+- "Support listening-based review, remediation, and reading accessibility"
+- "Present uploaded teaching material in a read-aloud classroom mode"
+
+Best Early Use Cases
+- reading support for struggling students
+- narrated review materials before quizzes
+- listening versions of teacher-created lesson notes
+- homework companion audio
+- remediation and follow-up support
+- student access support for long reading passages
+- teacher-led classroom read-aloud on a shared screen
+- presentable digital reading mode for uploaded book chapters and PDFs
+
+Important Constraints
+- start with teacher-owned, school-created, or teacher-uploaded instructional material
+- be careful with copyrighted commercial books
+- do not market it as a way to mass-convert copyrighted books into downloadable audiobooks
+- very large files must be processed through staged async chunking, not one-shot extraction
+
+Phase 1: Foundation
+
+1. File Intake And Text Extraction Reuse
+- priority: P1
+- impact: high
+- goal: reuse the existing file upload and extraction layer instead of inventing a new one
+- tasks:
+  - reuse current PDF/DOCX/text extraction pipeline
+  - normalize extracted text for audio generation
+  - split extracted content into safe narration chunks
+  - preserve document title and section metadata
+- likely files:
+  - [app/api/lesson-material-from-file/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/lesson-material-from-file/route.ts)
+  - [app/api/upload-file/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/upload-file/route.ts)
+  - extraction helpers under [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+
+2. Audio Job Model
+- priority: P1
+- impact: high
+- goal: create a durable audio-generation job flow
+- tasks:
+  - add database model for generated audio jobs
+  - store:
+    - user id
+    - source file reference or source hash
+    - narration mode
+    - voice id / voice settings
+    - job status
+    - output file metadata
+    - errors and timestamps
+  - support resume/retry like other async flows
+- likely files:
+  - [prisma/schema.prisma](c:/Users/User/Desktop/msaas/quiz-forge/prisma/schema.prisma)
+  - async helpers under [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+  - new audio job routes under [app/api](c:/Users/User/Desktop/msaas/quiz-forge/app/api)
+
+3. Narration Mode Selection
+- priority: P1
+- impact: high
+- goal: keep the feature useful for teachers, not just raw text-to-speech
+- modes:
+  - full narration
+  - student-friendly summary
+  - teacher explainer narration
+  - section-by-section narration
+- likely files:
+  - upload UI under [app/(home)](c:/Users/User/Desktop/msaas/quiz-forge/app/(home))
+  - new shared audio config components under [components](c:/Users/User/Desktop/msaas/quiz-forge/components)
+
+Phase 2: Audio Generation
+
+4. Text Cleanup For Narration
+- priority: P2
+- impact: high
+- goal: make uploaded text sound natural before speech generation
+- tasks:
+  - remove noisy OCR fragments
+  - normalize headings and bullet lists
+  - convert tables and odd symbols into readable narration text
+  - optionally summarize very long sections before narration
+- likely files:
+  - new helpers under [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+
+5. Text-To-Speech Provider Integration
+- priority: P2
+- impact: high
+- goal: generate natural, student-friendly audio output
+- tasks:
+  - integrate a TTS provider
+  - support at least one default narration voice
+  - allow future expansion to multiple voices
+  - generate MP3 or equivalent web-friendly audio output
+- likely files:
+  - new audio provider helpers under [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+  - new routes under [app/api](c:/Users/User/Desktop/msaas/quiz-forge/app/api)
+
+6. Chunked Audio Rendering
+- priority: P2
+- impact: high
+- goal: handle large PDFs/books safely without giant single-request audio generation
+- tasks:
+  - split long narration into chunks
+  - stitch chunk audio together or keep chapter segments
+  - support progress updates
+  - keep generation resumable
+- likely files:
+  - new audio job helpers under [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+  - async worker routes
+
+Phase 3: Teacher Experience
+
+7. Teacher Preview And Review
+- priority: P3
+- impact: high
+- goal: let teachers check quality before sharing to students
+- tasks:
+  - audio player preview in the teacher UI
+  - readable document viewer with cleaned extracted text
+  - show generated title and estimated listening time
+  - allow regeneration if output is poor
+  - allow narration mode changes and re-run
+- likely files:
+  - new page or panel under [app/(home)](c:/Users/User/Desktop/msaas/quiz-forge/app/(home))
+  - shared audio player component under [components](c:/Users/User/Desktop/msaas/quiz-forge/components)
+
+8. Audio Library Entry
+- priority: P3
+- impact: medium
+- goal: keep generated audio reusable, not one-time only
+- tasks:
+  - save generated audio as a reusable teacher asset
+  - attach source metadata
+  - support re-download and re-share
+- likely files:
+  - library pages and routes
+  - new audio asset model and APIs
+
+Phase 4: Student Delivery
+
+9. Student-Ready Sharing
+- priority: P4
+- impact: very high
+- goal: make the generated audio presentable to students
+- tasks:
+  - create student-safe share link or assignment attachment flow
+  - streaming audio playback
+  - readable synced content view alongside audio
+  - optional download if allowed by teacher
+  - clean student player UI
+- likely files:
+  - new public audio share routes/pages
+  - assignment integration under [app/api/assignments](c:/Users/User/Desktop/msaas/quiz-forge/app/api/assignments)
+
+10. Attach Audio To QuizMintAI Assignments
+- priority: P4
+- impact: high
+- goal: tie audio directly into the classroom workflow
+- tasks:
+  - attach audio to quiz assignments
+  - attach audio to lesson-plan assignments
+  - show audio resource in student assignment view
+  - keep results and follow-up in QuizMintAI
+- likely files:
+  - [app/api/assignments/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/assignments/route.ts)
+  - assignment student/share routes
+  - assignment UI pages
+
+11. Teacher Presentation Mode
+- priority: P4
+- impact: high
+- goal: let teachers present uploaded reading material and audio in class like a digital playbook/read-aloud mode
+- tasks:
+  - create a full-screen teacher presentation view
+  - display cleaned extracted text in readable sections or pages
+  - support play/pause audio while text is visible
+  - support teacher-controlled navigation by section
+  - support large typography and presentation-safe layout
+  - support classroom screen sharing and projector use
+- likely files:
+  - new teacher presentation page under [app/(home)](c:/Users/User/Desktop/msaas/quiz-forge/app/(home))
+  - shared audio/text presentation components under [components](c:/Users/User/Desktop/msaas/quiz-forge/components)
+
+Phase 5: Accessibility And Quality
+
+12. Accessibility Features
+- priority: P5
+- impact: high
+- goal: make the audio useful as a real instructional support feature
+- tasks:
+  - playback speed control
+  - section markers / chapter markers
+  - simple transcript display
+  - mobile-friendly playback
+  - read-along highlighting later if feasible
+
+13. Voice And Style Controls
+- priority: P5
+- impact: medium
+- goal: improve teacher control without overcomplicating v1
+- tasks:
+  - calm/student-friendly voice
+  - concise explainer tone
+  - section intro / outro style
+  - optional multilingual support later
+
+Phase 6: Optional Future Expansion
+
+14. Video Presentation From Upload
+- priority: optional
+- impact: medium to high
+- goal: extend uploaded-file output beyond audio into narrated visual presentation
+- tasks:
+  - derive slide/storyboard structure from uploaded content
+  - generate slide scenes
+  - add narration
+  - render a downloadable video or slide-video hybrid
+- note:
+  - this is much more expensive and complex than audio
+  - do not treat this as a v1 requirement
+
+Large-File Handling Strategy
+
+Why This Matters
+- some teachers may upload very large PDFs, books, or compiled materials
+- files in the thousands of pages should not be processed in one direct request
+- large-file support requires a different pipeline than normal classroom handouts
+
+Recommended Handling
+- ingest the file once
+- extract text in page or chunk batches
+- store intermediate extraction artifacts
+- divide content into chapters or sections
+- generate audio per section
+- expose the output as:
+  - multi-part audio
+  - chapter playlist
+  - summary-first audio
+
+What Not To Do
+- do not load the entire file into memory at once
+- do not try to generate one giant audio file in a single synchronous request
+- do not make the browser wait for full completion
+
+Large-File Product Rules
+- v1 should define practical file-size and page-count limits
+- if a file exceeds the fast-path threshold:
+  - move it into a long-running async job
+  - show staged progress
+  - return segmented output instead of one monolithic output
+- for extremely large uploads, offer:
+  - summary narration
+  - selected chapters only
+  - teacher-selected page ranges
+
+Large-File Engineering Tasks
+- add page-count / size detection before processing
+- add chunked extraction jobs
+- persist extraction checkpoints
+- support resumable audio generation per chunk
+- support partial completion instead of all-or-nothing failure
+- support chapterized storage and playback
+
+Pricing Recommendation
+- Pro/Premium candidate feature
+- recommended rollout:
+  - Pro: summary narration or limited monthly audio generation
+  - Premium: full narration, longer files, richer voices, student sharing
+
+Security And Policy Notes
+- scope access to teacher-owned uploads only
+- respect current account and class boundaries
+- add clear policy language for copyrighted materials
+- consider disabling direct full-book conversion for obvious commercial copyrighted books if needed
+
+Recommended Execution Order
+1. reuse upload extraction
+2. add audio job model
+3. narration mode selector
+4. text cleanup for narration
+5. TTS provider integration
+6. chunked audio rendering
+7. teacher preview and readable viewer
+8. save to library
+9. student sharing
+10. attach to assignments
+11. teacher presentation mode
+12. accessibility controls
+13. optional video later
+
+Completion Criteria
+- teacher can upload a file and generate narrated audio
+- generated audio and readable content are previewable before sharing
+- audio can be attached to teacher workflow and assignments
+- students can access a clean playback and reading experience
+- teachers can present the uploaded content and audio on screen in class
+- long files are handled safely through chunked async generation

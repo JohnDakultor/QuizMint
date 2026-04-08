@@ -1,0 +1,229 @@
+QuizMintAI Performance Modernization Backlog
+
+Purpose
+- turn the performance roadmap into an execution-ready backlog
+- keep model tiering optional
+- prioritize changes that improve real speed, cost, and perceived responsiveness
+
+P1: Highest-Impact Foundation
+
+1. Source Extraction Cache For URL And YouTube Inputs
+- priority: P1
+- impact: high
+- goal: avoid repeating extraction and preprocessing work for the same source
+- tasks:
+  - add a reusable cache lookup layer before URL/article extraction
+  - add a reusable cache lookup layer before YouTube transcript or parsed video text extraction
+  - store normalized extracted text plus source metadata
+  - reuse extraction cache in quiz generation and lesson-plan generation
+- likely files:
+  - [app/api/generate-quiz/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/generate-quiz/route.ts)
+  - [app/api/generate-lesson-plan/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/generate-lesson-plan/route.ts)
+  - [lib/rag.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/rag.ts)
+  - source parsing helpers under [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+
+2. File Extraction Cache For Uploaded Inputs
+- priority: P1
+- impact: high
+- goal: stop re-parsing the same uploaded content repeatedly
+- tasks:
+  - cache extracted file text by stable file hash
+  - reuse extraction results for lesson-plan and quiz upload flows
+  - persist extracted metadata for reuse in export prep
+- likely files:
+  - [app/api/upload-file/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/upload-file/route.ts)
+  - [app/api/lesson-material-from-file/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/lesson-material-from-file/route.ts)
+  - [lib/extract-image-content.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/extract-image-content.ts)
+
+3. Persist Structured Intermediate Lesson-Plan Artifacts
+- priority: P1
+- impact: high
+- goal: stop regenerating downstream export content from scratch
+- status: in progress
+- tasks:
+  - save a structured lesson-plan artifact after generation
+  - save or derive a slide-outline artifact before PPTX rendering
+  - reuse the same artifact for PDF, DOCX, and PPTX preparation
+- progress:
+  - added reusable lesson-plan artifact builder in [lib/lesson-plan-artifacts.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/lesson-plan-artifacts.ts)
+  - generation route now attaches `__artifacts` to lesson plans in [app/api/generate-lesson-plan/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/generate-lesson-plan/route.ts)
+  - PPT AI now reuses stored slide-outline artifacts before rebuilding them in [lib/lesson-plan-ppt-ai.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/lesson-plan-ppt-ai.ts)
+  - PDF and DOCX export reuse is still pending
+- likely files:
+  - [app/api/generate-lesson-plan/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/generate-lesson-plan/route.ts)
+  - [lib/lesson-plan-ppt-ai.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/lesson-plan-ppt-ai.ts)
+  - [lib/generate-lesson-plan-pptx.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/generate-lesson-plan-pptx.ts)
+  - lesson-plan export helpers in [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+
+4. Move File-To-PPTX Prep Into Stronger Async Job Flow
+- priority: P1
+- impact: high
+- goal: keep the request path thin and let users resume heavy jobs safely
+- tasks:
+  - unify file-to-PPTX prep with the async job system
+  - persist job stages and result metadata
+  - resume pending upload-to-PPTX jobs when users return
+  - standardize progress labels and job completion states
+- likely files:
+  - [app/api/lesson-material-from-file/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/lesson-material-from-file/route.ts)
+  - [lib/async-generation-jobs.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/async-generation-jobs.ts)
+  - [lib/async-job-dispatch.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/async-job-dispatch.ts)
+  - [app/(home)/lessonPlan/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/lessonPlan/page.tsx)
+
+5. Reduce Retry/Repair Passes For Low-Tier Traffic
+- priority: P1
+- impact: high
+- goal: cut wasted latency and token spend for free/public requests
+- tasks:
+  - audit where quiz generation retries after schema mismatch
+  - lower repair aggressiveness for free/public traffic
+  - keep stricter repair behavior only for higher-value workloads where needed
+- likely files:
+  - [lib/ai.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/ai.ts)
+  - [lib/lesson-plan-ai.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/lesson-plan-ai.ts)
+
+P2: Workflow And Summary Performance
+
+6. Precompute Dashboard Summary Snapshots
+- priority: P2
+- impact: high
+- goal: stop recomputing dashboard rollups on every request
+- status: in progress
+- tasks:
+  - move dashboard summary computation to update-time rather than read-time where possible
+  - write summary snapshots after quiz generation, assignment activity, and submissions
+- progress:
+  - added short-lived dashboard summary snapshot caching in [lib/dashboard-summary-snapshot.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/dashboard-summary-snapshot.ts)
+  - dashboard API now serves cached snapshots by user and origin in [app/api/dashboard/summary/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/dashboard/summary/route.ts)
+  - invalidation now runs after quiz generation, lesson-plan generation, and student submissions
+- likely files:
+  - [app/api/dashboard/summary/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/dashboard/summary/route.ts)
+  - related summary builders in [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+
+7. Precompute Class And Assignment Intervention Summaries
+- priority: P2
+- impact: high
+- goal: make class and assignment pages faster under growing data volume
+- status: in progress
+- tasks:
+  - store computed intervention summary payloads
+  - refresh them on attempt submission and follow-up generation
+  - reduce repeated class/assignment aggregation during page load
+- progress:
+  - added short-lived intervention summary snapshots in [lib/intervention-summary-snapshot.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/intervention-summary-snapshot.ts)
+  - class overview API now caches computed payloads in [app/api/classes/[id]/overview/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/classes/[id]/overview/route.ts)
+  - assignment results API now caches computed payloads in [app/api/assignments/[id]/results/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/assignments/[id]/results/route.ts)
+  - invalidation now runs after quiz generation, lesson-plan generation, and student submissions
+- likely files:
+  - [app/api/classes/[id]/overview/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/classes/[id]/overview/route.ts)
+  - [app/api/dashboard/summary/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/dashboard/summary/route.ts)
+  - [lib/results-intervention.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/results-intervention.ts)
+
+8. Standardize Stage-Based Loading States
+- priority: P2
+- impact: medium
+- goal: improve perceived speed and reduce user confusion
+- status: in progress
+- tasks:
+  - standardize stages like extracting, drafting, formatting, exporting
+  - make progress labels consistent across quiz, lesson plan, and file-to-PPTX flows
+  - keep loading feedback near the action that triggered the work
+- progress:
+  - added shared stage labels in [lib/loading-stage-labels.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/loading-stage-labels.ts)
+  - upgraded [components/ui/loading-progress.tsx](c:/Users/User/Desktop/msaas/quiz-forge/components/ui/loading-progress.tsx) to show a shared stage badge plus descriptive label
+  - applied the shared loading vocabulary to quiz generation, lesson-plan generation, file-to-PPTX slide prep, and PPTX export
+- likely files:
+  - [app/(home)/generate-quiz/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/generate-quiz/page.tsx)
+  - [app/(home)/lessonPlan/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/lessonPlan/page.tsx)
+  - [components/ui/loading-progress.tsx](c:/Users/User/Desktop/msaas/quiz-forge/components/ui/loading-progress.tsx)
+
+9. Persist Structured Quiz Artifacts
+- priority: P2
+- impact: medium
+- goal: reuse normalized quiz data for exports, assignment sharing, and result processing
+- status: in progress
+- tasks:
+  - save normalized quiz schema and metadata once generation succeeds
+  - reuse that schema in downstream presentation and export flows
+  - reduce ad hoc reformatting for question presentation
+- progress:
+  - added shared quiz artifact builder in [lib/quiz-artifacts.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/quiz-artifacts.ts)
+  - quiz generation and quiz file upload now persist `quizArtifacts` in success metadata
+  - latest quiz and shared quiz/assignment read paths now reuse persisted quiz artifacts when available
+- likely files:
+  - [app/api/generate-quiz/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/generate-quiz/route.ts)
+  - [lib/ai.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/ai.ts)
+  - quiz-related downstream routes/components
+
+P3: Scale And Cost Optimization
+
+10. Durable Export Workers
+- priority: P3
+- impact: high
+- goal: isolate heavy export rendering from primary request handling
+- status: completed
+- tasks:
+  - move PPTX, PDF, and DOCX generation into stronger durable worker jobs
+  - persist export-stage checkpoints
+  - make export retry and resume consistent
+- progress:
+  - lesson-plan export jobs now return shared stage snapshots from [lib/lesson-plan-export.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/lesson-plan-export.ts)
+  - export queue, processing, and job-status routes now expose consistent `stageLabel`, `progress`, `ready`, and `canRetry` fields
+  - lesson-plan export polling now surfaces the worker stage label while the job is running
+  - failed export jobs can now be retried cleanly from the lesson-plan page and re-enter the queued worker path
+- likely files:
+  - export routes under [app/api](c:/Users/User/Desktop/msaas/quiz-forge/app/api)
+  - async job helpers in [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+
+11. Smarter Workload Routing Thresholds
+- priority: P3
+- impact: medium
+- goal: refine what should run sync vs async as traffic grows
+- status: completed
+- tasks:
+  - add explicit complexity scoring for prompt length, source type, item count, and output type
+  - push high-complexity requests into queue automatically
+  - preserve fast path for low-complexity prompt requests
+- progress:
+  - added shared quiz workload scoring in [lib/quiz-workload-routing.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/quiz-workload-routing.ts)
+  - generate-quiz page now uses the shared workload decision before requesting async processing
+  - generate-quiz API now enforces the same workload threshold server-side and records the score in generation metadata
+  - added shared lesson-plan workload scoring in [lib/lesson-plan-workload-routing.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/lesson-plan-workload-routing.ts)
+  - lesson-plan page now queues only when the shared workload decision says the request is heavy enough
+  - lesson-plan API now enforces the same server-side threshold and records lesson-plan workload score metadata
+- likely files:
+  - [app/api/generate-quiz/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/generate-quiz/route.ts)
+  - [app/(home)/generate-quiz/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/generate-quiz/page.tsx)
+
+12. Optional Model Tiering
+- priority: optional
+- impact: medium
+- goal: improve cost and speed only when ready
+- tasks:
+  - set tier-specific models for public, free, pro, and premium
+  - optionally add feature-specific model lanes later
+  - verify quality and latency before rollout
+- likely files:
+  - [lib/llm-models.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/llm-models.ts)
+  - [.env](c:/Users/User/Desktop/msaas/quiz-forge/.env)
+
+Recommended execution order
+1. source extraction cache
+2. file extraction cache
+3. structured lesson-plan artifacts
+4. file-to-PPTX async job improvement
+5. lower retry/repair overhead
+6. dashboard and intervention precompute
+7. loading-state standardization
+8. structured quiz artifacts
+9. durable export workers
+10. smarter workload routing
+11. optional model tiering
+
+Completion criteria
+- common prompt requests feel faster
+- repeated source-based generation reuses extraction work
+- file-to-PPTX and export flows resume cleanly
+- dashboard and intervention pages stay responsive with more data
+- users see clearer progress stages instead of generic waiting
+- model tiering remains optional, not a blocker

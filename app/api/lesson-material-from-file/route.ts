@@ -15,17 +15,27 @@ import { checkFeatureBurstLimitDistributed } from "@/lib/abuse-guard";
 import { createAsyncGenerationJob } from "@/lib/async-generation-jobs";
 import { dispatchAsyncGenerationJob } from "@/lib/async-job-dispatch";
 import { log } from "@/lib/logger";
+import {
+  buildFreeLessonPlanPointsStatusPayload,
+  deductFreeLessonPlanPoints,
+  getLessonPlanGenerationPointCost,
+  isFreeLessonPlanPointLimited,
+  restoreFreeLessonPlanPoints,
+  type DeductFreeLessonPlanPointsResult,
+} from "@/lib/free-tier-points";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import pptxTextParser from "pptx-text-parser";
+import {
+  buildFileExtractionCacheKey as buildExtractionCacheKey,
+  getCachedFileExtraction,
+} from "@/lib/source-extraction-cache";
 
 export const runtime = "nodejs";
 
-const FREE_UPLOAD_LIMIT = 3;
-const RESET_HOURS = 3;
 const MIN_CONTENT_CHARS = 120;
 const MAX_QUEUED_UPLOAD_BYTES = 2 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = new Set([
@@ -101,8 +111,12 @@ function buildPseudoLessonPlan(input: {
   subject: string;
   grade: string;
   duration: string;
+  framework: string;
+  days: number;
+  minutesPerDay: number;
 }) {
-  const chunks = splitIntoChunks(input.text).slice(0, 7);
+  const chunkCount = Math.min(Math.max(input.days, 1), 7);
+  const chunks = splitIntoChunks(input.text).slice(0, chunkCount);
   const days = (chunks.length ? chunks : [input.text.slice(0, 900)]).map(
     (chunk, index) => {
       const compact = chunk.replace(/\s+/g, " ").trim();
@@ -160,6 +174,8 @@ function buildPseudoLessonPlan(input: {
     subject: input.subject,
     grade: input.grade,
     duration: input.duration,
+    framework: input.framework,
+    minutesPerDay: input.minutesPerDay,
     days,
     objectives: [
       `Understand the main concepts in ${input.topic}.`,
@@ -225,9 +241,7 @@ async function extractTextFromPdf(arrayBuffer: ArrayBuffer): Promise<string> {
   return extractTextFromPdfBytesFallback(arrayBuffer);
 }
 
-async function extractFileText(file: File, ext: string): Promise<string> {
-  const arrayBuffer = await file.arrayBuffer();
-
+async function extractFileTextFromArrayBuffer(arrayBuffer: ArrayBuffer, ext: string, fileName: string): Promise<string> {
   if (ext === "txt" || ext === "md" || ext === "csv") {
     return new TextDecoder().decode(arrayBuffer);
   }
@@ -248,7 +262,7 @@ async function extractFileText(file: File, ext: string): Promise<string> {
   }
 
   if (ext === "pptx" || ext === "ppt") {
-    const tempFilePath = path.join(os.tmpdir(), `${Date.now()}-${file.name}`);
+    const tempFilePath = path.join(os.tmpdir(), `${Date.now()}-${fileName}`);
     try {
       await fs.writeFile(tempFilePath, Buffer.from(arrayBuffer));
       const text = await pptxTextParser(tempFilePath, "text");
@@ -265,22 +279,6 @@ async function extractFileText(file: File, ext: string): Promise<string> {
   throw new Error("Unsupported file type");
 }
 
-function usagePayload(used: number, resetInSeconds: number | null) {
-  const remaining = Math.max(FREE_UPLOAD_LIMIT - used, 0);
-  return {
-    used,
-    limit: FREE_UPLOAD_LIMIT,
-    remaining,
-    resetInSeconds,
-  };
-}
-
-function toInt(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.trunc(n) : null;
-}
-
 export async function POST(req: NextRequest) {
   const requestId = createRequestId();
   const startedAt = Date.now();
@@ -289,6 +287,7 @@ export async function POST(req: NextRequest) {
   let extForEvent = "unknown";
   let extractedTextLength = 0;
   let metaForEvent: LessonPlanPptAIMeta | null = null;
+  let deductedFreeLessonPlanPoints: DeductFreeLessonPlanPointsResult | null = null;
 
   try {
     const internalSecret =
@@ -345,51 +344,37 @@ export async function POST(req: NextRequest) {
     }
 
     const normalizedPlan = String(user.subscriptionPlan || "free").toLowerCase();
-    const isFree = normalizedPlan === "free";
+    const isFree = isFreeLessonPlanPointLimited(normalizedPlan);
     const isProOrPremium =
       normalizedPlan === "pro" || normalizedPlan === "premium";
-    const usageRows = await prisma.$queryRaw<
-      Array<{
-        lessonMaterialUploadUsage: number | null;
-        secondsUntilReset: number | null;
-      }>
-    >`
-      SELECT
-        COALESCE("lessonMaterialUploadUsage", 0) AS "lessonMaterialUploadUsage",
-        CASE
-          WHEN "lastLessonMaterialUploadAt" IS NULL THEN NULL
-          ELSE CEIL(EXTRACT(EPOCH FROM (("lastLessonMaterialUploadAt" + INTERVAL '3 hours') - NOW())))
-        END::int AS "secondsUntilReset"
-      FROM "User"
-      WHERE id = ${user.id}
-      LIMIT 1
-    `;
-    let currentUploadUsage = Number(usageRows?.[0]?.lessonMaterialUploadUsage || 0);
-    let secondsUntilReset = toInt(usageRows?.[0]?.secondsUntilReset);
-
-    // Auto-reset every 3 hours for free users (DB-time based).
-    if (isFree && currentUploadUsage > 0 && secondsUntilReset !== null && secondsUntilReset <= 0) {
-      await prisma.$executeRaw`
-        UPDATE "User"
-        SET "lessonMaterialUploadUsage" = 0,
-            "lastLessonMaterialUploadAt" = NULL
-        WHERE id = ${user.id}
-      `;
-      currentUploadUsage = 0;
-      secondsUntilReset = null;
-    }
-
-    if (isFree && currentUploadUsage >= FREE_UPLOAD_LIMIT) {
-      const resetInSeconds =
-        secondsUntilReset === null ? null : Math.max(secondsUntilReset, 0);
-      return apiError(
-        403,
-        "Free upload limit reached. You can generate up to 3 lesson materials from uploaded files.",
-        requestId,
-        {
-          usage: usagePayload(currentUploadUsage, resetInSeconds),
-        }
+    const pointCost = getLessonPlanGenerationPointCost({ hasUpload: true });
+    if (isFree) {
+      const pointStatus = buildFreeLessonPlanPointsStatusPayload(
+        user,
+        pointCost,
+        new Date()
       );
+      if (!pointStatus.canAfford) {
+        return apiError(
+          403,
+          "Not enough lesson plan credits for file-to-PPTX upload.",
+          requestId,
+          pointStatus
+        );
+      }
+      deductedFreeLessonPlanPoints = await deductFreeLessonPlanPoints(
+        user.id,
+        pointCost,
+        new Date()
+      );
+      if (!deductedFreeLessonPlanPoints) {
+        return apiError(
+          403,
+          "Not enough lesson plan credits for file-to-PPTX upload.",
+          requestId,
+          pointStatus
+        );
+      }
     }
 
     const formData = await req.formData();
@@ -426,9 +411,12 @@ export async function POST(req: NextRequest) {
         type: "lesson_material_upload",
         request: {
           fields: {
+            framework: String(formData.get("framework") || ""),
             topic: String(formData.get("topic") || ""),
             subject: String(formData.get("subject") || ""),
             grade: String(formData.get("grade") || ""),
+            days: String(formData.get("days") || ""),
+            minutesPerDay: String(formData.get("minutesPerDay") || ""),
             duration: String(formData.get("duration") || ""),
           },
           file: {
@@ -440,7 +428,9 @@ export async function POST(req: NextRequest) {
         requestId,
       });
       if (!queued) return apiError(500, "Failed to queue generation job", requestId);
-      const dispatched = await dispatchAsyncGenerationJob(req, queued.id);
+      const dispatched = await dispatchAsyncGenerationJob(req, queued.id, {
+        subscriptionPlan: user.subscriptionPlan,
+      });
       return NextResponse.json(
         {
           ok: true,
@@ -457,7 +447,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const extracted = await extractFileText(file, ext);
+    const fileBytes = await file.arrayBuffer();
+    const extractionCacheKey = buildExtractionCacheKey({
+      fileName: file.name,
+      ext,
+      bytes: fileBytes,
+    });
+    const extractionResult = await getCachedFileExtraction(extractionCacheKey, async () =>
+      extractFileTextFromArrayBuffer(fileBytes, ext, file.name)
+    );
+    if (extractionResult.cacheHit) {
+      log.debug("lesson_material_file_extract_cache_hit", {
+        fileName: file.name,
+        ext,
+      });
+    }
+    const extracted = extractionResult.value;
     const cleanText = normalizeExtractedText(extracted);
     extractedTextLength = cleanText.length;
     if (cleanText.length < MIN_CONTENT_CHARS) {
@@ -468,10 +473,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const framework = String(formData.get("framework") || "").trim() || "4a";
     const topic = String(formData.get("topic") || "").trim() || deriveTopicFromFilename(file.name) || "Uploaded Lesson Plan";
     const subject = String(formData.get("subject") || "").trim() || "General";
     const grade = String(formData.get("grade") || "").trim() || "General";
-    const duration = String(formData.get("duration") || "").trim() || "1 day(s), 40 minutes per day";
+    const parsedDays = Number(formData.get("days") || 1);
+    const parsedMinutesPerDay = Number(formData.get("minutesPerDay") || 40);
+    const daysCount = Number.isFinite(parsedDays) ? Math.min(Math.max(Math.trunc(parsedDays), 1), 7) : 1;
+    const minutesPerDay = Number.isFinite(parsedMinutesPerDay)
+      ? Math.min(Math.max(Math.trunc(parsedMinutesPerDay), 10), 120)
+      : 40;
+    const duration =
+      String(formData.get("duration") || "").trim() ||
+      `${daysCount} day(s), ${minutesPerDay} minutes per day`;
 
     const pseudoLessonPlan = buildPseudoLessonPlan({
       text: cleanText,
@@ -479,6 +493,9 @@ export async function POST(req: NextRequest) {
       subject,
       grade,
       duration,
+      framework,
+      days: daysCount,
+      minutesPerDay,
     });
 
     const { deck, meta } = await generateLessonPlanPptAIWithMeta(
@@ -493,88 +510,6 @@ export async function POST(req: NextRequest) {
       { liteMode: Boolean(user.liteMode) }
     );
     metaForEvent = meta;
-
-    let nextUsage = currentUploadUsage;
-    if (isFree) {
-      const updatedRows = await prisma.$queryRaw<
-        Array<{ lessonMaterialUploadUsage: number | null }>
-      >`
-        UPDATE "User"
-        SET
-          "lessonMaterialUploadUsage" = CASE
-            WHEN "lastLessonMaterialUploadAt" IS NULL OR "lastLessonMaterialUploadAt" <= (NOW() - INTERVAL '3 hours') THEN 1
-            ELSE COALESCE("lessonMaterialUploadUsage", 0) + 1
-          END,
-          "lastLessonMaterialUploadAt" = NOW()
-        WHERE id = ${user.id}
-          AND (
-            "lastLessonMaterialUploadAt" IS NULL
-            OR "lastLessonMaterialUploadAt" <= (NOW() - INTERVAL '3 hours')
-            OR COALESCE("lessonMaterialUploadUsage", 0) < ${FREE_UPLOAD_LIMIT}
-          )
-        RETURNING COALESCE("lessonMaterialUploadUsage", 0) AS "lessonMaterialUploadUsage"
-      `;
-      if (!updatedRows[0]) {
-        const ttlRows = await prisma.$queryRaw<
-          Array<{ secondsUntilReset: number | null }>
-        >`
-          SELECT
-            CASE
-              WHEN "lastLessonMaterialUploadAt" IS NULL THEN ${RESET_HOURS * 60 * 60}
-              ELSE CEIL(EXTRACT(EPOCH FROM (("lastLessonMaterialUploadAt" + INTERVAL '3 hours') - NOW())))
-            END::int AS "secondsUntilReset"
-          FROM "User"
-          WHERE id = ${user.id}
-          LIMIT 1
-        `;
-        const resetInSeconds = Math.max(
-          Number(ttlRows?.[0]?.secondsUntilReset || 0),
-          0
-        );
-        return apiError(
-          403,
-          "Free upload limit reached. You can generate up to 3 lesson materials from uploaded files.",
-          requestId,
-          { usage: usagePayload(FREE_UPLOAD_LIMIT, resetInSeconds) }
-        );
-      }
-
-      const nextRows = await prisma.$queryRaw<
-        Array<{
-          lessonMaterialUploadUsage: number | null;
-          secondsUntilReset: number | null;
-        }>
-      >`
-        SELECT
-          COALESCE("lessonMaterialUploadUsage", 0) AS "lessonMaterialUploadUsage",
-          CASE
-            WHEN "lastLessonMaterialUploadAt" IS NULL THEN NULL
-            ELSE CEIL(EXTRACT(EPOCH FROM (("lastLessonMaterialUploadAt" + INTERVAL '3 hours') - NOW())))
-          END::int AS "secondsUntilReset"
-        FROM "User"
-        WHERE id = ${user.id}
-        LIMIT 1
-      `;
-      nextUsage = Number(nextRows?.[0]?.lessonMaterialUploadUsage || 0);
-      const nextSecondsUntilReset = toInt(nextRows?.[0]?.secondsUntilReset);
-      const resetInSeconds =
-        nextUsage >= FREE_UPLOAD_LIMIT && nextSecondsUntilReset !== null
-          ? Math.max(nextSecondsUntilReset, 0)
-          : null;
-      return NextResponse.json(
-        {
-          deck,
-          usage: usagePayload(nextUsage, resetInSeconds),
-          requestId,
-        },
-        {
-          headers: {
-            "x-request-id": requestId,
-            "Cache-Control": "no-store",
-          },
-        }
-      );
-    }
 
     await trackGenerationEvent({
       userId: eventUserId,
@@ -597,7 +532,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         deck,
-        usage: null,
+        usage: isFree
+          ? {
+              remainingPoints: deductedFreeLessonPlanPoints?.availablePoints ?? null,
+              requiredPoints: pointCost,
+              maxPoints: deductedFreeLessonPlanPoints?.maxPoints ?? null,
+              nextRechargeAt:
+                deductedFreeLessonPlanPoints?.rechargeAt?.toISOString() ?? null,
+            }
+          : null,
         requestId,
       },
       {
@@ -608,6 +551,23 @@ export async function POST(req: NextRequest) {
       }
     );
   } catch (err: any) {
+    if (
+      deductedFreeLessonPlanPoints?.userId &&
+      deductedFreeLessonPlanPoints.spentPoints > 0
+    ) {
+      try {
+        await restoreFreeLessonPlanPoints(
+          deductedFreeLessonPlanPoints.userId,
+          deductedFreeLessonPlanPoints.spentPoints
+        );
+      } catch (restoreErr) {
+        log.warn("free_lesson_plan_upload_points_restore_failed", {
+          userId: deductedFreeLessonPlanPoints.userId,
+          err: restoreErr,
+        });
+      }
+    }
+
     logApiError(requestId, "lesson-material-from-file", err);
 
     if (isProviderIssueError(err)) {

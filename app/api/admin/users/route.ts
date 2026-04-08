@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertAdminSession } from "@/lib/admin-auth";
+import {
+  getFreeLessonPlanPointsSnapshot,
+  isFreeLessonPlanPointLimited,
+} from "@/lib/free-tier-points";
 
 function maskEmail(email: string): string {
   const [local, domain] = email.split("@");
@@ -93,8 +97,9 @@ export async function GET(req: Request) {
         subscriptionPlan: true,
         subscriptionStatus: true,
         quizUsage: true,
-        lessonPlanUsage: true,
-        lessonMaterialUploadUsage: true,
+        freeLessonPlanPoints: true,
+        freeLessonPlanPointsMax: true,
+        freeLessonPlanPointsRechargeAt: true,
         lastQuizAt: true,
         lastLessonPlanAt: true,
         createdAt: true,
@@ -274,10 +279,26 @@ export async function GET(req: Request) {
 
   const sanitizeEmail = (email: string) => (showSensitive ? email : maskEmail(email));
 
-  const safeUsers = users.map((u) => ({
-    ...u,
-    email: sanitizeEmail(u.email),
-  }));
+  const safeUsers = users.map((u) => {
+    const lessonPlanPointsSnapshot = isFreeLessonPlanPointLimited(u.subscriptionPlan)
+      ? getFreeLessonPlanPointsSnapshot({
+          freeLessonPlanPoints: u.freeLessonPlanPoints,
+          freeLessonPlanPointsMax: u.freeLessonPlanPointsMax,
+          freeLessonPlanPointsRechargeAt: u.freeLessonPlanPointsRechargeAt,
+        })
+      : null;
+
+    return {
+      ...u,
+      email: sanitizeEmail(u.email),
+      freeLessonPlanPoints:
+        lessonPlanPointsSnapshot?.availablePoints ?? u.freeLessonPlanPoints,
+      freeLessonPlanPointsMax:
+        lessonPlanPointsSnapshot?.maxPoints ?? u.freeLessonPlanPointsMax,
+      freeLessonPlanPointsRechargeAt:
+        lessonPlanPointsSnapshot?.rechargeAt ?? u.freeLessonPlanPointsRechargeAt,
+    };
+  });
 
   const safeLatestQuizUsers = latestQuizUsers.map((u) => ({
     ...u,

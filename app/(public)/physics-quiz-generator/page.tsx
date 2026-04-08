@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function PhysicsQuizGeneratorPage() {
   return (
     <LandingTemplate
+      path="/physics-quiz-generator"
       title="AI Physics Quiz Generator"
       subtitle="Create classroom-ready physics quizzes on core concepts with configurable question types."
       featureTitle="Physics-focused generation"

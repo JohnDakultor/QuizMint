@@ -6,66 +6,168 @@ import {
   Clock,
   Target, Search, BookOpen, Zap,
   Brain,
+  BrainCircuit,
 } from "lucide-react";
 import { X } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmActionModal } from "@/components/ui/confirm-action-modal";
 import Tour from "@/components/ui/tour";
 import SkeletonLoading from "@/components/ui/skeleton-loading";
 import LoadingProgress from "@/components/ui/loading-progress";
 import LiteModeBadge from "@/components/ui/lite-mode-badge";
 import { type SourceIcon } from "@/components/source-icons";
 import { LessonPlanInputForm } from "@/components/lesson-plan/input-form";
+import { LessonPlanAssignModal } from "@/components/lesson-plan/lesson-plan-assign-modal";
 import { LessonPlanOutputPanel } from "@/components/lesson-plan/output-panel";
 import { LessonPlanDaySections } from "@/components/lesson-plan/day-sections";
 import { FourAsPhaseCard, SpecificActivityCard } from "@/components/lesson-plan/activity-cards";
 import { trackGaEvent } from "@/lib/ga-client";
 import {
+  LESSON_PLAN_FRAMEWORKS,
   getLessonPlanFramework,
   normalizeLessonPlanFramework,
   type LessonPlanFrameworkId,
 } from "@/lib/lesson-plan-frameworks";
+import {
+  LESSON_PLAN_PPTX_EXPORT_PROGRESS,
+  LESSON_PLAN_SLIDES_PROGRESS,
+  LESSON_PLAN_UPLOAD_SLIDES_PROGRESS,
+} from "@/lib/loading-stage-labels";
+import { shouldQueueLessonPlanGeneration } from "@/lib/lesson-plan-workload-routing";
+import type { PptDeck } from "@/lib/lesson-plan-ppt-ai";
+import type { LessonPlanData, LessonPlanDay } from "@/lib/lessonPlan-gen-pdf-dl";
 
 const PptxEditor = dynamic(() => import("@/components/lesson-plan/pptx-editor"), {
   ssr: false,
 });
 
-const FREE_PLAN_LIMIT = 3;
 const LESSON_EXPORT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 const LESSON_EXPORT_LOCALSTORAGE_KEY = "lessonPlanPendingExports";
+const LESSON_GENERATION_LOCALSTORAGE_KEY = "lessonPlanPendingGeneration";
 type PendingExportJob = {
   jobId: string;
   format: "docx" | "pdf" | "pptx";
   topic: string;
   createdAt: number;
+  status?: "queued" | "processing" | "completed" | "failed";
+  stageLabel?: string | null;
+  progress?: number | null;
+  canRetry?: boolean;
 };
 
+type PendingLessonGenerationJob = {
+  jobId: string;
+  createdAt: number;
+};
+
+type ClassOption = {
+  id: string;
+  name: string;
+  subject: string | null;
+  gradeLevel: string | null;
+  section: string | null;
+  archived: boolean;
+};
+
+type AdaptiveWorkspaceSummary = {
+  supportLevel: string;
+  focus: string[];
+  primaryClassName: string | null;
+  primaryClassId: string | null;
+  summary: string;
+  recommendation: string;
+  suggestedPrompt: string;
+};
+
+type LessonPlanState = LessonPlanData & {
+  subject?: string;
+  minutesPerDay?: number;
+  __sources?: SourceIcon[];
+  __sourceTrace?: {
+    mode?: "none" | "documents" | "semantic_cache";
+    fromCache?: boolean;
+    sourceCount?: number;
+  };
+  [key: string]: unknown;
+};
+
+type LessonPlanFormData = {
+  framework?: LessonPlanFrameworkId | string | null;
+  topic: string;
+  subject: string;
+  grade: string;
+  days: number;
+  minutesPerDay: number;
+  [key: string]: unknown;
+};
+
+type LessonPlanUsageInfo = {
+  remainingPoints?: number;
+  maxPoints?: number;
+  requiredPoints?: number;
+  nextRechargeAt?: string | null;
+  [key: string]: unknown;
+};
+
+type LessonPlanHistoryItem = {
+  id: string;
+  title: string;
+  topic: string;
+  subject: string;
+  grade: string;
+  days: number;
+  minutesPerDay: number;
+  createdAt: string;
+  data: LessonPlanState;
+};
+
+type LessonSourceTrace = {
+  mode: "none" | "documents" | "semantic_cache";
+  fromCache: boolean;
+  sourceCount: number;
+};
+
+type LessonMaterialUploadConfig = {
+  framework: LessonPlanFrameworkId;
+  topic: string;
+  subject: string;
+  grade: string;
+  days: number;
+  minutesPerDay: number;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 // Usage Indicator Component
-function UsageIndicator({ usage }: { usage: any }) {
+function UsageIndicator({ usage }: { usage: LessonPlanUsageInfo | null }) {
   if (!usage) return null;
+
+  const remainingPoints = Number(usage.remainingPoints || 0);
+  const maxPoints = Number(usage.maxPoints || 100);
+  const requiredPoints = Number(usage.requiredPoints || 30);
+  const percentage = maxPoints > 0 ? Math.min((remainingPoints / maxPoints) * 100, 100) : 0;
+  const nextRecharge = usage.nextRechargeAt ? new Date(usage.nextRechargeAt) : null;
   
-  const used = usage.used || 0;
-  const limit = usage.limit || FREE_PLAN_LIMIT;
-  const percentage = Math.min((used / limit) * 100, 100);
-  const nextReset = usage.nextReset ? new Date(usage.nextReset) : null;
-  
-  const getTimeUntilReset = () => {
-    if (!nextReset) return "";
+  const getTimeUntilRecharge = () => {
+    if (!nextRecharge) return "";
     const now = new Date();
-    const diffMs = nextReset.getTime() - now.getTime();
+    const diffMs = nextRecharge.getTime() - now.getTime();
     
-    if (diffMs <= 0) return "Resets soon";
+    if (diffMs <= 0) return "Recharges soon";
     
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     
-    return `Resets in ${hours}h ${minutes}m`;
+    return `Recharges in ${hours}h ${minutes}m`;
   };
   
   return (
@@ -73,27 +175,29 @@ function UsageIndicator({ usage }: { usage: any }) {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Clock className="h-4 w-4 text-blue-600" />
-          <span className="font-semibold text-blue-700">Free Plan Usage</span>
+          <span className="font-semibold text-blue-700">Lesson Plan Credits</span>
         </div>
         <span className="text-sm text-blue-600 font-medium bg-white px-2 py-1 rounded">
-          {used}/{limit} lesson plans
+          {remainingPoints}/{maxPoints} credits
         </span>
       </div>
       <div className="w-full bg-blue-100 rounded-full h-2.5 mb-2">
         <div 
           className={`h-2.5 rounded-full transition-all duration-300 ${
-            percentage >= 90 ? "bg-red-500" : 
-            percentage >= 70 ? "bg-yellow-500" : "bg-linear-to-r from-blue-500 to-indigo-500"
+            percentage <= 10 ? "bg-red-500" : 
+            percentage <= 30 ? "bg-yellow-500" : "bg-linear-to-r from-blue-500 to-indigo-500"
           }`}
           style={{ width: `${percentage}%` }}
         ></div>
       </div>
       <div className="flex justify-between items-center text-sm">
         <span className="text-blue-600 font-medium">
-          {used === limit ? "Limit reached" : `${limit - used} remaining`}
+          {remainingPoints < requiredPoints
+            ? `Need ${requiredPoints} credits`
+            : `${requiredPoints} credits per lesson plan`}
         </span>
         <span className="text-blue-500 font-medium">
-          {getTimeUntilReset()}
+          {getTimeUntilRecharge()}
         </span>
       </div>
     </div>
@@ -102,25 +206,30 @@ function UsageIndicator({ usage }: { usage: any }) {
 
 // Main Component
 export default function LessonPlanPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const [lessonPlan, setLessonPlan] = useState<any>(null);
+  const [lessonPlan, setLessonPlan] = useState<LessonPlanState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [downloadingPptx, setDownloadingPptx] = useState(false);
-  const [formDataObject, setFormDataObject] = useState<any>(null);
-  const [usageInfo, setUsageInfo] = useState<any>(null);
+  const [formDataObject, setFormDataObject] = useState<LessonPlanFormData | null>(null);
+  const [usageInfo, setUsageInfo] = useState<LessonPlanUsageInfo | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<string>("free");
+  const [adaptiveLearningEnabled, setAdaptiveLearningEnabled] = useState(false);
   const [liteMode, setLiteMode] = useState(false);
-  const [pptxDeck, setPptxDeck] = useState<any | null>(null);
+  const [pptxDeck, setPptxDeck] = useState<PptDeck | null>(null);
   const [pptxDeckSource, setPptxDeckSource] = useState<"lesson_plan" | "lesson_material_upload">(
     "lesson_plan"
   );
   const [loadingSlides, setLoadingSlides] = useState(false);
-  const [slidesLoadingLabel, setSlidesLoadingLabel] = useState(
-    "Preparing editable PPTX slides..."
+  const [slidesLoadingStage, setSlidesLoadingStage] = useState<string | null>(
+    LESSON_PLAN_SLIDES_PROGRESS.stage
+  );
+  const [slidesLoadingLabel, setSlidesLoadingLabel] = useState<string>(
+    LESSON_PLAN_SLIDES_PROGRESS.label
   );
   const [lessonProgress, setLessonProgress] = useState(0);
   const [slidesProgress, setSlidesProgress] = useState(0);
@@ -128,34 +237,54 @@ export default function LessonPlanPage() {
   const [pendingExportJobs, setPendingExportJobs] = useState<PendingExportJob[]>([]);
   const [retryingPendingExport, setRetryingPendingExport] = useState(false);
   const [showPptxEditor, setShowPptxEditor] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showDeleteLessonPlanModal, setShowDeleteLessonPlanModal] = useState(false);
+  const [deletingLessonPlan, setDeletingLessonPlan] = useState(false);
   const [selectedFramework, setSelectedFramework] = useState<LessonPlanFrameworkId>(
     normalizeLessonPlanFramework(searchParams.get("framework"))
   );
+  const [currentLessonPlanId, setCurrentLessonPlanId] = useState<string | null>(null);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [assignmentTitle, setAssignmentTitle] = useState("");
+  const [assignmentInstructions, setAssignmentInstructions] = useState("");
+  const [assignmentAvailableFrom, setAssignmentAvailableFrom] = useState("");
+  const [assignmentDueAt, setAssignmentDueAt] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyPlans, setHistoryPlans] = useState<any[]>([]);
+  const [historyPlans, setHistoryPlans] = useState<LessonPlanHistoryItem[]>([]);
+  const [adaptiveWorkspaceSummary, setAdaptiveWorkspaceSummary] =
+    useState<AdaptiveWorkspaceSummary | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [isHistoryView, setIsHistoryView] = useState(false);
   const [lessonSources, setLessonSources] = useState<SourceIcon[]>([]);
-  const [lessonSourceTrace, setLessonSourceTrace] = useState<{
-    mode: "none" | "documents" | "semantic_cache";
-    fromCache: boolean;
-    sourceCount: number;
-  } | null>(null);
+  const [lessonSourceTrace, setLessonSourceTrace] = useState<LessonSourceTrace | null>(null);
   const [lessonMaterialUploadUsage, setLessonMaterialUploadUsage] = useState<{
-    used: number;
-    limit: number;
-    remaining: number;
+    remainingPoints: number;
+    maxPoints: number;
+    requiredPoints: number;
     resetAtMs: number | null;
   } | null>(null);
   const [countdownNowMs, setCountdownNowMs] = useState(() => Date.now());
+  const [showLessonUploadConfigModal, setShowLessonUploadConfigModal] = useState(false);
+  const [lessonUploadFramework, setLessonUploadFramework] =
+    useState<LessonPlanFrameworkId>(selectedFramework);
+  const [lessonUploadDays, setLessonUploadDays] = useState("1");
+  const [lessonUploadMinutesPerDay, setLessonUploadMinutesPerDay] = useState("40");
+  const [lessonUploadTopic, setLessonUploadTopic] = useState("");
+  const [lessonUploadSubject, setLessonUploadSubject] = useState("");
+  const [lessonUploadGrade, setLessonUploadGrade] = useState("");
   const lessonPlanRef = useRef<HTMLDivElement | null>(null);
   const uploadLessonPlanInputRef = useRef<HTMLInputElement | null>(null);
   const lessonFormRef = useRef<HTMLFormElement | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const ASYNC_JOB_POLL_INTERVAL_MS = 1500;
   const ASYNC_JOB_TIMEOUT_MS = 10 * 60 * 1000;
-  const withRequestId = (message: string, payload: any) =>
-    payload?.requestId ? `${message} (Ref: ${payload.requestId})` : message;
+  const withRequestId = (
+    message: string,
+    payload: { requestId?: string | null } | null | undefined,
+  ) => (payload?.requestId ? `${message} (Ref: ${payload.requestId})` : message);
   const withRequestIdFromText = (fallback: string, text: string) => {
     try {
       const parsed = JSON.parse(text);
@@ -167,6 +296,21 @@ export default function LessonPlanPage() {
   };
   const isPremium = subscriptionPlan === "premium";
   const isFree = subscriptionPlan === "free" || !subscriptionPlan;
+  const adaptiveWorkflowEnabled =
+    subscriptionPlan === "premium" && !liteMode && adaptiveLearningEnabled;
+
+  const persistPendingLessonGenerationJob = (job: PendingLessonGenerationJob | null) => {
+    if (typeof window === "undefined") return;
+    try {
+      if (!job) {
+        window.localStorage.removeItem(LESSON_GENERATION_LOCALSTORAGE_KEY);
+        return;
+      }
+      window.localStorage.setItem(LESSON_GENERATION_LOCALSTORAGE_KEY, JSON.stringify(job));
+    } catch {
+      // ignore storage failures
+    }
+  };
 
   async function pollAsyncGenerationJob(jobId: string, signal?: AbortSignal) {
     const startedAt = Date.now();
@@ -200,9 +344,63 @@ export default function LessonPlanPage() {
     }
     throw new Error("Generation is taking longer than expected. Please try again.");
   }
+
+  const hydrateGeneratedLessonPlan = (
+    data: Record<string, unknown>,
+    fallbackForm?: LessonPlanFormData | null
+  ) => {
+    const nextLessonPlan = data.lessonPlan as LessonPlanState | null;
+    const savedLessonPlan =
+      data.savedLessonPlan && typeof data.savedLessonPlan === "object"
+        ? (data.savedLessonPlan as { id?: unknown })
+        : null;
+    const sourceTrace =
+      data.sourceTrace && typeof data.sourceTrace === "object"
+        ? (data.sourceTrace as {
+            mode?: unknown;
+            fromCache?: unknown;
+            sourceCount?: unknown;
+          })
+        : null;
+    const nextFramework = normalizeLessonPlanFramework(
+      String(nextLessonPlan?.framework || fallbackForm?.framework || selectedFramework)
+    );
+    if (!nextLessonPlan) {
+      throw new Error("No lesson plan data received from server");
+    }
+    setLessonPlan(nextLessonPlan);
+    setCurrentLessonPlanId(typeof savedLessonPlan?.id === "string" ? savedLessonPlan.id : null);
+    setSelectedFramework(nextFramework);
+    setFormDataObject(
+      fallbackForm || {
+        framework: nextFramework,
+        topic: String(nextLessonPlan.topic || nextLessonPlan.title || "").trim(),
+        subject: String(nextLessonPlan.subject || "").trim(),
+        grade: String(nextLessonPlan.grade || "").trim(),
+        days: Number(nextLessonPlan.days || 1),
+        minutesPerDay: Number(nextLessonPlan.minutesPerDay || 40),
+      }
+    );
+    setUsageInfo((data.usage as LessonPlanUsageInfo | null) ?? null);
+    setLessonSources(Array.isArray(data.sources) ? data.sources : []);
+    setLessonSourceTrace(
+      sourceTrace
+        ? {
+            mode:
+              sourceTrace.mode === "documents" ||
+              sourceTrace.mode === "semantic_cache"
+                ? sourceTrace.mode
+                : "none",
+            fromCache: Boolean(sourceTrace.fromCache),
+            sourceCount: Number(sourceTrace.sourceCount || 0),
+          }
+        : null
+    );
+    setIsHistoryView(false);
+  };
   const dedupedHistoryPlans = useMemo(() => {
     const seen = new Set<string>();
-    const unique: any[] = [];
+    const unique: LessonPlanHistoryItem[] = [];
     for (const plan of historyPlans) {
       const fingerprint = JSON.stringify({
         title: plan?.title ?? "",
@@ -252,19 +450,29 @@ export default function LessonPlanPage() {
         if (cancelled) return;
         const plan = data?.user?.subscriptionPlan || "free";
         setLiteMode(Boolean(data?.user?.liteMode));
+        setAdaptiveLearningEnabled(Boolean(data?.user?.adaptiveLearning));
         setSubscriptionPlan(plan);
         if (plan === "free" || !plan) {
-          const used = Number(data?.user?.lessonMaterialUploadUsage || 0);
-          const limit = 3;
-          const resetInSeconds = Number(data?.user?.lessonMaterialUploadResetInSeconds || 0);
-          const resetAtMs = resetInSeconds > 0 ? Date.now() + resetInSeconds * 1000 : null;
+          setUsageInfo({
+            remainingPoints: Number(data?.user?.freeLessonPlanPoints || 0),
+            maxPoints: Number(data?.user?.freeLessonPlanPointsMax || 100),
+            requiredPoints: 30,
+            nextRechargeAt:
+              typeof data?.user?.freeLessonPlanPointsRechargeAt === "string"
+                ? data.user.freeLessonPlanPointsRechargeAt
+                : null,
+          });
           setLessonMaterialUploadUsage({
-            used,
-            limit,
-            remaining: Math.max(limit - used, 0),
-            resetAtMs,
+            remainingPoints: Number(data?.user?.freeLessonPlanPoints || 0),
+            maxPoints: Number(data?.user?.freeLessonPlanPointsMax || 100),
+            requiredPoints: 40,
+            resetAtMs:
+              typeof data?.user?.freeLessonPlanPointsRechargeAt === "string"
+                ? new Date(data.user.freeLessonPlanPointsRechargeAt).getTime()
+                : null,
           });
         } else {
+          setUsageInfo(null);
           setLessonMaterialUploadUsage(null);
         }
       })
@@ -277,21 +485,70 @@ export default function LessonPlanPage() {
 
   useEffect(() => {
     const loadHistory = async () => {
-      setHistoryLoading(true);
-      try {
-        const res = await fetch("/api/lesson-plans");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (Array.isArray(data.plans)) {
-          setHistoryPlans(data.plans);
-        }
-      } catch {
-        // ignore
-      } finally {
-        setHistoryLoading(false);
-      }
+      await refreshLessonPlanHistory();
     };
     loadHistory();
+  }, []);
+
+  async function refreshLessonPlanHistory() {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/lesson-plans");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.plans)) {
+        setHistoryPlans(data.plans as LessonPlanHistoryItem[]);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadClasses() {
+      setLoadingClasses(true);
+      try {
+        const res = await fetch("/api/classes", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        setClasses(Array.isArray(data?.classes) ? (data.classes as ClassOption[]) : []);
+      } catch {
+        if (!cancelled) setClasses([]);
+      } finally {
+        if (!cancelled) setLoadingClasses(false);
+      }
+    }
+    void loadClasses();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAdaptiveWorkspaceSummary() {
+      try {
+        const res = await fetch("/api/dashboard/summary", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const summary =
+          data?.adaptiveWorkspaceSummary &&
+          typeof data.adaptiveWorkspaceSummary === "object" &&
+          !Array.isArray(data.adaptiveWorkspaceSummary)
+            ? (data.adaptiveWorkspaceSummary as AdaptiveWorkspaceSummary)
+            : null;
+        if (!cancelled) setAdaptiveWorkspaceSummary(summary);
+      } catch {
+        if (!cancelled) setAdaptiveWorkspaceSummary(null);
+      }
+    }
+    void loadAdaptiveWorkspaceSummary();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -300,6 +557,58 @@ export default function LessonPlanPage() {
       generationAbortRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (loading) return;
+
+    let cancelled = false;
+    const raw = window.localStorage.getItem(LESSON_GENERATION_LOCALSTORAGE_KEY);
+    if (!raw) return;
+
+    let pending: PendingLessonGenerationJob | null = null;
+    try {
+      pending = JSON.parse(raw) as PendingLessonGenerationJob;
+    } catch {
+      window.localStorage.removeItem(LESSON_GENERATION_LOCALSTORAGE_KEY);
+      return;
+    }
+
+    if (!pending?.jobId) return;
+
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
+    setLoading(true);
+    setError(null);
+    setInfoMessage("Resuming queued lesson plan generation...");
+
+    void pollAsyncGenerationJob(pending.jobId, controller.signal)
+      .then(async (data) => {
+        if (cancelled) return;
+        hydrateGeneratedLessonPlan((data ?? {}) as Record<string, unknown>, formDataObject);
+        setLessonProgress(100);
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        persistPendingLessonGenerationJob(null);
+        setInfoMessage(null);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof Error && err.name === "AbortError") return;
+        persistPendingLessonGenerationJob(null);
+        setError(getErrorMessage(err, "Failed to resume lesson plan generation"));
+        setInfoMessage(null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        generationAbortRef.current = null;
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [formDataObject, loading, selectedFramework]);
 
   useEffect(() => {
     if (!lessonMaterialUploadUsage?.resetAtMs) return;
@@ -316,9 +625,13 @@ export default function LessonPlanPage() {
       if (Array.isArray(parsed)) {
         setPendingExportJobs(
           parsed.filter(
-            (job: any) =>
-              typeof job?.jobId === "string" &&
-              (job?.format === "docx" || job?.format === "pdf" || job?.format === "pptx")
+            (job: unknown): job is PendingExportJob =>
+              typeof job === "object" &&
+              job !== null &&
+              typeof (job as PendingExportJob).jobId === "string" &&
+              ((job as PendingExportJob).format === "docx" ||
+                (job as PendingExportJob).format === "pdf" ||
+                (job as PendingExportJob).format === "pptx")
           )
         );
       }
@@ -340,6 +653,17 @@ export default function LessonPlanPage() {
   const addPendingExportJob = (job: PendingExportJob) => {
     const next = [job, ...pendingExportJobs.filter((item) => item.jobId !== job.jobId)].slice(0, 5);
     persistPendingExportJobs(next);
+  };
+
+  const updatePendingExportJob = (
+    jobId: string,
+    updates: Partial<PendingExportJob>
+  ) => {
+    persistPendingExportJobs(
+      pendingExportJobs.map((item) =>
+        item.jobId === jobId ? { ...item, ...updates } : item
+      )
+    );
   };
 
   const removePendingExportJob = (jobId: string) => {
@@ -395,16 +719,35 @@ export default function LessonPlanPage() {
       }
 
       lastStatus = String(statusData?.status || "queued");
+      const statusLabel = String(statusData?.stageLabel || "").trim();
       if (lastStatus === "completed") {
+        if (statusLabel) setInfoMessage(statusLabel);
         await downloadCompletedExport(jobId, format, topic);
         removePendingExportJob(jobId);
         return;
       }
 
       if (lastStatus === "failed") {
-        removePendingExportJob(jobId);
+        updatePendingExportJob(jobId, {
+          status: "failed",
+          stageLabel: statusLabel || "Export failed",
+          progress: Number(statusData?.progress || 100),
+          canRetry: Boolean(statusData?.canRetry),
+        });
         throw new Error(withRequestId(statusData?.error || "Export job failed", statusData));
       }
+
+      if (statusLabel) {
+        setInfoMessage(statusLabel);
+      }
+
+      updatePendingExportJob(jobId, {
+        status: lastStatus === "processing" ? "processing" : "queued",
+        stageLabel: statusLabel || null,
+        progress:
+          typeof statusData?.progress === "number" ? statusData.progress : null,
+        canRetry: Boolean(statusData?.canRetry),
+      });
 
       if (lastStatus === "queued") {
         await fetch("/api/lesson-plan-export/process", {
@@ -422,15 +765,22 @@ export default function LessonPlanPage() {
       format,
       topic,
       createdAt: Date.now(),
+      status: "queued",
+      stageLabel: `Queued ${format.toUpperCase()} export`,
+      progress: 18,
+      canRetry: false,
     });
     setError(null);
-    setInfoMessage("Still processing. We kept it running in the background. Click 'Download when ready' to retry.");
+    setInfoMessage(
+      `Still processing. We kept the ${format.toUpperCase()} export running in the background. Click 'Download when ready' to retry.`
+    );
   };
 
   function pauseLessonPlanGeneration() {
     if (!generationAbortRef.current) return;
     generationAbortRef.current.abort();
     generationAbortRef.current = null;
+    persistPendingLessonGenerationJob(null);
     setLoading(false);
     setLessonProgress(0);
     setError("Generation paused.");
@@ -444,7 +794,7 @@ export default function LessonPlanPage() {
       ...lessonTemplateDefaults,
       ...(formDataObject || {}),
       ...formData,
-    } as Record<string, any>;
+    } as Record<string, unknown>;
     return {
       framework: normalizeLessonPlanFramework(merged.framework),
       topic: String(merged.topic || "").trim(),
@@ -466,6 +816,78 @@ export default function LessonPlanPage() {
       if (value) url.searchParams.set(key, value);
     });
     return url.toString();
+  };
+
+  const getInterventionLaunchContext = () => {
+    const sourceType = searchParams.get("interventionSourceType");
+    const sourceId = searchParams.get("interventionSourceId");
+    const mode = searchParams.get("interventionMode");
+    if (!sourceType || !sourceId || !mode) return null;
+    return {
+      sourceType,
+      sourceId,
+      classId: searchParams.get("interventionClassId") || null,
+      className: searchParams.get("interventionClassName") || null,
+      assignmentTitle: searchParams.get("interventionAssignmentTitle") || null,
+      mode,
+    };
+  };
+
+  const updateLessonTemplateSearch = (
+    updater: (current: ReturnType<typeof getLessonTemplateValues>) => ReturnType<typeof getLessonTemplateValues>
+  ) => {
+    const nextValues = updater(getLessonTemplateValues());
+    const params = new URLSearchParams(searchParams.toString());
+    Object.entries(nextValues).forEach(([key, value]) => {
+      const normalized = String(value || "").trim();
+      if (normalized) params.set(key, normalized);
+      else params.delete(key);
+    });
+    router.replace(`/lessonPlan?${params.toString()}`, { scroll: false });
+  };
+
+  const applyAdaptiveLessonContext = (mode: "replace" | "append") => {
+    if (!adaptiveWorkspaceSummary) return;
+    const adaptiveObjectives = adaptiveWorkspaceSummary.focus.length
+      ? `Reteach these weak concepts: ${adaptiveWorkspaceSummary.focus.join("; ")}`
+      : `Reinforce the current weak concepts for ${adaptiveWorkspaceSummary.primaryClassName || "the priority class"}`;
+    const adaptiveConstraints = [
+      adaptiveWorkspaceSummary.recommendation,
+      `Support level: ${adaptiveWorkspaceSummary.supportLevel}.`,
+      adaptiveWorkspaceSummary.primaryClassName
+        ? `Prioritize ${adaptiveWorkspaceSummary.primaryClassName} for this follow-up lesson.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    updateLessonTemplateSearch((current) => ({
+      ...current,
+      topic:
+        mode === "replace" && !current.topic.trim()
+          ? `Adaptive Follow-Up for ${adaptiveWorkspaceSummary.primaryClassName || "Priority Class"}`
+          : current.topic,
+      days: current.days || "1",
+      minutesPerDay: current.minutesPerDay || "40",
+      objectives:
+        mode === "append"
+          ? current.objectives.trim()
+            ? `${current.objectives.trim()}\n${adaptiveObjectives}`
+            : adaptiveObjectives
+          : adaptiveObjectives,
+      constraints:
+        mode === "append"
+          ? current.constraints.trim()
+            ? `${current.constraints.trim()}\n${adaptiveConstraints}`
+            : adaptiveConstraints
+          : adaptiveConstraints,
+    }));
+    setError(null);
+    setInfoMessage(
+      mode === "append"
+        ? "Adaptive class-result context appended to the lesson plan fields."
+        : "Adaptive class-result context applied to the lesson plan fields.",
+    );
   };
 
   const copyLessonTemplateLink = async () => {
@@ -550,7 +972,17 @@ export default function LessonPlanPage() {
   }, [downloadingPptx]);
 
   async function generateLessonPlan(formData: FormData) {
-    const formObj = Object.fromEntries(formData.entries());
+    const rawForm = Object.fromEntries(formData.entries());
+    const formObj: LessonPlanFormData = {
+      framework: normalizeLessonPlanFramework(String(rawForm.framework || "")),
+      topic: String(rawForm.topic || "").trim(),
+      subject: String(rawForm.subject || "").trim(),
+      grade: String(rawForm.grade || "").trim(),
+      days: Number(rawForm.days || 0),
+      minutesPerDay: Number(rawForm.minutesPerDay || 0),
+      objectives: String(rawForm.objectives || "").trim(),
+      constraints: String(rawForm.constraints || "").trim(),
+    };
     trackGaEvent("lesson_plan_generate", {
       action: "start",
       framework: normalizeLessonPlanFramework(formObj.framework),
@@ -564,10 +996,24 @@ export default function LessonPlanPage() {
     setLoading(true);
     setError(null);
     setLessonPlan(null);
+    setCurrentLessonPlanId(null);
     setUsageInfo(null);
     setLessonSources([]);
     setLessonSourceTrace(null);
     setIsHistoryView(false);
+
+    const shouldUseAsyncGeneration = shouldQueueLessonPlanGeneration({
+      framework: String(formObj.framework || ""),
+      topic: formObj.topic,
+      subject: formObj.subject,
+      grade: formObj.grade,
+      objectives: String(formObj.objectives || ""),
+      constraints: String(formObj.constraints || ""),
+      days: Number(formObj.days || 0),
+      minutesPerDay: Number(formObj.minutesPerDay || 0),
+      adaptiveLaunch: Boolean(getInterventionLaunchContext()),
+      format: "json",
+    }).shouldQueue;
 
     try {
       generationAbortRef.current?.abort();
@@ -577,13 +1023,21 @@ export default function LessonPlanPage() {
       const res = await fetch("/api/generate-lesson-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formObj, async: true }),
+        body: JSON.stringify({
+          ...formObj,
+          async: shouldUseAsyncGeneration,
+          launchContext: getInterventionLaunchContext(),
+        }),
         signal: controller.signal,
       });
 
       let data = await res.json().catch(() => ({}));
 
       if (res.status === 202 && data?.queued && data?.jobId) {
+        persistPendingLessonGenerationJob({
+          jobId: String(data.jobId),
+          createdAt: Date.now(),
+        });
         setInfoMessage("Queued. Processing lesson plan...");
         if (!data?.dispatched) {
           await fetch(`/api/generation-jobs/${data.jobId}/process`, {
@@ -592,6 +1046,7 @@ export default function LessonPlanPage() {
           }).catch(() => null);
         }
         data = await pollAsyncGenerationJob(String(data.jobId), controller.signal);
+        persistPendingLessonGenerationJob(null);
         setInfoMessage(null);
       }
       
@@ -612,19 +1067,23 @@ export default function LessonPlanPage() {
           );
           return;
         }
-        if (res.status === 403 && data.error === "Free limit reached") {
-          const resetInSeconds = Number(data?.resetInSeconds || 0);
-          const hh = Math.floor(resetInSeconds / 3600);
-          const mm = Math.floor((resetInSeconds % 3600) / 60);
-          const ss = Math.floor(resetInSeconds % 60);
+        if (res.status === 403 && data.error === "Not enough free lesson plan credits.") {
+          const nextRechargeAt =
+            typeof data?.nextRechargeAt === "string" ? new Date(data.nextRechargeAt) : null;
           const waitTime =
-            resetInSeconds > 0
-              ? `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`
-              : "about 3 hours";
+            nextRechargeAt && !Number.isNaN(nextRechargeAt.getTime())
+              ? nextRechargeAt.toLocaleString()
+              : "the next recharge window";
+          setUsageInfo({
+            remainingPoints: Number(data?.remainingPoints || 0),
+            maxPoints: Number(data?.maxPoints || 100),
+            requiredPoints: Number(data?.requiredPoints || 30),
+            nextRechargeAt: data?.nextRechargeAt || null,
+          });
           setError(null);
           setInfoMessage(
             withRequestId(
-              `Free limit reached. You can generate up to ${FREE_PLAN_LIMIT} lesson plans every 3 hours. Try Pro or Premium now. Please try again in ${waitTime}.`,
+              `Not enough lesson plan credits. This lesson plan needs ${Number(data?.requiredPoints || 30)} credits. Please try again after ${waitTime}, or upgrade to Pro or Premium.`,
               data
             )
           );
@@ -642,48 +1101,125 @@ export default function LessonPlanPage() {
           withRequestId(data.error || data.message || "Failed to generate lesson plan", data)
         );
       }
-      
-      setLessonPlan(data.lessonPlan);
-      setSelectedFramework(normalizeLessonPlanFramework(data?.lessonPlan?.framework || formObj.framework));
+      const generatedLessonPlan =
+        data?.lessonPlan && typeof data.lessonPlan === "object"
+          ? (data.lessonPlan as { framework?: unknown; days?: unknown })
+          : null;
       trackGaEvent("lesson_plan_generate", {
         action: "success",
-        framework: normalizeLessonPlanFramework(data?.lessonPlan?.framework || formObj.framework),
-        day_count: Array.isArray(data?.lessonPlan?.days)
-          ? data.lessonPlan.days.length
+        framework: normalizeLessonPlanFramework(
+          String(generatedLessonPlan?.framework || formObj.framework)
+        ),
+        day_count: Array.isArray(generatedLessonPlan?.days)
+          ? generatedLessonPlan.days.length
           : 0,
         source_count: Array.isArray(data?.sources) ? data.sources.length : 0,
       });
-      setUsageInfo(data.usage);
-      setLessonSources(Array.isArray(data.sources) ? data.sources : []);
-      setLessonSourceTrace(
-        data?.sourceTrace && typeof data.sourceTrace === "object"
-          ? {
-              mode:
-                data.sourceTrace.mode === "documents" ||
-                data.sourceTrace.mode === "semantic_cache"
-                  ? data.sourceTrace.mode
-                  : "none",
-              fromCache: Boolean(data.sourceTrace.fromCache),
-              sourceCount: Number(data.sourceTrace.sourceCount || 0),
-            }
-          : null
-      );
-      setIsHistoryView(false);
+      hydrateGeneratedLessonPlan(data as Record<string, unknown>, formObj);
       setLessonProgress(100);
       await new Promise((resolve) => setTimeout(resolve, 120));
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       trackGaEvent("lesson_plan_generate", {
-        action: err?.name === "AbortError" ? "aborted" : "error",
+        action: err instanceof Error && err.name === "AbortError" ? "aborted" : "error",
       });
-      if (err?.name === "AbortError") {
-        setError("Generation paused.");
-        return;
-      }
-      setError(err.message || "Failed to generate lesson plan");
-    } finally {
+    if (err instanceof Error && err.name === "AbortError") {
+      setError("Generation paused.");
+      return;
+    }
+    persistPendingLessonGenerationJob(null);
+    setError(getErrorMessage(err, "Failed to generate lesson plan"));
+  } finally {
       generationAbortRef.current = null;
       setLoading(false);
+    }
+  }
+
+  async function handleAssignLessonPlan() {
+    if (!currentLessonPlanId || !selectedClassId || !assignmentTitle.trim()) return;
+
+    setAssignLoading(true);
+    setError(null);
+    setInfoMessage(null);
+
+    try {
+      const res = await fetch("/api/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          classId: selectedClassId,
+          lessonPlanId: currentLessonPlanId,
+          title: assignmentTitle.trim(),
+          instructions: assignmentInstructions.trim() || null,
+          availableFrom: assignmentAvailableFrom || null,
+          dueAt: assignmentDueAt || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const assignmentPayload =
+        data?.assignment && typeof data.assignment === "object"
+          ? (data.assignment as { class?: { name?: unknown } })
+          : null;
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to assign lesson plan");
+      }
+      setShowAssignModal(false);
+      setInfoMessage(
+        `Lesson plan assigned to ${
+          typeof assignmentPayload?.class?.name === "string"
+            ? assignmentPayload.class.name
+            : "class"
+        }.`
+      );
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to assign lesson plan"));
+    } finally {
+      setAssignLoading(false);
+    }
+  }
+
+  function handleOpenAssignModal() {
+    if (!lessonPlan) return;
+    if (!currentLessonPlanId) {
+      setError(null);
+      setInfoMessage(
+        "This lesson plan is not linked to a saved record yet. Generate or reopen a saved lesson plan first, then assign it to a class.",
+      );
+      return;
+    }
+    setShowAssignModal(true);
+  }
+
+  async function handleDeleteCurrentLessonPlan() {
+    if (!currentLessonPlanId) return;
+
+    setDeletingLessonPlan(true);
+    setError(null);
+    setInfoMessage(null);
+
+    try {
+      const res = await fetch(`/api/lesson-plans/${currentLessonPlanId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to delete lesson plan");
+      }
+
+      setLessonPlan(null);
+      setCurrentLessonPlanId(null);
+      setLessonSources([]);
+      setLessonSourceTrace(null);
+      setIsHistoryView(false);
+      setPptxDeck(null);
+      setPptxDeckSource("lesson_plan");
+      setShowDeleteLessonPlanModal(false);
+      await refreshLessonPlanHistory();
+      setInfoMessage("Lesson plan deleted.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to delete lesson plan"));
+    } finally {
+      setDeletingLessonPlan(false);
     }
   }
 
@@ -739,9 +1275,9 @@ export default function LessonPlanPage() {
         String(formDataObject.topic || "lesson_plan"),
         LESSON_EXPORT_POLL_TIMEOUT_MS
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Download error:", err);
-      setError(err?.message || "Failed to download.");
+      setError(getErrorMessage(err, "Failed to download."));
     } finally {
       if (format === "pptx") {
         setDownloadingPptx(false);
@@ -893,9 +1429,9 @@ export default function LessonPlanPage() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
       }, 100);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("PDF UI download error:", err);
-      setError(err?.message || "Failed to download PDF.");
+      setError(getErrorMessage(err, "Failed to download PDF."));
     } finally {
       const leftover = document.getElementById("lessonplan-pdf-probe");
       if (leftover?.parentElement) {
@@ -915,14 +1451,29 @@ export default function LessonPlanPage() {
     const latest = pendingExportJobs[0];
     setRetryingPendingExport(true);
     try {
+      if (latest.canRetry) {
+        setError(null);
+        setInfoMessage(`Retrying ${latest.format.toUpperCase()} export...`);
+        updatePendingExportJob(latest.jobId, {
+          status: "queued",
+          stageLabel: `Queued ${latest.format.toUpperCase()} export`,
+          progress: 18,
+          canRetry: false,
+        });
+        await fetch("/api/lesson-plan-export/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobId: latest.jobId }),
+        }).catch(() => null);
+      }
       await pollExportJob(
         latest.jobId,
         latest.format,
         latest.topic || String(formDataObject?.topic || "lesson_plan"),
         LESSON_EXPORT_POLL_TIMEOUT_MS
       );
-    } catch (err: any) {
-      setError(err?.message || "Failed to retry export download.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to retry export download."));
     } finally {
       setRetryingPendingExport(false);
     }
@@ -934,7 +1485,8 @@ export default function LessonPlanPage() {
       setError("Premium is required to edit and download PPTX.");
       return;
     }
-    setSlidesLoadingLabel("Preparing editable PPTX slides...");
+    setSlidesLoadingStage(LESSON_PLAN_SLIDES_PROGRESS.stage);
+    setSlidesLoadingLabel(LESSON_PLAN_SLIDES_PROGRESS.label);
     setLoadingSlides(true);
     try {
       const res = await fetch("/api/lesson-plan-slides", {
@@ -955,8 +1507,8 @@ export default function LessonPlanPage() {
       setPptxDeck(data.deck);
       setPptxDeckSource("lesson_plan");
       setShowPptxEditor(true);
-    } catch (err: any) {
-      setError(err.message || "Failed to generate slides.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate slides."));
     } finally {
       setLoadingSlides(false);
     }
@@ -964,21 +1516,61 @@ export default function LessonPlanPage() {
 
   function openLessonPlanUploadPicker() {
     if (loadingSlides) return;
-    uploadLessonPlanInputRef.current?.click();
+    const formSnapshot = getCurrentLessonUploadConfig();
+    setLessonUploadFramework(formSnapshot.framework);
+    setLessonUploadDays(String(formSnapshot.days));
+    setLessonUploadMinutesPerDay(String(formSnapshot.minutesPerDay));
+    setLessonUploadTopic(formSnapshot.topic);
+    setLessonUploadSubject(formSnapshot.subject);
+    setLessonUploadGrade(formSnapshot.grade);
+    setShowLessonUploadConfigModal(true);
   }
 
-  async function handleLessonPlanFileUpload(file: File) {
+  function getCurrentLessonUploadConfig(): LessonMaterialUploadConfig {
+    const rawForm = lessonFormRef.current ? Object.fromEntries(new FormData(lessonFormRef.current).entries()) : {};
+    const rawDays = Number(rawForm.days || formDataObject?.days || lessonTemplateDefaults.days || 1);
+    const rawMinutes = Number(
+      rawForm.minutesPerDay || formDataObject?.minutesPerDay || lessonTemplateDefaults.minutesPerDay || 40
+    );
+
+    return {
+      framework: normalizeLessonPlanFramework(
+        String(rawForm.framework || formDataObject?.framework || selectedFramework)
+      ),
+      topic: String(rawForm.topic || formDataObject?.topic || lessonTemplateDefaults.topic || "").trim(),
+      subject: String(rawForm.subject || formDataObject?.subject || lessonTemplateDefaults.subject || "").trim(),
+      grade: String(rawForm.grade || formDataObject?.grade || lessonTemplateDefaults.grade || "").trim(),
+      days: Number.isFinite(rawDays) ? Math.min(Math.max(Math.trunc(rawDays), 1), 7) : 1,
+      minutesPerDay: Number.isFinite(rawMinutes) ? Math.min(Math.max(Math.trunc(rawMinutes), 10), 120) : 40,
+    };
+  }
+
+  async function handleLessonPlanFileUpload(
+    file: File,
+    uploadConfig?: LessonMaterialUploadConfig
+  ) {
     if (!file) return;
+    setShowLessonUploadConfigModal(false);
     setError(null);
     setInfoMessage(null);
-    setSlidesLoadingLabel("Parsing uploaded file and generating editable slides...");
+    setSlidesLoadingStage(LESSON_PLAN_UPLOAD_SLIDES_PROGRESS.stage);
+    setSlidesLoadingLabel(LESSON_PLAN_UPLOAD_SLIDES_PROGRESS.label);
     setLoadingSlides(true);
     try {
+      const effectiveUploadConfig = uploadConfig || getCurrentLessonUploadConfig();
       const formData = new FormData();
       formData.append("file", file);
       formData.append("async", "true");
-      // Do not auto-inject current lesson form inputs into uploaded-file generation.
-      // This keeps uploaded-file prompts based on file content unless backend defaults apply.
+      formData.append("framework", effectiveUploadConfig.framework);
+      formData.append("days", String(effectiveUploadConfig.days));
+      formData.append("minutesPerDay", String(effectiveUploadConfig.minutesPerDay));
+      formData.append(
+        "duration",
+        `${effectiveUploadConfig.days} day(s), ${effectiveUploadConfig.minutesPerDay} minutes per day`
+      );
+      if (effectiveUploadConfig.topic) formData.append("topic", effectiveUploadConfig.topic);
+      if (effectiveUploadConfig.subject) formData.append("subject", effectiveUploadConfig.subject);
+      if (effectiveUploadConfig.grade) formData.append("grade", effectiveUploadConfig.grade);
 
       const res = await fetch("/api/lesson-material-from-file", {
         method: "POST",
@@ -986,6 +1578,10 @@ export default function LessonPlanPage() {
       });
       let data = await res.json().catch(() => ({}));
       if (res.status === 202 && data?.queued && data?.jobId) {
+        persistPendingLessonGenerationJob({
+          jobId: String(data.jobId),
+          createdAt: Date.now(),
+        });
         setInfoMessage("Queued. Processing uploaded lesson file...");
         if (!data?.dispatched) {
           await fetch(`/api/generation-jobs/${data.jobId}/process`, {
@@ -993,6 +1589,7 @@ export default function LessonPlanPage() {
           }).catch(() => null);
         }
         data = await pollAsyncGenerationJob(String(data.jobId));
+        persistPendingLessonGenerationJob(null);
         setInfoMessage(null);
       }
       if (!res.ok) {
@@ -1009,13 +1606,14 @@ export default function LessonPlanPage() {
           return;
         }
         if (data?.usage && typeof data.usage === "object") {
-          const resetInSeconds = Number(data?.usage?.resetInSeconds || 0);
-          const resetAtMs = resetInSeconds > 0 ? Date.now() + resetInSeconds * 1000 : null;
           setLessonMaterialUploadUsage({
-            used: Number(data.usage.used || 0),
-            limit: Number(data.usage.limit || 3),
-            remaining: Number(data.usage.remaining || 0),
-            resetAtMs,
+            remainingPoints: Number(data.usage.remainingPoints || 0),
+            maxPoints: Number(data.usage.maxPoints || 100),
+            requiredPoints: Number(data.usage.requiredPoints || 40),
+            resetAtMs:
+              typeof data?.usage?.nextRechargeAt === "string"
+                ? new Date(data.usage.nextRechargeAt).getTime()
+                : null,
           });
         }
         throw new Error(
@@ -1029,19 +1627,22 @@ export default function LessonPlanPage() {
       setPptxDeck(data.deck);
       setPptxDeckSource("lesson_material_upload");
       setShowPptxEditor(true);
+      setShowLessonUploadConfigModal(false);
       if (data?.usage && typeof data.usage === "object") {
-        const resetInSeconds = Number(data?.usage?.resetInSeconds || 0);
-        const resetAtMs = resetInSeconds > 0 ? Date.now() + resetInSeconds * 1000 : null;
         setLessonMaterialUploadUsage({
-          used: Number(data.usage.used || 0),
-          limit: Number(data.usage.limit || 3),
-          remaining: Number(data.usage.remaining || 0),
-          resetAtMs,
+          remainingPoints: Number(data.usage.remainingPoints || 0),
+          maxPoints: Number(data.usage.maxPoints || 100),
+          requiredPoints: Number(data.usage.requiredPoints || 40),
+          resetAtMs:
+            typeof data?.usage?.nextRechargeAt === "string"
+              ? new Date(data.usage.nextRechargeAt).getTime()
+              : null,
         });
       }
       setInfoMessage("Uploaded lesson plan converted to editable slides.");
-    } catch (err: any) {
-      setError(err?.message || "Failed to generate lesson material from uploaded file.");
+    } catch (err: unknown) {
+      persistPendingLessonGenerationJob(null);
+      setError(getErrorMessage(err, "Failed to generate lesson material from uploaded file."));
     } finally {
       setLoadingSlides(false);
       if (uploadLessonPlanInputRef.current) {
@@ -1050,7 +1651,7 @@ export default function LessonPlanPage() {
     }
   }
 
-  function shouldKeepSpecificActivities(day: any) {
+  function shouldKeepSpecificActivities(day: LessonPlanDay | null | undefined) {
     const activities = day?.specificActivities || {};
     const q1 = Array.isArray(activities?.ACTIVITY?.questions) ? activities.ACTIVITY.questions.length : 0;
     const q2 = Array.isArray(activities?.ANALYSIS?.trueFalse) ? activities.ANALYSIS.trueFalse.length : 0;
@@ -1063,12 +1664,12 @@ export default function LessonPlanPage() {
     return q1 + q2 + q3 + q4 <= 12;
   }
 
-  function shouldKeepAssessment(day: any) {
+  function shouldKeepAssessment(day: LessonPlanDay | null | undefined) {
     const count = Array.isArray(day?.assessment) ? day.assessment.length : 0;
     return count <= 2;
   }
 
-  async function downloadEditedPptx(deckOverride?: any) {
+  async function downloadEditedPptx(deckOverride?: PptDeck | null) {
     const deckToExport = deckOverride || pptxDeck;
     if (!deckToExport) return;
     setDownloadingPptx(true);
@@ -1104,8 +1705,8 @@ export default function LessonPlanPage() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-    } catch (err: any) {
-      setError(err.message || "Failed to generate PPTX");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to generate PPTX"));
     } finally {
       setDownloadingPptx(false);
     }
@@ -1152,8 +1753,22 @@ export default function LessonPlanPage() {
     }
   }, [infoMessage]);
 
+  useEffect(() => {
+    const title = String(lessonPlan?.title || "").trim();
+    if (!title) return;
+    setAssignmentTitle(`${title} Assignment`);
+  }, [lessonPlan?.title]);
+
   const isPausedMessage = error?.trim().toLowerCase() === "generation paused.";
   const lessonPlanTourSteps = [
+    {
+      element: "#lessonplan-adaptive-context",
+      popover: {
+        title: "Adaptive Lesson Context",
+        description:
+          "Bring in class-result patterns and intervention guidance here to shape a stronger follow-up lesson plan.",
+      },
+    },
     {
       element: "#lessonplan-topic",
       popover: {
@@ -1167,6 +1782,14 @@ export default function LessonPlanPage() {
       popover: {
         title: "Set the subject",
         description: "Add the subject area for this lesson plan.",
+      },
+    },
+    {
+      element: "#lessonplan-framework",
+      popover: {
+        title: "Instructional framework",
+        description:
+          "Choose the lesson framework here so the generated plan follows the right teaching structure.",
       },
     },
     {
@@ -1210,7 +1833,7 @@ export default function LessonPlanPage() {
       popover: {
         title: "Generate plan",
         description:
-          "Click to generate. Use Pause anytime to stop an in-flight request.",
+          "Generate the lesson plan here, then move it into class-linked planning and follow-up workflow.",
       },
     },
     {
@@ -1242,13 +1865,30 @@ export default function LessonPlanPage() {
       popover: {
         title: "Recent plans",
         description:
-          "Open recent generated plans and reload one instantly.",
+          "Reload recent plans and continue using them as reusable class workflow assets.",
+      },
+    },
+    {
+      element: "#lessonplan-assign-class",
+      popover: {
+        title: "Assign To Class",
+        description:
+          "After generating a lesson plan, attach it to a class so it becomes part of planning history and the wider teacher workflow.",
       },
     },
   ];
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 bg-transparent">
+      <ConfirmActionModal
+        open={showDeleteLessonPlanModal}
+        onOpenChange={setShowDeleteLessonPlanModal}
+        title="Delete lesson plan?"
+        description="This will permanently remove the saved lesson plan from your workflow and history."
+        confirmLabel="Delete Lesson Plan"
+        loading={deletingLessonPlan}
+        onConfirm={handleDeleteCurrentLessonPlan}
+      />
       <style jsx global>{`
         @media print {
           html,
@@ -1358,21 +1998,66 @@ export default function LessonPlanPage() {
         </div>
       </div>
 
+      {adaptiveWorkflowEnabled && adaptiveWorkspaceSummary?.summary ? (
+        <section
+          id="lessonplan-adaptive-context"
+          className="rounded-2xl border border-cyan-200/80 bg-linear-to-br from-cyan-50 to-white p-4 shadow-[0_10px_30px_-18px_rgba(8,145,178,0.35)]"
+        >
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-full border border-cyan-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-cyan-700">
+                  Adaptive Lesson Context
+                </span>
+                {adaptiveWorkspaceSummary.primaryClassName ? (
+                  <span className="inline-flex rounded-full border border-cyan-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                    {adaptiveWorkspaceSummary.primaryClassName}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-sm font-medium text-slate-900">
+                {adaptiveWorkspaceSummary.summary}
+              </p>
+              <p className="text-xs text-slate-500">
+                {adaptiveWorkspaceSummary.recommendation}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => applyAdaptiveLessonContext("replace")}
+                className="inline-flex max-w-md flex-col items-start justify-center rounded-xl bg-gradient-to-r from-cyan-600 to-sky-600 px-4 py-3 text-left shadow-[0_10px_24px_-18px_rgba(8,145,178,0.9)] transition hover:-translate-y-0.5 hover:from-cyan-700 hover:to-sky-700"
+              >
+                <span className="inline-flex items-center gap-2 text-sm font-semibold leading-5 text-white">
+                  <BrainCircuit className="h-4 w-4 shrink-0" />
+                  Use Adaptive Context
+                </span>
+                <span className="mt-1 text-[11px] font-medium leading-4 text-cyan-100/95">
+                  Replace the current lesson guidance with the strongest adaptive follow-up context.
+                </span>
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {/* Form Section */}
       <LessonPlanInputForm
         lessonTemplateKey={lessonTemplateKey}
         lessonTemplateDefaults={lessonTemplateDefaults}
         selectedFramework={selectedFramework}
         lessonFormRef={lessonFormRef}
-        loading={loading}
-        loadingSlides={loadingSlides}
-        lessonPlanExists={Boolean(lessonPlan)}
-        downloadingPptx={downloadingPptx}
-        lessonProgress={lessonProgress}
-        slidesProgress={slidesProgress}
-        slidesLoadingLabel={slidesLoadingLabel}
-        pptxProgress={pptxProgress}
+              loading={loading}
+              loadingSlides={loadingSlides}
+              lessonPlanExists={Boolean(lessonPlan)}
+              downloadingPptx={downloadingPptx}
+              lessonProgress={lessonProgress}
+              slidesLoadingStage={slidesLoadingStage}
+              slidesProgress={slidesProgress}
+              slidesLoadingLabel={slidesLoadingLabel}
+              pptxProgress={pptxProgress}
         isFree={isFree}
+        usageInfo={usageInfo}
         lessonMaterialUploadUsage={lessonMaterialUploadUsage}
         countdownNowMs={countdownNowMs}
         infoMessage={infoMessage}
@@ -1388,10 +2073,100 @@ export default function LessonPlanPage() {
         onShareTemplateLink={shareLessonTemplateLink}
         onOpenUploadPicker={openLessonPlanUploadPicker}
         onHandleFileUpload={(file) => {
-          void handleLessonPlanFileUpload(file);
+          void handleLessonPlanFileUpload(file, {
+            framework: lessonUploadFramework,
+            topic: lessonUploadTopic,
+            subject: lessonUploadSubject,
+            grade: lessonUploadGrade,
+            days: Math.min(Math.max(Number(lessonUploadDays) || 1, 1), 7),
+            minutesPerDay: Math.min(Math.max(Number(lessonUploadMinutesPerDay) || 40, 10), 120),
+          });
         }}
         onFrameworkChange={setSelectedFramework}
       />
+
+      <Dialog
+        open={showLessonUploadConfigModal}
+        onOpenChange={(open) => {
+          if (loadingSlides) return;
+          setShowLessonUploadConfigModal(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Prepare File-To-PPTX Upload</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Choose the lesson structure settings to use before selecting your file.
+            </p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                Instructional Framework
+              </label>
+              <select
+                value={lessonUploadFramework}
+                onChange={(event) =>
+                  setLessonUploadFramework(
+                    normalizeLessonPlanFramework(event.target.value)
+                  )
+                }
+                className="h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              >
+                {Object.values(LESSON_PLAN_FRAMEWORKS).map((framework) => (
+                  <option key={framework.id} value={framework.id}>
+                    {framework.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  Number of Days
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={7}
+                  value={lessonUploadDays}
+                  onChange={(event) => setLessonUploadDays(event.target.value)}
+                  className="h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  Minutes Per Day
+                </label>
+                <input
+                  type="number"
+                  min={10}
+                  max={120}
+                  value={lessonUploadMinutesPerDay}
+                  onChange={(event) => setLessonUploadMinutesPerDay(event.target.value)}
+                  className="h-11 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowLessonUploadConfigModal(false)}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-zinc-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => uploadLessonPlanInputRef.current?.click()}
+                className="inline-flex h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Choose File
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Generated Lesson Plan */}
       {lessonPlan && (
@@ -1422,6 +2197,11 @@ export default function LessonPlanPage() {
           onLoadPptxSlidesForEdit={() => {
             void loadPptxSlidesForEdit();
           }}
+          onAssignToClass={handleOpenAssignModal}
+          onDeleteLessonPlan={() => setShowDeleteLessonPlanModal(true)}
+          canAssignToClass={Boolean(lessonPlan)}
+          canDeleteLessonPlan={Boolean(currentLessonPlanId)}
+          deletingLessonPlan={deletingLessonPlan}
           renderUsageIndicator={(usage) => <UsageIndicator usage={usage} />}
         >
 
@@ -1440,6 +2220,26 @@ export default function LessonPlanPage() {
         </LessonPlanOutputPanel>
       )}
 
+      <LessonPlanAssignModal
+        open={showAssignModal}
+        classes={classes}
+        loadingClasses={loadingClasses}
+        assignLoading={assignLoading}
+        selectedClassId={selectedClassId}
+        setSelectedClassId={setSelectedClassId}
+        assignmentTitle={assignmentTitle}
+        setAssignmentTitle={setAssignmentTitle}
+        assignmentInstructions={assignmentInstructions}
+        setAssignmentInstructions={setAssignmentInstructions}
+        assignmentAvailableFrom={assignmentAvailableFrom}
+        setAssignmentAvailableFrom={setAssignmentAvailableFrom}
+        assignmentDueAt={assignmentDueAt}
+        setAssignmentDueAt={setAssignmentDueAt}
+        canSubmit={Boolean(currentLessonPlanId) && Boolean(selectedClassId) && Boolean(assignmentTitle.trim())}
+        onClose={() => setShowAssignModal(false)}
+        onSubmit={handleAssignLessonPlan}
+      />
+
       <Dialog open={showPptxEditor} onOpenChange={setShowPptxEditor}>
         <DialogContent
           showCloseButton={false}
@@ -1449,7 +2249,8 @@ export default function LessonPlanPage() {
           {downloadingPptx && (
             <div className="pointer-events-none absolute right-20 top-4 z-20 w-80">
               <LoadingProgress
-                label="Generating PPTX file..."
+                stage={LESSON_PLAN_PPTX_EXPORT_PROGRESS.stage}
+                label={LESSON_PLAN_PPTX_EXPORT_PROGRESS.label}
                 percent={pptxProgress}
               />
             </div>
@@ -1508,6 +2309,7 @@ export default function LessonPlanPage() {
               className="w-full rounded-xl border border-white/20 bg-white/95 p-3 text-left text-slate-900 transition shadow-[0_10px_20px_-14px_rgba(59,130,246,0.6)] hover:bg-white dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
               onClick={() => {
                 setLessonPlan(plan.data);
+                setCurrentLessonPlanId(typeof plan?.id === "string" ? plan.id : null);
                 setFormDataObject({
                   framework: normalizeLessonPlanFramework(plan?.data?.framework),
                   topic: plan.topic,
@@ -1519,7 +2321,7 @@ export default function LessonPlanPage() {
                 const historySources = Array.isArray(plan?.data?.__sources)
                   ? plan.data.__sources
                   : [];
-                const historyTrace =
+                const historyTrace: LessonSourceTrace | null =
                   plan?.data?.__sourceTrace && typeof plan.data.__sourceTrace === "object"
                     ? {
                         mode:

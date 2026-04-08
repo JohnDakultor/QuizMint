@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-import { stripStructuredMeta } from "@/lib/quiz-structured";
+import {
+  buildQuizArtifactsFromPersistedQuiz,
+  getQuizArtifactsFromGenerationMetadata,
+} from "@/lib/quiz-artifacts";
 
 export async function GET() {
   try {
@@ -23,7 +26,21 @@ export async function GET() {
       include: {
         questions: true,
         shareSettings: {
-          select: { isOpen: true, expiresAt: true },
+          select: { isOpen: true, expiresAt: true, assessmentDurationMinutes: true },
+        },
+        assignments: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            title: true,
+            class: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
         },
       },
     });
@@ -36,6 +53,7 @@ export async function GET() {
           sourceCount: number;
         }
       | null = null;
+    let eventMeta: Record<string, unknown> | null = null;
 
     if (quiz) {
       const eventRows = await prisma.$queryRaw<
@@ -52,7 +70,7 @@ export async function GET() {
         LIMIT 1
       `;
 
-      const eventMeta =
+      eventMeta =
         eventRows[0]?.metadata &&
         typeof eventRows[0].metadata === "object" &&
         !Array.isArray(eventRows[0].metadata)
@@ -109,13 +127,23 @@ export async function GET() {
     }
 
     const responseQuiz = quiz
-      ? {
-          ...quiz,
-          questions: quiz.questions.map((q) => ({
-            ...q,
-            answer: stripStructuredMeta(q.answer),
-          })),
-        }
+      ? (() => {
+          const artifacts =
+            getQuizArtifactsFromGenerationMetadata(eventMeta) ||
+            buildQuizArtifactsFromPersistedQuiz(quiz);
+          return {
+            ...quiz,
+            questions: artifacts.questions.map((question) => ({
+              id: question.id,
+              question: question.question,
+              options: question.options,
+              answer: question.answer,
+              explanation: question.explanation ?? null,
+              hint: question.hint ?? null,
+              quizId: quiz.id,
+            })),
+          };
+        })()
       : null;
 
     return NextResponse.json({
@@ -129,6 +157,8 @@ export async function GET() {
             title: quiz.title,
             createdAt: quiz.createdAt,
             questionCount: quiz.questions.length,
+            latestAssignment:
+              quiz.assignments[0] ?? null,
           }
         : null,
     });

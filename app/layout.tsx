@@ -18,10 +18,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.quizmintai.com"),
-  title: "QuizMint | AI Quiz and Lesson Plan Generator",
+  title: "QuizMintAI | Teacher Workflow for Quizzes and Lesson Plans",
   icons: "/favicon.ico",
   description:
-    "Turn text, documents, and lessons into interactive quizzes and structured lesson plans instantly using AI.",
+    "Use QuizMintAI to generate quizzes and lesson plans, assign class work, track results, and support teacher workflow from planning to follow-up.",
 };
 
 export default function RootLayout({

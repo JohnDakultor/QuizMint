@@ -1,285 +1,4 @@
-// "use client";
-
-// import { useState, useEffect, useRef } from "react";
-// import {
-//   Card,
-//   CardHeader,
-//   CardTitle,
-//   CardContent,
-// } from "@/components/ui/card";
-// import { Button } from "@/components/ui/button";
-// import { Input } from "@/components/ui/input";
-// import { Badge } from "@/components/ui/badge";
-// import {
-//   Brain,
-//   BookOpenCheck,
-//   Zap,
-//   ArrowRight,
-//   Copy,
-//   FileDown,
-//   Sparkles,
-// } from "lucide-react";
-// import jsPDF from "jspdf";
-// import Link from "next/link";
-
-// /* =======================
-//    CORE LOGIC — UNCHANGED
-// ======================= */
-
-// export default function Home() {
-//   const [text, setText] = useState("");
-//   const [quiz, setQuiz] = useState<any | null>(null);
-//   const [loading, setLoading] = useState(false);
-//   const [usageLoaded, setUsageLoaded] = useState(false);
-//   const [usage, setUsage] = useState({
-//     count: 0,
-//     remaining: 3,
-//     nextFreeAt: null as string | null,
-//   });
-//   const [countdown, setCountdown] = useState("");
-//   const quizRef = useRef<HTMLDivElement>(null);
-
-//   useEffect(() => {
-//     fetch("/api/public-generate-quiz")
-//       .then((r) => r.ok && r.json())
-//       .then((d) =>
-//         setUsage({
-//           count: d.count ?? 0,
-//           remaining: d.remaining ?? 3,
-//           nextFreeAt: d.nextFreeAt ?? null,
-//         })
-//       )
-//       .finally(() => setUsageLoaded(true));
-//   }, []);
-
-//   const generateQuiz = async () => {
-//     if (!text.trim() || usage.nextFreeAt) return;
-//     setLoading(true);
-//     setQuiz(null);
-
-//     const res = await fetch("/api/public-generate-quiz", {
-//       method: "POST",
-//       headers: { "Content-Type": "application/json" },
-//       body: JSON.stringify({ text }),
-//     });
-
-//     const data = await res.json();
-//     if (res.ok) {
-//       setQuiz(data.quiz);
-//       if (data.usage) setUsage(data.usage);
-//     }
-//     setLoading(false);
-//   };
-
-//   const handleCopy = async () => {
-//     if (!quiz) return;
-//     let out = `${quiz.title}\n\n${quiz.instructions}\n\n`;
-//     quiz.questions.forEach((q: any, i: number) => {
-//       out += `${i + 1}. ${q.question}\n`;
-//       q.options.forEach((o: string, j: number) => {
-//         out += `   ${String.fromCharCode(97 + j)}) ${o}\n`;
-//       });
-//       out += `   Answer: ${q.answer}\n\n`;
-//     });
-//     await navigator.clipboard.writeText(out);
-//   };
-
-//   const handleDownloadPDF = () => {
-//     if (!quiz) return;
-//     const pdf = new jsPDF();
-//     let y = 20;
-//     pdf.text(quiz.title, 10, y);
-//     y += 10;
-//     quiz.questions.forEach((q: any, i: number) => {
-//       pdf.text(`${i + 1}. ${q.question}`, 10, y);
-//       y += 8;
-//       q.options.forEach((o: string) => {
-//         pdf.text(`- ${o}`, 15, y);
-//         y += 6;
-//       });
-//       y += 4;
-//     });
-//     pdf.save("QuizMintAI.pdf");
-//   };
-
-//   /* =======================
-//      UI STARTS HERE
-// ======================= */
-
-//   return (
-//     <div className="relative overflow-hidden">
-
-//       {/* ===== BACKGROUND LAYERS (PARALLAX FEEL) ===== */}
-//       <div className="absolute inset-0 -z-10">
-//         <div className="absolute top-[-10%] left-[-10%] h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-3xl animate-pulse" />
-//         <div className="absolute top-[20%] right-[-10%] h-[400px] w-[400px] rounded-full bg-cyan-400/20 blur-3xl animate-pulse delay-700" />
-//         <div className="absolute bottom-[-20%] left-[20%] h-[600px] w-[600px] rounded-full bg-purple-500/20 blur-3xl animate-pulse delay-1000" />
-//       </div>
-
-//       {/* ===== HERO (PARALLAX STYLE) ===== */}
-//       <section className="relative min-h-screen flex items-center justify-center px-6">
-//         <div className="max-w-7xl w-full grid lg:grid-cols-2 gap-12 items-center">
-
-//           {/* LEFT TEXT */}
-//           <div className="relative z-10">
-//             <Badge className="mb-6">
-//               <Sparkles className="h-4 w-4 mr-1 inline" />
-//               AI Quiz Generator
-//             </Badge>
-
-//             <h1 className="text-5xl md:text-7xl font-bold leading-tight mb-6">
-//               Turn content into
-//               <span className="block bg-linear-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent">
-//                 instant quizzes
-//               </span>
-//             </h1>
-
-//             <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-xl mb-10">
-//               Paste lessons, articles, or notes. QuizMintAI generates
-//               structured quizzes instantly — clean, accurate, and ready to share.
-//             </p>
-
-//             <form
-//               onSubmit={(e) => {
-//                 e.preventDefault();
-//                 generateQuiz();
-//               }}
-//               className="flex gap-3 max-w-xl"
-//             >
-//               <Input
-//                 className="h-12 text-base"
-//                 placeholder="Paste your content here…"
-//                 value={text}
-//                 onChange={(e) => setText(e.target.value)}
-//                 disabled={loading || !!usage.nextFreeAt}
-//               />
-//               <Button className="h-12 px-6">
-//                 {loading ? "Generating…" : "Generate"}
-//                 <ArrowRight className="ml-2 h-4 w-4" />
-//               </Button>
-//             </form>
-
-//             <p className="mt-4 text-sm text-zinc-500">
-//               Free • No signup • {usage.count}/3 used
-//             </p>
-//           </div>
-
-//           {/* RIGHT FLOATING CARDS */}
-//           <div className="relative h-[500px] hidden lg:block">
-//             {[
-//               { y: "top-0", x: "left-0", scale: "scale-100" },
-//               { y: "top-24", x: "left-24", scale: "scale-95" },
-//               { y: "top-52", x: "left-12", scale: "scale-90" },
-//             ].map((pos, i) => (
-//               <Card
-//                 key={i}
-//                 className={`absolute ${pos.y} ${pos.x} ${pos.scale}
-//                   w-[320px] rounded-2xl backdrop-blur bg-white/70
-//                   dark:bg-zinc-900/70 shadow-xl
-//                   transition-transform duration-500
-//                   hover:-translate-y-3 hover:scale-105`}
-//               >
-//                 <CardHeader>
-//                   <CardTitle className="text-base">
-//                     Sample Question
-//                   </CardTitle>
-//                 </CardHeader>
-//                 <CardContent className="text-sm text-zinc-600 dark:text-zinc-400">
-//                   Which concept best explains photosynthesis?
-//                   <ul className="mt-2 list-disc ml-4">
-//                     <li>Cellular respiration</li>
-//                     <li className="text-green-600">Light-dependent reactions</li>
-//                     <li>Osmosis</li>
-//                   </ul>
-//                 </CardContent>
-//               </Card>
-//             ))}
-//           </div>
-//         </div>
-//       </section>
-
-//       {/* ===== FEATURES ===== */}
-//       <section className="max-w-7xl mx-auto px-6 pb-32 grid md:grid-cols-3 gap-8">
-//         {[
-//           {
-//             icon: BookOpenCheck,
-//             title: "Clean Question Design",
-//             desc: "Consistent, readable, and student-friendly output.",
-//           },
-//           {
-//             icon: Brain,
-//             title: "Context-Aware AI",
-//             desc: "Understands topic relevance and difficulty.",
-//           },
-//           {
-//             icon: Zap,
-//             title: "Instant Export",
-//             desc: "Copy or download quizzes in seconds.",
-//           },
-//         ].map((f, i) => (
-//           <Card
-//             key={i}
-//             className="group rounded-2xl border border-zinc-200/60
-//               dark:border-zinc-800/60 backdrop-blur bg-white/60
-//               dark:bg-zinc-900/60 transition-all duration-300
-//               hover:-translate-y-2 hover:shadow-2xl"
-//           >
-//             <CardHeader>
-//               <f.icon className="h-6 w-6 text-blue-600 mb-3 group-hover:scale-110 transition" />
-//               <CardTitle>{f.title}</CardTitle>
-//             </CardHeader>
-//             <CardContent className="text-zinc-600 dark:text-zinc-400">
-//               {f.desc}
-//             </CardContent>
-//           </Card>
-//         ))}
-//       </section>
-
-//       {/* ===== QUIZ OUTPUT (UNCHANGED) ===== */}
-//       {quiz && (
-//         <section className="max-w-4xl mx-auto px-6 pb-32">
-//           <Card className="rounded-2xl shadow-2xl">
-//             <CardHeader className="flex justify-between">
-//               <CardTitle>Generated Quiz</CardTitle>
-//               <div className="flex gap-2">
-//                 <Button size="sm" variant="outline" onClick={handleCopy}>
-//                   <Copy className="h-4 w-4 mr-1" /> Copy
-//                 </Button>
-//                 <Button size="sm" onClick={handleDownloadPDF}>
-//                   <FileDown className="h-4 w-4 mr-1" /> PDF
-//                 </Button>
-//               </div>
-//             </CardHeader>
-
-//             <CardContent ref={quizRef} className="space-y-6">
-//               {quiz.questions.map((q: any, i: number) => (
-//                 <div
-//                   key={i}
-//                   className="rounded-xl border p-5 bg-white dark:bg-zinc-900"
-//                 >
-//                   <p className="font-semibold mb-2">
-//                     {i + 1}. {q.question}
-//                   </p>
-//                   <ul className="ml-5 list-disc space-y-1">
-//                     {q.options.map((o: string, j: number) => (
-//                       <li key={j}>{o}</li>
-//                     ))}
-//                   </ul>
-//                   <p className="mt-3 text-sm text-green-600">
-//                     Answer: {q.answer}
-//                   </p>
-//                 </div>
-//               ))}
-//             </CardContent>
-//           </Card>
-//         </section>
-//       )}
-//     </div>
-//   );
-// }
-
 "use client";
-
 import { useState, useEffect, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -303,13 +22,60 @@ import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useRecaptcha } from "@/components/ui/use-recaptcha";
 
+type PublicQuizQuestion = {
+  question: string;
+  options: string[];
+  answer: string;
+};
+
+type PublicQuiz = {
+  title: string;
+  instructions?: string;
+  questions: PublicQuizQuestion[];
+};
+
+type Testimonial = {
+  name: string;
+  role: string;
+  text: string;
+  avatar: string;
+};
+
+function TestimonialAvatar({
+  name,
+  avatar,
+}: {
+  name: string;
+  avatar?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const initial = name.trim().charAt(0).toUpperCase();
+
+  if (!avatar || failed) {
+    return (
+      <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/70 bg-linear-to-br from-blue-500 to-cyan-500 text-lg font-bold text-white shadow-md">
+        {initial}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={avatar}
+      alt={name}
+      className="h-14 w-14 rounded-full border border-white/70 object-cover shadow-md"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 /* =======================
    CORE LOGIC — UNCHANGED
 ======================= */
 
 export default function Home() {
   const [text, setText] = useState("");
-  const [quiz, setQuiz] = useState<any | null>(null);
+  const [quiz, setQuiz] = useState<PublicQuiz | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [usage, setUsage] = useState({
@@ -403,7 +169,7 @@ export default function Home() {
 
     const data = await res.json();
     if (res.ok && data.quiz) {
-      setQuiz(data.quiz);
+      setQuiz(data.quiz as PublicQuiz);
       if (data.usage) setUsage(data.usage);
       if (data.usage?.count >= 3) setShowModal(true); // also show modal if hitting limit
     } else {
@@ -416,9 +182,9 @@ export default function Home() {
   const handleCopy = async () => {
     if (!quiz) return;
     let out = `${quiz.title}\n\n`;
-    quiz.questions.forEach((q: any, i: number) => {
+    quiz.questions.forEach((q, i) => {
       out += `${i + 1}. ${q.question}\n`;
-      q.options.forEach((o: string) => (out += `- ${o}\n`));
+      q.options.forEach((o) => (out += `- ${o}\n`));
       out += `Answer: ${q.answer}\n\n`;
     });
     await navigator.clipboard.writeText(out);
@@ -430,10 +196,10 @@ export default function Home() {
     let y = 20;
     pdf.text(quiz.title, 10, y);
     y += 10;
-    quiz.questions.forEach((q: any, i: number) => {
+    quiz.questions.forEach((q, i) => {
       pdf.text(`${i + 1}. ${q.question}`, 10, y);
       y += 8;
-      q.options.forEach((o: string) => {
+      q.options.forEach((o) => {
         pdf.text(`- ${o}`, 15, y);
         y += 6;
       });
@@ -446,21 +212,54 @@ export default function Home() {
      UI
 ======================= */
 
-  const testimonials = [
+  const testimonials: Testimonial[] = [
     {
       name: "Sarah M.",
       role: "High School Teacher",
       text: "This saves me hours every week. My quizzes are cleaner and smarter.",
+      avatar: "https://i.pravatar.cc/160?img=47",
     },
     {
       name: "Ahmed R.",
       role: "University Student",
       text: "I turn lecture notes into practice exams instantly.",
+      avatar: "https://i.pravatar.cc/160?img=12",
     },
     {
       name: "James K.",
       role: "Corporate Trainer",
       text: "Perfect for onboarding and internal assessments.",
+      avatar: "https://i.pravatar.cc/160?img=59",
+    },
+    {
+      name: "Maria L.",
+      role: "Middle School Science Teacher",
+      text: "I can build a quiz, assign it, and plan the next lesson without losing momentum.",
+      avatar: "https://i.pravatar.cc/160?img=32",
+    },
+    {
+      name: "Omar H.",
+      role: "Private Tutor",
+      text: "The follow-up quizzes make it easier to target exactly what each student still struggles with.",
+      avatar: "https://i.pravatar.cc/160?img=15",
+    },
+    {
+      name: "Nina P.",
+      role: "Curriculum Coordinator",
+      text: "The lesson-plan workflow helps our team prepare faster and stay more consistent across sections.",
+      avatar: "https://i.pravatar.cc/160?img=5",
+    },
+    {
+      name: "Daniel T.",
+      role: "Review Center Instructor",
+      text: "It cuts down the time I spend rebuilding materials for every new batch of learners.",
+      avatar: "https://i.pravatar.cc/160?img=54",
+    },
+    {
+      name: "Leila S.",
+      role: "Elementary Teacher",
+      text: "I like that I can start with a quick draft and still keep everything organized for class later.",
+      avatar: "https://i.pravatar.cc/160?img=41",
     },
   ];
 
@@ -471,7 +270,7 @@ export default function Home() {
       4000,
     );
     return () => clearInterval(i);
-  }, []);
+  }, [testimonials.length]);
 
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
@@ -500,7 +299,7 @@ export default function Home() {
             >
               <Badge className="mb-6 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800">
                 <Sparkles className="h-4 w-4 mr-1" />
-                AI Quiz + Lesson Plan Generator
+                AI Teacher Workflow Platform
               </Badge>
             </motion.div>
 
@@ -510,10 +309,10 @@ export default function Home() {
               transition={{ duration: 0.8, delay: 0.2 }}
               className="text-5xl md:text-7xl font-bold mb-6 leading-tight"
             >
-              <span className="sr-only">QuizMintAI - AI Quiz Generator:</span>
-              Turn content into
+              <span className="sr-only">QuizMintAI - teacher workflow platform:</span>
+              Run your classroom
               <span className="block bg-linear-to-r from-blue-600 via-cyan-500 to-blue-600 bg-clip-text text-transparent">
-                instant quizzes
+                from plan to follow-up
               </span>
             </motion.h1>
 
@@ -523,8 +322,7 @@ export default function Home() {
               transition={{ duration: 0.8, delay: 0.4 }}
               className="text-lg text-zinc-600 dark:text-zinc-400 max-w-xl mb-8"
             >
-              Paste lessons, articles, or notes. QuizMintAI instantly generates
-              structured, ready-to-use quizzes and lesson plans with AI precision.
+              Generate quizzes and lesson plans, assign them to classes, track student results, and launch reteach follow-up from one teacher workflow.
             </motion.p>
 
             <motion.form
@@ -539,7 +337,7 @@ export default function Home() {
             >
               <Input
                 className="h-14 text-base flex-1 border-2 focus:border-blue-500 transition-all"
-                placeholder="Paste your content here…"
+                placeholder="Paste a topic, lesson text, or class material to start a quiz..."
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 disabled={loading}
@@ -555,12 +353,20 @@ export default function Home() {
                   </>
                 ) : (
                   <>
-                    Generate
+                    Start With a Quiz
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </>
                 )}
               </Button>
             </motion.form>
+            <motion.p
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.7 }}
+              className="mt-3 max-w-xl text-sm text-zinc-500 dark:text-zinc-400"
+            >
+              Try the public quiz demo first, then sign in to move into assignments, results, follow-up, and the full teacher workflow.
+            </motion.p>
             {error && (
               <div className="mt-3 text-sm text-red-500">{error}</div>
             )}
@@ -580,9 +386,18 @@ export default function Home() {
                 No signup
               </span>
               <span className="font-medium text-blue-600">
-                {usage.remaining}/3 remaining
+                {usage.remaining}/3 public demos left
               </span>
             </motion.div>
+
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.9 }}
+              className="mt-2 text-xs text-zinc-500 dark:text-zinc-400"
+            >
+              Public demo access is separate from the signed-in free plan. Free accounts get 100 quiz points that recharge every 12 hours.
+            </motion.p>
 
             <AnimatePresence>
               {timeLeft && (
@@ -593,7 +408,7 @@ export default function Home() {
                   className="mt-3 text-sm text-red-500 flex items-center gap-2"
                 >
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Next quiz available in: {timeLeft}
+                  Next public demo available in: {timeLeft}
                 </motion.p>
               )}
             </AnimatePresence>
@@ -705,10 +520,10 @@ export default function Home() {
             id="features-heading"
             className="text-4xl md:text-5xl font-bold mb-4"
           >
-            Why Choose QuizMintAI For Quizzes And Lesson Plans?
+            Why Teachers Use QuizMintAI Beyond Generation
           </h2>
           <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto">
-            Everything you need to create quizzes and lesson plans quickly
+            Move from planning to assignments, results, and intervention without leaving one platform.
           </p>
         </motion.div>
 
@@ -716,20 +531,20 @@ export default function Home() {
           {[
             {
               icon: BookOpenCheck,
-              title: "Instant Quiz Creation",
-              desc: "Generate structured quizzes from any text in seconds with intelligent formatting.",
+              title: "Generate And Assign",
+              desc: "Create quizzes and lesson plans, then turn them into class-linked work instead of one-off outputs.",
               gradient: "from-blue-500 to-cyan-500",
             },
             {
               icon: Brain,
-              title: "Context-Aware AI",
-              desc: "Understands topic relevance, difficulty, and creates meaningful questions automatically.",
+              title: "Results-Aware Follow-Up",
+              desc: "Use adaptive follow-up, intervention summaries, and reteach prompts based on real class results.",
               gradient: "from-purple-500 to-pink-500",
             },
             {
               icon: Zap,
-              title: "Lesson Plans + Export",
-              desc: "Generate classroom-ready lesson plans and export as PDF, DOCX, or PPTX.",
+              title: "Classes, Results, And Workflow",
+              desc: "Manage classes, roster, reminders, results, library reuse, and workspace actions in one place.",
               gradient: "from-orange-500 to-red-500",
             },
           ].map((f, i) => (
@@ -800,9 +615,10 @@ export default function Home() {
                   {testimonials[activeTestimonial].text}
                 </p>
                 <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-full bg-linear-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold text-lg">
-                    {testimonials[activeTestimonial].name[0]}
-                  </div>
+                  <TestimonialAvatar
+                    name={testimonials[activeTestimonial].name}
+                    avatar={testimonials[activeTestimonial].avatar}
+                  />
                   <div>
                     <div className="font-semibold text-lg">
                       {testimonials[activeTestimonial].name}
@@ -846,40 +662,61 @@ export default function Home() {
             id="use-cases-heading"
             className="text-3xl md:text-4xl font-bold text-center mb-4"
           >
-            Explore By Subject and Intent
+            Explore QuizMintAI By Workflow, Subject, and Use Case
           </h2>
           <p className="text-center text-zinc-600 dark:text-zinc-400 mb-10">
-            Internal guides for teachers and students looking for topic-specific quiz and lesson workflows.
+            Start with the workflow pages for the full teaching flow, then open subject and generator pages for more specific classroom needs.
           </p>
         </motion.div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { href: "/science-quiz-generator", label: "Science Quiz Generator" },
-            { href: "/math-quiz-generator", label: "Math Quiz Generator" },
-            { href: "/history-quiz-generator", label: "History Quiz Generator" },
-            { href: "/english-quiz-generator", label: "English Quiz Generator" },
-            { href: "/biology-quiz-generator", label: "Biology Quiz Generator" },
-            { href: "/chemistry-quiz-generator", label: "Chemistry Quiz Generator" },
-            { href: "/physics-quiz-generator", label: "Physics Quiz Generator" },
-            { href: "/exam-prep-quiz-generator", label: "Exam Prep Quiz Generator" },
-            {
-              href: "/lesson-plan-generator-for-teachers",
-              label: "Lesson Plan Generator for Teachers",
-            },
-            {
-              href: "/interactive-quiz-maker-for-students",
-              label: "Interactive Quiz Maker for Students",
-            },
-          ].map((page) => (
-            <Link
-              key={page.href}
-              href={page.href}
-              className="rounded-xl border border-zinc-200/70 dark:border-zinc-700/60 bg-white/70 dark:bg-zinc-900/70 px-4 py-3 text-sm font-medium text-zinc-800 dark:text-zinc-100 transition hover:border-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
-            >
-              {page.label}
-            </Link>
-          ))}
+        <div className="grid gap-8 lg:grid-cols-2">
+          <Card className="rounded-2xl border border-blue-200/70 bg-white/70 p-6 backdrop-blur-xl dark:border-zinc-700/60 dark:bg-zinc-900/70">
+            <CardHeader className="px-0 pt-0">
+              <CardTitle className="text-xl">Teaching Workflow Pages</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 px-0 pb-0 sm:grid-cols-2">
+              {[
+                { href: "/classroom-quiz-workflow", label: "Classroom Quiz Workflow" },
+                { href: "/assignment-tracking-for-teachers", label: "Assignment Tracking" },
+                { href: "/quiz-results-and-reteach-workflow", label: "Results and Reteach" },
+                { href: "/teacher-workspace-for-quizzes-and-lessons", label: "Teacher Workspace" },
+                { href: "/classroom-intervention-workflow", label: "Intervention Workflow" },
+                { href: "/student-roster-and-reminders", label: "Roster and Reminders" },
+              ].map((page) => (
+                <Link
+                  key={page.href}
+                  href={page.href}
+                  className="rounded-xl border border-blue-200/80 bg-white px-4 py-3 text-sm font-medium text-zinc-800 transition hover:border-blue-500 hover:text-blue-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:text-blue-300"
+                >
+                  {page.label}
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl border border-cyan-200/70 bg-white/70 p-6 backdrop-blur-xl dark:border-zinc-700/60 dark:bg-zinc-900/70">
+            <CardHeader className="px-0 pt-0">
+              <CardTitle className="text-xl">Generator And Subject Pages</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 px-0 pb-0 sm:grid-cols-2">
+              {[
+                { href: "/quiz-generator-for-teachers", label: "Quiz Generator for Teachers" },
+                { href: "/lesson-plan-generator-for-teachers", label: "Lesson Plan Generator" },
+                { href: "/science-quiz-generator", label: "Science Quiz Generator" },
+                { href: "/math-quiz-generator", label: "Math Quiz Generator" },
+                { href: "/history-quiz-generator", label: "History Quiz Generator" },
+                { href: "/resources", label: "All Resource Guides" },
+              ].map((page) => (
+                <Link
+                  key={page.href}
+                  href={page.href}
+                  className="rounded-xl border border-zinc-200/70 bg-white px-4 py-3 text-sm font-medium text-zinc-800 transition hover:border-cyan-400 hover:text-cyan-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:text-cyan-300"
+                >
+                  {page.label}
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       </section>
 
@@ -895,7 +732,7 @@ export default function Home() {
             Pricing
           </h2>
           <p className="text-lg text-zinc-600 dark:text-zinc-400 text-center mb-16">
-            Choose the plan that fits your needs
+            Choose the plan that fits your classroom workflow
           </p>
         </motion.div>
 
@@ -906,37 +743,42 @@ export default function Home() {
               price: "$0",
               period: "/forever",
               features: [
-                "3 quizzes per 3 hours",
-                "Basic AI generation",
-                "Export to PDF",
-                "Copy to clipboard",
+                "100 quiz points every 12 hours",
+                "Public demo access without signup",
+                "Limited saved assets",
+                "Basic history",
+                "No advanced analytics",
+                "No premium export formats",
+                "No adaptive workflow intelligence",
               ],
               popular: false,
             },
             {
-              title: "Pro",
-              price: "$5",
+              title: "Teacher Pro",
+              price: "$15",
               period: "/month",
               features: [
-                "Unlimited quizzes",
-                "AI difficulty control",
-                "Export to PDF",
-                "Priority support",
-                "Custom templates",
+                "Full quiz generation",
+                "Full lesson-plan generation",
+                "Saved library",
+                "Classes and assignments",
+                "Standard teacher workflow",
+                "Basic reuse and duplication",
+                "Normal support",
               ],
               popular: true,
             },
             {
-              title: "Premium",
-              price: "$15",
+              title: "Teacher Premium",
+              price: "$39",
               period: "/month",
               features: [
-                "Everything in Pro",
-                "Adaptive learning control",
-                "Export to multiple formats",
-                "YouTube URL support",
                 "Advanced analytics",
-                "Performance tracking",
+                "PDF, CSV, PPTX, and premium exports",
+                "Adaptive follow-up recommendations",
+                "Premium intervention insights and follow-up review",
+                "Priority queue handling for heavy generation jobs",
+                "Richer history and reusable teaching assets",
               ],
               popular: false,
             },
@@ -1028,7 +870,7 @@ export default function Home() {
               },
               {
                 q: "How does the free plan work?",
-                a: "Generate up to 3 quizzes every 3 hours, completely free. No credit card required, no hidden fees.",
+                a: "Public visitors can try a few no-signup demo generations on the landing page. Signed-in free accounts get 100 quiz points that recharge every 12 hours, with prompt quizzes using 25 points each.",
               },
               {
                 q: "Can I export quizzes?",
@@ -1097,7 +939,7 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              {quiz.questions.map((q: any, i: number) => (
+              {quiz.questions.map((q, i) => (
                 <div
                   key={i}
                   className="rounded-xl border p-5 bg-white dark:bg-zinc-900"
@@ -1106,7 +948,7 @@ export default function Home() {
                     {i + 1}. {q.question}
                   </p>
                   <ul className="ml-5 list-disc">
-                    {q.options.map((o: string, j: number) => (
+                    {q.options.map((o, j) => (
                       <li key={j}>{o}</li>
                     ))}
                   </ul>
@@ -1125,18 +967,17 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-zinc-900 rounded-2xl p-8 max-w-md w-full text-center shadow-xl">
             <h2 className="text-2xl font-bold mb-4">
-              Free quiz limit reached!
+              Public demo limit reached
             </h2>
             <p className="text-zinc-600 dark:text-zinc-400 mb-6">
-              You've used all 3 free quizzes. Upgrade your plan to continue
-              generating quizzes.
+              You have used the public no-signup quiz demos for now. Create a free account to get 100 quiz points that recharge every 12 hours, or upgrade for more workflow access.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <a
                 href="/sign-up"
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
               >
-                Sign Up
+                Create Free Account
               </a>
               <a
                 href="#pricing"

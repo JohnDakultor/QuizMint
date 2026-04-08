@@ -12,7 +12,8 @@ export default function PublicLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isStudentQuizScreen = pathname?.startsWith("/quiz/") ?? false;
+  const isStudentQuizScreen =
+    pathname?.startsWith("/quiz/") || pathname?.startsWith("/assignment/") || false;
 
   if (isStudentQuizScreen) {
     return <>{children}</>;

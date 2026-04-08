@@ -6,15 +6,19 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
+  ChevronDown,
   ChevronLeft,
   CircleHelp,
   CreditCard,
   Ellipsis,
+  GraduationCap,
   Home,
+  Library,
   LogOut,
   Menu,
   Presentation,
   Sparkles,
+  Workflow,
   User,
 } from "lucide-react";
 import ThemeToggle from "@/components/ui/theme-toggle";
@@ -24,6 +28,7 @@ export default function Navigation() {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [productsOpen, setProductsOpen] = useState(true);
   const [user, setUser] = useState<{
     username: string;
     image?: string | null;
@@ -35,6 +40,16 @@ export default function Navigation() {
       ? "account"
       : pathname === "/home"
       ? "home-dashboard"
+      : pathname === "/workspace"
+      ? "workspace"
+      : pathname === "/classes"
+      ? "classes-workflow"
+      : pathname.startsWith("/classes/")
+      ? "class-detail-workflow"
+      : pathname === "/library"
+      ? "library"
+      : pathname.startsWith("/assignments/")
+      ? "assignment-workflow"
       : pathname === "/generate-quiz"
       ? "home-quiz"
       : pathname === "/lessonPlan"
@@ -57,25 +72,45 @@ export default function Navigation() {
       .catch(console.error);
   }, []);
 
-  const tabs = [
-    { href: "/home", icon: <Home size={22} />, label: "Dashboard" },
-    { href: "/generate-quiz", icon: <Sparkles size={22} />, label: "Generate Quiz" },
-    { href: "/subscription", icon: <CreditCard size={22} />, label: "Subscription" },
-    { href: "/lessonPlan", icon: <Presentation size={22} />, label: "Lesson Plan" },
-    { href: "/account", icon: <User size={22} />, label: "Account" },
+  const productTabs = [
+    { href: "/workspace", icon: <Workflow size={20} />, label: "Workspace" },
+    { href: "/classes", icon: <GraduationCap size={20} />, label: "Classes" },
+    { href: "/library", icon: <Library size={20} />, label: "Library" },
+    { href: "/generate-quiz", icon: <Sparkles size={20} />, label: "Quiz Generator" },
+    { href: "/lessonPlan", icon: <Presentation size={20} />, label: "Lesson Planner" },
   ];
-  const mobilePrimaryTabs = tabs.filter((t) =>
-    ["/home", "/generate-quiz", "/lessonPlan", "/account"].includes(t.href),
+  const tabs = [
+    { href: "/home", icon: <Home size={19} />, label: "Dashboard" },
+    { href: "/subscription", icon: <CreditCard size={19} />, label: "Subscription" },
+    { href: "/account", icon: <User size={19} />, label: "Account" },
+  ];
+  const mobilePrimaryTabs = [
+    { href: "/home", icon: <Home size={22} />, label: "Dashboard" },
+    { href: "/workspace", icon: <Workflow size={22} />, label: "Workspace" },
+    { href: "/classes", icon: <GraduationCap size={22} />, label: "Classes" },
+    { href: "/generate-quiz", icon: <Sparkles size={22} />, label: "Quiz" },
+    { href: "/lessonPlan", icon: <Presentation size={22} />, label: "Lesson" },
+  ];
+  const productsActive = productTabs.some(
+    (tab) => pathname === tab.href || pathname.startsWith(`${tab.href}/`),
   );
 
   useEffect(() => {
-    const routesToWarm = [...new Set([...tabs.map((tab) => tab.href), "/support"])];
+    const routesToWarm = [
+      ...new Set([...tabs.map((tab) => tab.href), ...productTabs.map((tab) => tab.href), "/support"]),
+    ];
     routesToWarm.forEach((href) => {
       if (href !== pathname) {
         router.prefetch(href);
       }
     });
   }, [pathname, router]);
+
+  useEffect(() => {
+    if (productsActive) {
+      setProductsOpen(true);
+    }
+  }, [productsActive]);
 
   return (
     <>
@@ -130,11 +165,60 @@ export default function Navigation() {
               <SidebarItem
                 key={tab.href}
                 {...tab}
-                active={pathname === tab.href}
+                active={pathname === tab.href || pathname.startsWith(`${tab.href}/`)}
                 collapsed={collapsed}
                 onNavigate={() => router.prefetch(tab.href)}
               />
             ))}
+            {collapsed ? (
+              productTabs.map((tab) => (
+                <SidebarItem
+                  key={tab.href}
+                  href={tab.href}
+                  icon={tab.icon}
+                  label={tab.label}
+                  active={pathname === tab.href || pathname.startsWith(`${tab.href}/`)}
+                  collapsed
+                  onNavigate={() => router.prefetch(tab.href)}
+                />
+              ))
+            ) : (
+              <div className="rounded-xl border border-white/10/0 bg-transparent p-1">
+                <button
+                  type="button"
+                  onClick={() => setProductsOpen((current) => !current)}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-3 text-left transition ${
+                    productsActive
+                      ? "bg-white/12 text-white"
+                      : "text-white/95 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Workflow size={19} />
+                    <span className="text-[13px] font-medium">Teaching Workspace</span>
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    className={`transition-transform ${productsOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {productsOpen && (
+                  <div className="mt-1 space-y-1">
+                    {productTabs.map((tab) => (
+                      <SidebarItem
+                        key={tab.href}
+                        href={tab.href}
+                        icon={tab.icon}
+                        label={tab.label}
+                        active={pathname === tab.href || pathname.startsWith(`${tab.href}/`)}
+                        inset
+                        onNavigate={() => router.prefetch(tab.href)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
 
           <button
@@ -144,16 +228,16 @@ export default function Navigation() {
             }}
             className={`flex items-center rounded-lg px-3 py-2 text-white/85 transition hover:bg-white/10 hover:text-white ${collapsed ? "justify-center" : "gap-3"}`}
           >
-            <CircleHelp size={22} />
-            {!collapsed && <span className="text-sm">Help / Tour</span>}
+            <CircleHelp size={19} />
+            {!collapsed && <span className="text-[13px]">Help / Tour</span>}
           </button>
 
           <button
             onClick={() => signOut()}
             className={`mt-4 flex items-center rounded-lg px-3 py-2 text-rose-300 transition hover:bg-rose-500/10 hover:text-rose-200 ${collapsed ? "justify-center" : "gap-3"}`}
           >
-            <LogOut size={22} />
-            {!collapsed && <span className="text-sm">Logout</span>}
+            <LogOut size={19} />
+            {!collapsed && <span className="text-[13px]">Logout</span>}
           </button>
         </div>
       </aside>
@@ -166,7 +250,7 @@ export default function Navigation() {
           <MobileIcon
             key={tab.href}
             {...tab}
-            active={pathname === tab.href}
+            active={pathname === tab.href || pathname.startsWith(`${tab.href}/`)}
             onNavigate={() => {
               router.prefetch(tab.href);
               setMobileMenuOpen(false);
@@ -212,6 +296,28 @@ export default function Navigation() {
               <CreditCard size={16} />
               Subscription
             </Link>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/80 px-2 py-2">
+              <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Teaching Workspace
+              </p>
+              {productTabs.map((tab) => (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:bg-slate-800"
+                >
+                  {tab.icon}
+                  {tab.label}
+                </Link>
+              ))}
+            </div>
+            <Link
+              href="/account"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:bg-slate-800"
+            >
+              <User size={16} />
+              Account
+            </Link>
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
@@ -247,19 +353,24 @@ type NavItemProps = {
   label: string;
   active: boolean;
   collapsed?: boolean;
+  inset?: boolean;
   onNavigate?: () => void;
 };
 
-function SidebarItem({ href, icon, label, active, collapsed, onNavigate }: NavItemProps) {
+function SidebarItem({ href, icon, label, active, collapsed, inset, onNavigate }: NavItemProps) {
   return (
     <Link
       href={href}
       onMouseEnter={onNavigate}
       onFocus={onNavigate}
-      className={`flex items-center rounded-lg px-3 py-3 transition ${collapsed ? "justify-center" : "gap-3"} ${active ? "bg-white text-slate-900 shadow-sm" : "text-white/95 hover:bg-white/15 hover:text-white"}`}
+      className={`flex items-center rounded-lg px-2.5 py-2.5 transition ${
+        collapsed ? "justify-center" : "gap-3"
+      } ${inset && !collapsed ? "ml-2" : ""} ${
+        active ? "bg-white/12 text-white" : "text-white/95 hover:bg-white/10 hover:text-white"
+      }`}
     >
       {icon}
-      {!collapsed && <span className="text-sm">{label}</span>}
+      {!collapsed && <span className="text-[13px]">{label}</span>}
     </Link>
   );
 }

@@ -24,6 +24,10 @@ type AttemptDetail = {
 type AttemptRow = {
   quizId: number;
   quizTitle: string;
+  assignmentId: string | null;
+  assignmentTitle: string | null;
+  classId: string | null;
+  className: string | null;
   id: string;
   studentName: string | null;
   studentEmail: string | null;
@@ -63,6 +67,10 @@ export async function GET(req: NextRequest) {
         SELECT
           s."quizId",
           q."title" AS "quizTitle",
+          s."assignmentId",
+          a."title" AS "assignmentTitle",
+          c."id" AS "classId",
+          c."name" AS "className",
           s."id",
           s."studentName",
           s."studentEmail",
@@ -73,6 +81,8 @@ export async function GET(req: NextRequest) {
           s."result"
         FROM "StudentQuizAttempt" s
         JOIN "Quiz" q ON q."id" = s."quizId"
+        LEFT JOIN "Assignment" a ON a."id" = s."assignmentId"
+        LEFT JOIN "Class" c ON c."id" = a."classId"
         WHERE s."quizId" = ${quizId}
         ORDER BY s."submittedAt" DESC
         LIMIT 100
@@ -82,6 +92,10 @@ export async function GET(req: NextRequest) {
         SELECT
           s."quizId",
           q."title" AS "quizTitle",
+          s."assignmentId",
+          a."title" AS "assignmentTitle",
+          c."id" AS "classId",
+          c."name" AS "className",
           s."id",
           s."studentName",
           s."studentEmail",
@@ -92,6 +106,8 @@ export async function GET(req: NextRequest) {
           s."result"
         FROM "StudentQuizAttempt" s
         JOIN "Quiz" q ON q."id" = s."quizId"
+        LEFT JOIN "Assignment" a ON a."id" = s."assignmentId"
+        LEFT JOIN "Class" c ON c."id" = a."classId"
         WHERE q."userId" = ${user.id}
         ORDER BY s."submittedAt" DESC
         LIMIT 100
@@ -105,6 +121,10 @@ export async function GET(req: NextRequest) {
       return {
         quizId: row.quizId,
         quizTitle: row.quizTitle,
+        assignmentId: row.assignmentId,
+        assignmentTitle: row.assignmentTitle,
+        classId: row.classId,
+        className: row.className,
         id: row.id,
         studentName: row.studentName,
         studentEmail: row.studentEmail,

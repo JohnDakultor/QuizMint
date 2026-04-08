@@ -8,7 +8,11 @@ export type GenerationEventType =
   | "export_failed"
   | "pause_clicked"
   | "student_quiz_submitted"
-  | "quiz_submitted";
+  | "quiz_submitted"
+  | "assignment_submitted"
+  | "assignment_shared"
+  | "assignment_roster_emailed"
+  | "assignment_missing_students_reminded";
 
 type TrackGenerationEventInput = {
   userId?: string | null;

@@ -4,7 +4,10 @@ import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { verifyQuizShareToken } from "@/lib/quiz-share";
 import { randomUUID } from "crypto";
 import { inferQuizQuestionType } from "@/lib/quiz-question-types";
-import { decodeStoredAnswer, toPublicStructure } from "@/lib/quiz-structured";
+import {
+  buildQuizArtifactsFromPersistedQuiz,
+  getQuizArtifactsFromGenerationMetadata,
+} from "@/lib/quiz-artifacts";
 
 type RouteParams = {
   params: Promise<{ token: string }>;
@@ -62,6 +65,39 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
       return apiError(410, "Quiz is no longer available", requestId);
     }
 
+    const assignment = verified.assignmentId
+      ? await prisma.assignment.findFirst({
+          where: {
+            id: verified.assignmentId,
+            quizId: quiz.id,
+          },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            availableFrom: true,
+            dueAt: true,
+            closedAt: true,
+            class: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        })
+      : null;
+
+    if (verified.assignmentId && !assignment) {
+      return apiError(410, "Assignment is no longer available", requestId);
+    }
+    if (assignment?.status === "closed" || assignment?.closedAt) {
+      return apiError(410, "Assignment is closed by the teacher", requestId);
+    }
+    if (assignment?.availableFrom && new Date(assignment.availableFrom).getTime() > Date.now()) {
+      return apiError(403, "Assignment is not available yet", requestId);
+    }
+
     const eventRows = await prisma.$queryRaw<
       Array<{ metadata: unknown; createdAt: Date }>
     >`
@@ -81,6 +117,9 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
       !Array.isArray(eventRows[0].metadata)
         ? (eventRows[0].metadata as Record<string, unknown>)
         : null;
+    const quizArtifacts =
+      getQuizArtifactsFromGenerationMetadata(eventMeta) ||
+      buildQuizArtifactsFromPersistedQuiz(quiz);
     const difficultyRaw =
       typeof eventMeta?.difficulty === "string"
         ? eventMeta.difficulty
@@ -117,7 +156,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
 
     const shuffledQuestions = verified.shuffleQuestions
       ? seededShuffle(
-          quiz.questions.map((q) => ({
+          quizArtifacts.questions.map((q) => ({
             ...q,
             options: Array.isArray(q.options)
               ? seededShuffle(q.options, `${takeSessionId}:${q.id}:opts`)
@@ -125,7 +164,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
           })),
           `${takeSessionId}:${quiz.id}:questions`
         )
-      : quiz.questions.map((q) => ({
+      : quizArtifacts.questions.map((q) => ({
           ...q,
           options: Array.isArray(q.options) ? q.options : [],
         }));
@@ -140,26 +179,33 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
           createdAt: quiz.createdAt,
           difficulty,
           questions: shuffledQuestions.map((q) => ({
-            ...(() => {
-              const decoded = decodeStoredAnswer(q.answer);
-              const structure = toPublicStructure(decoded.structure);
-              return {
-                structure,
-                questionType:
-                  structure?.type ??
-                  inferQuizQuestionType(q.question, q.options),
-              };
-            })(),
             id: q.id,
             question: q.question,
             options: q.options,
+            structure: q.structure,
+            questionType:
+              q.questionType || q.structure?.type || inferQuizQuestionType(q.question, q.options),
           })),
         },
         availability: {
           isOpen: quiz.shareSettings?.isOpen ?? true,
           expiresAt: quiz.shareSettings?.expiresAt ?? null,
           shuffleQuestions: verified.shuffleQuestions,
+          assessmentDurationMinutes:
+            verified.assessmentDurationMinutes ??
+            quiz.shareSettings?.assessmentDurationMinutes ??
+            null,
         },
+        assignment: assignment
+          ? {
+              id: assignment.id,
+              title: assignment.title,
+              status: assignment.status,
+              availableFrom: assignment.availableFrom,
+              dueAt: assignment.dueAt,
+              class: assignment.class,
+            }
+          : null,
         requestId,
       },
       {

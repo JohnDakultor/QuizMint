@@ -1,5 +1,7 @@
 // lib/lesson-plan-ppt-ai.ts
 import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
+import { resolveFallbackModelForFeature, resolveModelForFeature, resolvePaidPlanTier } from "@/lib/llm-models";
+import { buildLessonPlanPptOutline, getLessonPlanArtifacts } from "@/lib/lesson-plan-artifacts";
 
 interface LessonPlanPptInput {
   lessonPlan: any;
@@ -202,20 +204,16 @@ export async function generateLessonPlanPptAIWithMeta(
   input: LessonPlanPptInput,
   options?: { liteMode?: boolean }
 ): Promise<LessonPlanPptAIResult> {
-  const extractedContent = extractRichContentFromLessonPlan(input.lessonPlan);
-  
-  // Build comprehensive outline from ALL available data
-  const outline = {
-    topic: input.topic,
-    subject: input.subject,
-    grade: input.grade,
-    duration: input.duration,
-    title: trimText(input.lessonPlan?.title || `${input.topic} Lesson`, 100),
-    days: extractedContent,
-    objectives: safeArray<string>(input.lessonPlan?.objectives).map((o) => trimText(o, 120)),
-    materials: safeArray<string>(input.lessonPlan?.materials).map((m) => trimText(m, 80)),
-    standards: safeArray<string>(input.lessonPlan?.standards).map((s) => trimText(s, 100))
-  };
+  const storedArtifacts = getLessonPlanArtifacts(input.lessonPlan);
+  const outline =
+    storedArtifacts?.pptOutline ||
+    buildLessonPlanPptOutline({
+      lessonPlan: input.lessonPlan,
+      topic: input.topic,
+      subject: input.subject,
+      grade: input.grade,
+      duration: input.duration,
+    });
 
   // Dynamic system prompt that doesn't hardcode topics
   const systemPrompt = `You are an expert teacher creating STUDENT-FACING presentation slides for ANY TOPIC.
@@ -285,17 +283,14 @@ ${options?.liteMode ? '7. Keep output compact for low-bandwidth mode (target 6-8
 
 IMPORTANT: DO NOT make generic slides. Use the specific content provided above to create meaningful educational material about "${input.topic}".`;
 
-  const model = input.isProOrPremium
-    ? process.env.OPENROUTER_MODEL_PRO ||
-      process.env.OPENROUTER_MODEL ||
-      "tngtech/deepseek-r1t2-chimera"
-    : process.env.OPENROUTER_MODEL_FREE ||
-      process.env.OPENROUTER_MODEL ||
-      "tngtech/deepseek-r1t2-chimera";
-  const fallbackModel =
-    process.env.OPENROUTER_FALLBACK_MODEL_PPT ||
-    process.env.OPENROUTER_FALLBACK_MODEL ||
-    "openai/gpt-4o-mini";
+  const planTier = resolvePaidPlanTier(input.isProOrPremium);
+  const model = resolveModelForFeature({
+    feature: "lesson_plan_ppt",
+    plan: planTier,
+  });
+  const fallbackModel = resolveFallbackModelForFeature({
+    feature: "lesson_plan_ppt",
+  });
   const maxTokens = options?.liteMode
     ? Number(process.env.LESSON_PLAN_PPT_MAX_TOKENS_LITE || 3500)
     : Number(process.env.LESSON_PLAN_PPT_MAX_TOKENS || 8000);

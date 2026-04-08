@@ -4,14 +4,16 @@ import { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import LoadingProgress from "@/components/ui/loading-progress";
+import { LESSON_PLAN_PPTX_EXPORT_PROGRESS } from "@/lib/loading-stage-labels";
 import { SourceIcons, type SourceIcon } from "@/components/source-icons";
-import { Lightbulb } from "lucide-react";
+import { CalendarPlus, Lightbulb, Trash2 } from "lucide-react";
 import { LessonPlanExportControls } from "./export-controls";
 
 type UsageInfo = {
-  used?: number;
-  limit?: number;
-  nextReset?: string;
+  remainingPoints?: number;
+  maxPoints?: number;
+  requiredPoints?: number;
+  nextRechargeAt?: string | null;
 };
 
 type PendingExportJob = {
@@ -19,6 +21,10 @@ type PendingExportJob = {
   format: "docx" | "pdf" | "pptx";
   topic: string;
   createdAt: number;
+  status?: "queued" | "processing" | "completed" | "failed";
+  stageLabel?: string | null;
+  progress?: number | null;
+  canRetry?: boolean;
 };
 
 type LessonSourceTrace = {
@@ -48,6 +54,11 @@ type LessonPlanOutputPanelProps = {
   onDownloadDocx: () => void;
   onRetryPendingExport: () => void;
   onLoadPptxSlidesForEdit: () => void;
+  onAssignToClass: () => void;
+  onDeleteLessonPlan: () => void;
+  canAssignToClass: boolean;
+  canDeleteLessonPlan: boolean;
+  deletingLessonPlan: boolean;
   renderUsageIndicator: (usage: UsageInfo | null) => ReactNode;
   children: ReactNode;
 };
@@ -73,9 +84,15 @@ export function LessonPlanOutputPanel({
   onDownloadDocx,
   onRetryPendingExport,
   onLoadPptxSlidesForEdit,
+  onAssignToClass,
+  onDeleteLessonPlan,
+  canAssignToClass,
+  canDeleteLessonPlan,
+  deletingLessonPlan,
   renderUsageIndicator,
   children,
 }: LessonPlanOutputPanelProps) {
+  const latestPendingExport = pendingExportJobs[0] ?? null;
   return (
     <div id="lessonplan-print-root" ref={lessonPlanRef} className="bg-white dark:bg-slate-950">
       <Card className="shadow-[0_22px_60px_-26px_rgba(30,64,175,0.58)] border border-indigo-200/80 overflow-hidden rounded-2xl bg-gradient-to-b from-white to-zinc-50 dark:border-slate-700 dark:from-slate-900 dark:to-slate-950">
@@ -123,6 +140,7 @@ export function LessonPlanOutputPanel({
               downloadingPdf={downloadingPdf}
               downloadingDocx={downloadingDocx}
               pendingExportJobs={pendingExportJobs}
+              latestPendingExport={latestPendingExport}
               retryingPendingExport={retryingPendingExport}
               onDownloadPdf={onDownloadPdf}
               onDownloadDocx={onDownloadDocx}
@@ -134,10 +152,32 @@ export function LessonPlanOutputPanel({
         <CardContent className="p-6 space-y-8">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <Button
+              id="lessonplan-assign-class"
+              onClick={onAssignToClass}
+              disabled={!canAssignToClass}
+              variant="outline"
+              className="self-start sm:self-auto"
+              data-print-hidden
+            >
+              <CalendarPlus className="h-4 w-4" />
+              Assign To Class
+            </Button>
+            <Button
+              type="button"
+              onClick={onDeleteLessonPlan}
+              disabled={!canDeleteLessonPlan || deletingLessonPlan}
+              variant="destructive"
+              className="self-start sm:self-auto"
+              data-print-hidden
+            >
+              <Trash2 className="h-4 w-4" />
+              {deletingLessonPlan ? "Deleting..." : "Delete Lesson Plan"}
+            </Button>
+            <Button
               onClick={onLoadPptxSlidesForEdit}
               disabled={loadingSlides || !isPremium}
               variant="ghost"
-              className="p-0 h-auto self-start font-semibold underline underline-offset-4 text-indigo-700 hover:text-indigo-800 hover:bg-transparent dark:text-white dark:hover:text-slate-200"
+              className="h-10 self-start px-3 sm:self-auto font-semibold underline underline-offset-4 text-indigo-700 hover:text-indigo-800 hover:bg-transparent dark:text-white dark:hover:text-slate-200"
               data-print-hidden
             >
               {loadingSlides
@@ -147,10 +187,27 @@ export function LessonPlanOutputPanel({
                 : "Edit PPTX Before Download"}
             </Button>
           </div>
-          {loadingSlides && lessonPlan && (
-            <LoadingProgress label={slidesLoadingLabel} percent={slidesProgress} />
+          {downloadingPptx && (
+            <LoadingProgress
+              stage={LESSON_PLAN_PPTX_EXPORT_PROGRESS.stage}
+              label={LESSON_PLAN_PPTX_EXPORT_PROGRESS.label}
+              percent={pptxProgress}
+            />
           )}
-          {downloadingPptx && <LoadingProgress label="Generating PPTX file..." percent={pptxProgress} />}
+
+          {latestPendingExport?.stageLabel && (
+            <p
+              className="text-sm text-slate-600 dark:text-slate-300"
+              data-print-hidden
+            >
+              {latestPendingExport.stageLabel}
+              {latestPendingExport.canRetry
+                ? " You can retry this export now."
+                : latestPendingExport.progress
+                ? ` ${Math.round(latestPendingExport.progress)}%`
+                : ""}
+            </p>
+          )}
 
           <div data-pdf-keep>{isFree && renderUsageIndicator(usageInfo)}</div>
 

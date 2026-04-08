@@ -6,6 +6,11 @@ import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function PayPalSuccess() {
+  const PLAN_PRICES: Record<string, string> = {
+    pro: "15.00",
+    premium: "39.00",
+  };
+
   const searchParams = useSearchParams();
   const router = useRouter();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -91,7 +96,7 @@ export default function PayPalSuccess() {
             <h1 className="text-2xl font-bold mb-2">Payment Successful! 🎉</h1>
             <p className="text-gray-600 mb-2">{message}</p>
             <p className="text-lg font-semibold text-blue-600 mb-6">
-              ${planType === 'premium' ? '15.00' : '5.00'}/month
+              ${PLAN_PRICES[planType] || PLAN_PRICES.premium}/month
             </p>
             <p className="text-sm text-gray-500 mb-6">
               Redirecting to your account page...

@@ -23,8 +23,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     const cookieName = `quiz_take_${verified.quizId}`;
     const takeSessionId = req.cookies.get(cookieName)?.value ?? "";
+    const assessmentCookieName = `quiz_assessment_${verified.quizId}`;
     if (!takeSessionId) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { ok: true, requestId },
         {
           headers: {
@@ -33,6 +34,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           },
         }
       );
+      response.cookies.set(assessmentCookieName, "", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        expires: new Date(0),
+      });
+      return response;
     }
 
     await prisma.studentQuizTake.upsert({
@@ -49,7 +58,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       },
     });
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       { ok: true, requestId },
       {
         headers: {
@@ -58,6 +67,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         },
       }
     );
+    response.cookies.set(assessmentCookieName, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      expires: new Date(0),
+    });
+    return response;
   } catch (err) {
     logApiError(requestId, "quiz-share-expire", err);
     return apiError(500, "Failed to expire quiz session", requestId);

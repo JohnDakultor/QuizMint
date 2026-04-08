@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function MathQuizGeneratorPage() {
   return (
     <LandingTemplate
+      path="/math-quiz-generator"
       title="AI Math Quiz Generator"
       subtitle="Create practice and assessment quizzes for algebra, geometry, fractions, and equations in minutes."
       featureTitle="Math-focused features"

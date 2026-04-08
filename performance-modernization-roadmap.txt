@@ -1,0 +1,190 @@
+QuizMintAI Performance Modernization Roadmap
+
+Goal
+- speed up output across quiz generation, lesson-plan generation, file-to-PPTX, analytics, and workflow summaries
+- improve both actual latency and perceived responsiveness
+- keep model tiering optional for now so performance work can move forward without changing LLM strategy immediately
+
+Core principle
+- do not treat every request the same
+- route work by complexity, cache expensive stages, and move heavy post-processing off the main request path
+
+What is slowing the product today
+- simple and heavy requests sometimes share the same generation path
+- URL, article, and video-based generation do expensive extraction before generation
+- some flows still rely on retries and repair passes
+- export and slide-preparation steps add latency after core generation
+- several summaries are recomputed instead of reused
+- free, public, and paid models may still collapse to the same runtime model
+
+North-star architecture
+- simple prompt requests return fast
+- heavy retrieval and export work happens in async/background pipelines
+- intermediate artifacts are cached and reused
+- dashboard and intervention summaries are precomputed when possible
+- UI always shows clear stage progress so waiting feels intentional
+
+Phase 1: Quick Wins
+- keep simple prompt-only quiz generation synchronous
+- keep URL, YouTube, upload, and heavier mixed-format requests asynchronous
+- reduce unnecessary retry/repair passes for low-tier requests
+- tighten generation prompts so the first response is more likely to match the expected schema
+- show stage-based progress labels instead of a single generic loading state
+
+Expected impact
+- faster common-case response time
+- less queue pressure for users doing simple requests
+- better perceived speed
+
+Phase 2: Extraction and Retrieval Caching
+- cache normalized URL/article extraction results
+- cache YouTube transcript or parsed video-text extraction results when available
+- cache uploaded file extraction outputs
+- cache embeddings and retrieval-ready chunks
+- reuse cached source extraction across quiz, lesson-plan, and PPT flows when the same source is reused
+
+Recommended cache targets
+- cleaned article text
+- parsed transcript text
+- extracted file text
+- embedding vectors
+- retrieval chunk sets
+- source metadata such as title and canonical URL
+
+Expected impact
+- major speed improvement for repeated source-based generation
+- lower provider/API cost from repeated extraction work
+
+Phase 3: Structured Intermediate Artifacts
+- save normalized quiz schema before formatting/rendering
+- save normalized lesson-plan schema before exports
+- save PPT slide outline before PPTX rendering
+- reuse these intermediate artifacts for:
+  - PDF export
+  - DOCX export
+  - PPTX edit flow
+  - assignment/share flows
+
+Why this matters
+- many expensive flows currently regenerate or re-derive information that already exists conceptually
+- structured intermediates let downstream features become formatting steps instead of full AI steps
+
+Expected impact
+- faster exports
+- faster reopen/edit flows
+- fewer repeated LLM calls
+
+Phase 4: Async Worker Separation
+- move extraction-heavy work to async workers
+- move PPTX/DOCX/PDF generation to durable background jobs
+- move slide-preparation pipelines to background jobs
+- keep lightweight request handlers focused on validation, job creation, and status retrieval
+
+Good async candidates
+- article ingestion
+- YouTube ingestion
+- upload parsing and OCR
+- PPTX slide preparation
+- PDF and DOCX export rendering
+- analytics recompute jobs
+
+Expected impact
+- lower request-time latency
+- better scale under concurrency
+- fewer timeouts on heavy jobs
+
+Phase 5: Precomputed Workflow Summaries
+- precompute dashboard rollups
+- precompute class overviews
+- precompute intervention summaries
+- precompute assignment follow-up insights after new attempts arrive
+- store summary snapshots and refresh them incrementally
+
+Best trigger points
+- after quiz submission
+- after assignment result update
+- after lesson assignment creation
+- after adaptive follow-up generation
+
+Expected impact
+- faster class, assignment, workspace, and dashboard pages
+- less repeated compute on every page load
+
+Phase 6: Prompt and Output Optimization
+- shorten prompts where possible
+- generate large outputs in sections instead of one giant response
+- validate structure early before full retries
+- narrow mixed-item generation instructions to only requested item types
+- avoid expensive fallback chains for lower-priority traffic unless truly needed
+
+Examples
+- generate lesson-plan outline first, then details
+- generate quiz structure first, then explanations if needed
+- generate PPT slide outline before visual/content enrichment
+
+Expected impact
+- lower token usage
+- fewer repair passes
+- better consistency
+
+Phase 7: UX and Perceived Performance
+- use richer step labels:
+  - extracting source
+  - preparing draft
+  - structuring output
+  - preparing export
+- resume pending jobs automatically when users return
+- keep progress indicators near the action that triggered the work
+- show fast-fail validation errors before queueing
+- add success handoff states so users can move into the next workflow step quickly
+
+Expected impact
+- product feels faster even before backend work is complete
+- fewer confused retries and abandoned requests
+
+Phase 8: Model Tiering (Optional for now)
+- optional, not required for the rest of this roadmap
+- use separate models by tier and workload only when ready
+
+Recommended eventual model lanes
+- public: fastest / cheapest
+- free: fast low-cost
+- pro: balanced quality
+- premium: strongest quality
+- vision: separate image/file extraction models
+- analytics: separate summary model if useful
+
+Important note
+- model tiering can help cost and speed
+- but caching, staged pipelines, and background workers will likely deliver larger overall performance gains first
+
+Recommended implementation order
+1. improve sync/async routing rules
+2. cache URL/article/video/file extraction
+3. store structured intermediate artifacts
+4. move exports and slide prep into stronger async worker paths
+5. precompute dashboard and intervention summaries
+6. reduce retries and prompt bloat
+7. polish perceived-performance UX
+8. optionally apply model tiering later
+
+Suggested first engineering tasks
+- add cached source extraction layer for URL and YouTube inputs
+- persist lesson-plan slide-outline artifacts before PPTX rendering
+- move file-to-PPTX prep fully into reusable async job status flow
+- add precomputed class/assignment summary tables or snapshot fields
+- audit retry counts in quiz and lesson-plan generators and lower them for low-tier traffic
+
+Success metrics
+- median prompt-only quiz generation latency
+- median URL/article quiz generation latency
+- median lesson-plan generation latency
+- median file-to-PPTX preparation latency
+- export completion time
+- retry/fallback rate
+- cache hit rate
+- abandonment rate during loading
+
+Decision note
+- if only one area is tackled first, prioritize source extraction caching plus export/slide async separation
+- that is the best balance of speed gain, cost reduction, and scalability improvement

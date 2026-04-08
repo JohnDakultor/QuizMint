@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { BookOpen, Brain, Clock3, FileText, Sparkles } from "lucide-react";
+import { ConfirmActionModal } from "@/components/ui/confirm-action-modal";
+import { BookOpen, Brain, Clock3, FileText, Sparkles, UsersRound } from "lucide-react";
 import Tour from "@/components/ui/tour";
 import SkeletonLoading from "@/components/ui/skeleton-loading";
 
@@ -14,10 +15,14 @@ type DashboardSummary = {
   subscriptionPlan: string;
   quizUsage: number;
   lastQuizAt: string | null;
-  adResetRemaining: number;
+  freeQuizPoints: number | null;
+  freeQuizPointsMax: number | null;
+  freeQuizPointsRechargeAt: string | null;
   lastActivityAt: string | null;
   quizCount: number;
   lessonPlanCount: number;
+  classCount: number;
+  activeAssignmentCount: number;
   todayQuizCount: number;
   todayLessonPlanCount: number;
   recentQuizzes: {
@@ -31,6 +36,182 @@ type DashboardSummary = {
       } | null;
     }[];
   recentPlans: { id: string; title: string; subject: string; createdAt: string }[];
+  activeClasses: {
+    id: string;
+    name: string;
+    subject: string | null;
+    gradeLevel: string | null;
+    section: string | null;
+    _count: {
+      students: number;
+      assignments: number;
+    };
+  }[];
+  activeAssignments: {
+    id: string;
+    title: string;
+    status: string;
+    dueAt: string | null;
+    availableFrom: string | null;
+    createdAt: string;
+    class: {
+      id: string;
+      name: string;
+    };
+    quiz: {
+      id: number;
+      title: string;
+    } | null;
+    _count: {
+      attempts: number;
+    };
+  }[];
+  latestClass: {
+    id: string;
+    name: string;
+    subject: string | null;
+    gradeLevel: string | null;
+    section: string | null;
+    updatedAt: string;
+  } | null;
+  draftAssignments: {
+    id: string;
+    title: string;
+    updatedAt: string;
+    createdAt: string;
+    class: {
+      id: string;
+      name: string;
+    };
+    quiz: {
+      id: number;
+      title: string;
+    } | null;
+    lessonPlan: {
+      id: string;
+      title: string;
+    } | null;
+  }[];
+  overdueAssignments: {
+    id: string;
+    title: string;
+    status: string;
+    dueAt: string | null;
+    updatedAt: string;
+    class: {
+      id: string;
+      name: string;
+    };
+    submissionCount: number;
+    studentCount: number;
+    missingCount: number;
+  }[];
+  reminderNeededAssignments: {
+    id: string;
+    title: string;
+    status: string;
+    dueAt: string | null;
+    class: {
+      id: string;
+      name: string;
+    };
+    submissionCount: number;
+    studentCount: number;
+    missingCount: number;
+    lastRosterEmailAt: string | null;
+    lastReminderAt: string | null;
+  }[];
+  todayView: {
+    dueTodayCount: number;
+    overdueCount: number;
+    draftCount: number;
+    reminderNeededCount: number;
+    lowScoreAlertCount: number;
+    recentSubmissionCount: number;
+  };
+  recentAssignmentResults: {
+    id: string;
+    title: string;
+    dueAt: string | null;
+    class: {
+      id: string;
+      name: string;
+    };
+    submissionCount: number;
+    studentCount: number;
+    missingCount: number;
+    averageScore: number;
+  }[];
+  latestAssignment: {
+    id: string;
+    title: string;
+    status: string;
+    dueAt: string | null;
+    updatedAt: string;
+    class: {
+      id: string;
+      name: string;
+    };
+    quiz: {
+      id: number;
+      title: string;
+    } | null;
+  } | null;
+  dueSoonAssignments: {
+    id: string;
+    title: string;
+    dueAt: string | null;
+    class: {
+      id: string;
+      name: string;
+    };
+    submissionCount: number;
+  }[];
+  lowScoreAlerts: {
+    id: string;
+    title: string;
+    class: {
+      id: string;
+      name: string;
+    };
+    averageScore: number;
+    submissionCount: number;
+    studentCount: number;
+    missingCount: number;
+  }[];
+  recentSubmissions: {
+    id: string;
+    studentName: string | null;
+    studentEmail: string | null;
+    scorePercent: number;
+    submittedAt: string;
+    assignment: {
+      id: string;
+      title: string;
+      class: {
+        id: string;
+        name: string;
+      };
+    } | null;
+  }[];
+  recentWorkflowActivity: {
+    eventType: string;
+    feature: string | null;
+    status: string;
+    createdAt: string;
+    assignmentId: string | null;
+    className: string | null;
+    shareUrl: string | null;
+    requestId: string | null;
+    recipientCount: number | null;
+    error: string | null;
+  }[];
+  suggestedAction: {
+    type: string;
+    title: string;
+    description: string;
+    href: string;
+  };
 };
 
 type LastQuiz = {
@@ -51,6 +232,10 @@ type StudentAttemptSummary = {
   id: string;
   quizId: number;
   quizTitle: string;
+  assignmentId?: string | null;
+  assignmentTitle?: string | null;
+  classId?: string | null;
+  className?: string | null;
   studentName: string | null;
   studentEmail: string | null;
   scorePercent: number;
@@ -99,8 +284,6 @@ function formatAttemptAnswer(value: string, questionType?: string) {
   return raw.replace(/\r?\n/g, " ");
 }
 
-const FREE_QUIZ_LIMIT = 3;
-const COOLDOWN_HOURS = 3;
 const QUIZ_TEMPLATES = [
   "Create a 10-item Grade 7 science quiz about ecosystems with multiple choice and true/false.",
   "Create a 15-item Grade 8 math quiz about linear equations with mixed question types and explanations.",
@@ -207,10 +390,9 @@ const LESSON_TEMPLATES = [
   },
 ];
 
-function getResetTimer(lastQuizAt: string | null) {
-  if (!lastQuizAt) return null;
-  const cooldownMs = COOLDOWN_HOURS * 60 * 60 * 1000;
-  const end = new Date(lastQuizAt).getTime() + cooldownMs;
+function getCountdownTimer(targetAt: string | null) {
+  if (!targetAt) return null;
+  const end = new Date(targetAt).getTime();
   const remaining = end - Date.now();
   if (remaining <= 0) return null;
 
@@ -233,20 +415,22 @@ export default function HomeDashboardPage() {
   const [attemptsLoading, setAttemptsLoading] = useState(true);
   const [quizActionLoadingId, setQuizActionLoadingId] = useState<number | null>(null);
   const [pendingDeleteQuizId, setPendingDeleteQuizId] = useState<number | null>(null);
+  const [lessonActionLoadingId, setLessonActionLoadingId] = useState<string | null>(null);
+  const [pendingDeletePlanId, setPendingDeletePlanId] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const dashboardTourSteps = [
     {
       element: "#dashboard-hero",
       popover: {
         title: "Dashboard overview",
-        description: "This page summarizes your quiz and lesson-plan activity.",
+        description: "This dashboard now summarizes your teaching workflow: classes, assignments, results, and next actions.",
       },
     },
     {
       element: "#dashboard-stats",
       popover: {
         title: "Usage metrics",
-        description: "Track quiz count, lesson count, and free-plan reset status.",
+        description: "Track the overall shape of your workflow, from generated resources to active class work.",
       },
     },
     {
@@ -257,11 +441,35 @@ export default function HomeDashboardPage() {
       },
     },
     {
+      element: "#dashboard-active-classes",
+      popover: {
+        title: "Active classes",
+        description:
+          "This card surfaces the live classes anchoring your teacher workflow so you can jump straight back into classroom work.",
+      },
+    },
+    {
+      element: "#dashboard-active-assignments",
+      popover: {
+        title: "Active assignments",
+        description:
+          "Track current class work here and open results or operations without leaving the dashboard.",
+      },
+    },
+    {
+      element: "#dashboard-workflow-activity",
+      popover: {
+        title: "Workflow activity",
+        description:
+          "Review recent sharing, roster email, and reminder events so the operational history stays visible.",
+      },
+    },
+    {
       element: "#dashboard-recent-quizzes",
       popover: {
         title: "Recent quizzes",
         description:
-          "Each quiz row is droppable. Open it to view attempts, close/reopen access, or delete the quiz.",
+          "Reopen quizzes from your workflow history and keep moving into assignment, sharing, or follow-up steps.",
       },
     },
     {
@@ -269,21 +477,21 @@ export default function HomeDashboardPage() {
       popover: {
         title: "Student submissions",
         description:
-          "Submissions are grouped per quiz title with student name, email, score, and exact date/time taken.",
+          "Review recent student outcomes here before jumping into assignment-level intervention and follow-up.",
       },
     },
     {
       element: "#dashboard-recent-lessons",
       popover: {
         title: "Recent lesson plans",
-        description: "Open your latest lesson plans and continue your workflow.",
+        description: "Open your latest lesson plans and keep them connected to class workflow, assignments, and follow-up.",
       },
     },
     {
       element: "#dashboard-templates",
       popover: {
         title: "Quick templates",
-        description: "Copy ready-made prompts for quiz and lesson workflows.",
+        description: "Use templates as a fast starting point inside the broader teacher workflow.",
       },
     },
   ];
@@ -415,16 +623,33 @@ export default function HomeDashboardPage() {
     }
   }
 
+  async function handleDeleteLessonPlan(lessonPlanId: string) {
+    try {
+      setLessonActionLoadingId(lessonPlanId);
+      const res = await fetch(`/api/lesson-plans/${lessonPlanId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to delete lesson plan");
+      await refreshSummaryData();
+      if (lastPlan?.id === lessonPlanId) setLastPlan(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete lesson plan";
+      setError(msg);
+    } finally {
+      setLessonActionLoadingId(null);
+    }
+  }
+
   const usageStatus = useMemo(() => {
     if (!data) return "-";
     const plan = (data.subscriptionPlan || "free").toLowerCase();
     if (plan !== "free") return "Unlimited";
 
-    const left = Math.max(FREE_QUIZ_LIMIT - (data.quizUsage || 0), 0);
-    if (left > 0) return `${left} / ${FREE_QUIZ_LIMIT} left`;
+    const points = Number(data.freeQuizPoints ?? 0);
+    const maxPoints = Number(data.freeQuizPointsMax ?? 100);
+    if (points > 0) return `${points} / ${maxPoints} points`;
 
-    const timer = getResetTimer(data.lastQuizAt);
-    return timer ? `Locked - resets in ${timer}` : `Ready to generate`;
+    const timer = getCountdownTimer(data.freeQuizPointsRechargeAt);
+    return timer ? `0 points - recharges in ${timer}` : `Ready to generate`;
   }, [data]);
 
   const todaySummary = useMemo(() => {
@@ -456,6 +681,21 @@ export default function HomeDashboardPage() {
   return (
    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 bg-transparent">
       <Tour steps={dashboardTourSteps} tourId="home-dashboard" />
+      <ConfirmActionModal
+        open={pendingDeletePlanId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeletePlanId(null);
+        }}
+        title="Delete lesson plan?"
+        description="This will permanently remove the saved lesson plan from the dashboard and lesson-plan history."
+        confirmLabel="Delete Lesson Plan"
+        loading={lessonActionLoadingId === pendingDeletePlanId}
+        onConfirm={async () => {
+          const id = pendingDeletePlanId;
+          setPendingDeletePlanId(null);
+          if (id) await handleDeleteLessonPlan(id);
+        }}
+      />
       <div
         id="dashboard-hero"
         className="relative overflow-hidden rounded-3xl border border-indigo-200/40 bg-linear-to-r from-slate-950 via-indigo-900 to-cyan-800 text-white p-4 sm:p-6 shadow-[0_20px_55px_-20px_rgba(30,64,175,0.65)]"
@@ -518,7 +758,7 @@ export default function HomeDashboardPage() {
         <Card className="border-violet-200/70 bg-linear-to-br from-violet-50 to-fuchsia-50 shadow-[0_10px_24px_-18px_rgba(139,92,246,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
-              <Clock3 className="w-4 h-4 text-indigo-600" /> Usage / Reset Timer
+              <Clock3 className="w-4 h-4 text-indigo-600" /> Quiz Points / Recharge
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -562,7 +802,7 @@ export default function HomeDashboardPage() {
             <CardTitle className="text-base">Usage Health</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p className="text-sm text-zinc-500">Free-tier ad unlock remaining</p>
+            <p className="text-sm text-zinc-500">Quiz points and recharge status</p>
             {loading ? (
               <>
                 <SkeletonLoading className="h-6 w-28" />
@@ -570,13 +810,11 @@ export default function HomeDashboardPage() {
               </>
             ) : (
               <>
-                <p className="text-xl font-semibold">
-                  {(data?.subscriptionPlan || "free") === "free" ? `${data?.adResetRemaining ?? 0} / 5` : "Not applicable"}
-                </p>
+                <p className="text-xl font-semibold">{usageStatus}</p>
                 <p className="text-xs text-zinc-500">
                   {(data?.subscriptionPlan || "free") === "free"
-                    ? "Watches available in current window"
-                    : "Premium/Pro does not use ad reset"}
+                    ? "Free quiz generation now uses points that recharge automatically."
+                    : "Pro and Premium do not use free-tier point limits."}
                 </p>
               </>
             )}
@@ -589,6 +827,60 @@ export default function HomeDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-zinc-500">Continue where you left off</p>
+            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Latest Assignment</p>
+              {loading ? (
+                <>
+                  <SkeletonLoading className="mt-1 h-4 w-44" />
+                  <SkeletonLoading className="mt-1 h-3 w-56" />
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium truncate">
+                    {data?.latestAssignment ? data.latestAssignment.title : "No assignment yet"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {data?.latestAssignment
+                      ? `${data.latestAssignment.class.name} / ${data.latestAssignment.status} / ${new Date(
+                          data.latestAssignment.updatedAt,
+                        ).toLocaleString()}`
+                      : "Assign a quiz to a class to keep the workflow moving"}
+                  </p>
+                </>
+              )}
+            </div>
+            <Button asChild variant="outline" className="w-full">
+              <Link href={data?.latestAssignment ? `/assignments/${data.latestAssignment.id}` : "/classes"}>
+                Resume Assignment Workflow
+              </Link>
+            </Button>
+            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Latest Class</p>
+              {loading ? (
+                <>
+                  <SkeletonLoading className="mt-1 h-4 w-44" />
+                  <SkeletonLoading className="mt-1 h-3 w-56" />
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium truncate">
+                    {data?.latestClass ? data.latestClass.name : "No class yet"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {data?.latestClass
+                      ? `${[data.latestClass.subject, data.latestClass.gradeLevel, data.latestClass.section]
+                          .filter(Boolean)
+                          .join(" / ") || "Class profile ready"} / ${new Date(data.latestClass.updatedAt).toLocaleString()}`
+                      : "Create a class to anchor the teacher workflow"}
+                  </p>
+                </>
+              )}
+            </div>
+            <Button asChild variant="outline" className="w-full">
+              <Link href={data?.latestClass ? `/classes/${data.latestClass.id}` : "/classes"}>
+                Resume Latest Class
+              </Link>
+            </Button>
             <div className="rounded-lg border border-pink-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
               <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Last Quiz</p>
               {loading ? (
@@ -638,6 +930,137 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="border-rose-200/80 bg-linear-to-br from-white to-rose-50 shadow-[0_12px_28px_-20px_rgba(244,63,94,0.55)]">
+          <CardHeader>
+            <CardTitle className="text-base">Overdue Work</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              <>
+                <SkeletonLoading className="h-6 w-14" />
+                <SkeletonLoading className="h-4 w-44" />
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-semibold">{data?.todayView.overdueCount ?? 0}</p>
+                <p className="text-xs text-zinc-500">
+                  {data?.overdueAssignments?.[0]
+                    ? `${data.overdueAssignments[0].title} in ${data.overdueAssignments[0].class.name}`
+                    : "No overdue assignments right now"}
+                </p>
+                <Button asChild size="sm" variant="outline" className="w-full">
+                  <Link href={data?.overdueAssignments?.[0] ? `/assignments/${data.overdueAssignments[0].id}` : "/workspace"}>
+                    Review Overdue Work
+                  </Link>
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-indigo-200/80 bg-linear-to-br from-white to-indigo-50 shadow-[0_12px_28px_-20px_rgba(99,102,241,0.55)]">
+          <CardHeader>
+            <CardTitle className="text-base">Draft Assignments</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              <>
+                <SkeletonLoading className="h-6 w-14" />
+                <SkeletonLoading className="h-4 w-44" />
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-semibold">{data?.todayView.draftCount ?? 0}</p>
+                <p className="text-xs text-zinc-500">
+                  {data?.draftAssignments?.[0]
+                    ? `${data.draftAssignments[0].title} in ${data.draftAssignments[0].class.name}`
+                    : "No unfinished draft assignments right now"}
+                </p>
+                <Button asChild size="sm" variant="outline" className="w-full">
+                  <Link href={data?.draftAssignments?.[0] ? `/assignments/${data.draftAssignments[0].id}` : "/workspace"}>
+                    Finish Draft
+                  </Link>
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-cyan-200/80 bg-linear-to-br from-white to-cyan-50 shadow-[0_12px_28px_-20px_rgba(6,182,212,0.55)]">
+          <CardHeader>
+            <CardTitle className="text-base">Reminders Pending</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              <>
+                <SkeletonLoading className="h-6 w-14" />
+                <SkeletonLoading className="h-4 w-44" />
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-semibold">{data?.todayView.reminderNeededCount ?? 0}</p>
+                <p className="text-xs text-zinc-500">
+                  {data?.reminderNeededAssignments?.[0]
+                    ? `${data.reminderNeededAssignments[0].missingCount} missing in ${data.reminderNeededAssignments[0].class.name}`
+                    : "No reminder-needed assignments right now"}
+                </p>
+                <Button asChild size="sm" variant="outline" className="w-full">
+                  <Link href={data?.reminderNeededAssignments?.[0] ? `/assignments/${data.reminderNeededAssignments[0].id}` : "/workspace"}>
+                    Open Daily Workspace
+                  </Link>
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card
+        id="dashboard-active-classes"
+        className="border-cyan-200/80 bg-linear-to-br from-white to-cyan-50 shadow-[0_12px_28px_-20px_rgba(6,182,212,0.7)]"
+      >
+        <CardHeader>
+          <CardTitle className="text-base">Active Classes</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {loading ? (
+            Array.from({ length: 3 }).map((_, idx) => (
+              <div key={idx} className="rounded-lg border border-cyan-100 bg-white/90 px-3 py-2">
+                <SkeletonLoading className="h-4 w-44" />
+                <SkeletonLoading className="mt-1 h-3 w-36" />
+              </div>
+            ))
+          ) : !data?.activeClasses?.length ? (
+            <p className="text-sm text-zinc-500">No active classes yet.</p>
+          ) : (
+            data.activeClasses.map((classItem) => (
+              <div
+                key={classItem.id}
+                className="flex flex-col gap-2 rounded-xl border border-cyan-100 bg-white/95 px-3 py-3 shadow-[0_6px_16px_-12px_rgba(6,182,212,0.45)]"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{classItem.name}</p>
+                  <Badge variant="secondary">{classItem._count.students} students</Badge>
+                  <Badge variant="secondary">{classItem._count.assignments} active assignments</Badge>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  {[classItem.subject, classItem.gradeLevel, classItem.section]
+                    .filter(Boolean)
+                    .join(" / ") || "Class profile still needs more context"}
+                </p>
+                <Button asChild size="sm" variant="outline" className="w-fit">
+                  <Link href={`/classes/${classItem.id}`}>
+                    <UsersRound className="h-4 w-4" />
+                    Open Class
+                  </Link>
+                </Button>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <Card
@@ -741,6 +1164,8 @@ export default function HomeDashboardPage() {
                                 {attempt.scorePercent}% •{" "}
                                 {new Date(attempt.submittedAt).toLocaleDateString()}{" "}
                                 {new Date(attempt.submittedAt).toLocaleTimeString()}
+                                {attempt.assignmentTitle ? ` • ${attempt.assignmentTitle}` : ""}
+                                {attempt.className ? ` • ${attempt.className}` : ""}
                               </div>
                             ))}
                           </div>
@@ -784,7 +1209,17 @@ export default function HomeDashboardPage() {
                     <p className="font-medium truncate">{plan.title}</p>
                     <p className="text-xs text-zinc-500">{plan.subject} - {new Date(plan.createdAt).toLocaleDateString()}</p>
                   </div>
-                  <Sparkles className="w-4 h-4 text-zinc-400" />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPendingDeletePlanId(plan.id)}
+                      disabled={lessonActionLoadingId === plan.id}
+                    >
+                      {lessonActionLoadingId === plan.id ? "Deleting..." : "Delete"}
+                    </Button>
+                    <Sparkles className="w-4 h-4 text-zinc-400" />
+                  </div>
                 </div>
               ))
             )}
@@ -794,6 +1229,154 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card
+        id="dashboard-active-assignments"
+        className="border-emerald-200/80 bg-linear-to-br from-white to-emerald-50 shadow-[0_12px_28px_-20px_rgba(16,185,129,0.65)]"
+      >
+        <CardHeader>
+          <CardTitle className="text-base">Active Assignments</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {loading ? (
+            Array.from({ length: 3 }).map((_, idx) => (
+              <div key={idx} className="rounded-lg border border-emerald-100 bg-white/90 px-3 py-2">
+                <SkeletonLoading className="h-4 w-52" />
+                <SkeletonLoading className="mt-1 h-3 w-40" />
+              </div>
+            ))
+          ) : !data?.activeAssignments?.length ? (
+            <p className="text-sm text-zinc-500">No active assignments yet.</p>
+          ) : (
+            data.activeAssignments.map((assignment) => (
+              <div
+                key={assignment.id}
+                className="flex flex-col gap-2 rounded-xl border border-emerald-100 bg-white/95 px-3 py-3 shadow-[0_6px_16px_-12px_rgba(16,185,129,0.45)]"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{assignment.title}</p>
+                  <Badge variant="secondary">{assignment.status}</Badge>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  {assignment.class.name}
+                  {assignment.quiz?.title ? ` / ${assignment.quiz.title}` : ""}
+                </p>
+                <p className="text-xs text-zinc-500">
+                  {assignment.dueAt
+                    ? `Due ${new Date(assignment.dueAt).toLocaleString()}`
+                    : assignment.availableFrom
+                    ? `Available ${new Date(assignment.availableFrom).toLocaleString()}`
+                    : `Created ${new Date(assignment.createdAt).toLocaleDateString()}`}
+                  {` / ${assignment._count.attempts} submission${assignment._count.attempts === 1 ? "" : "s"}`}
+                </p>
+                <Button asChild size="sm" variant="outline" className="w-fit">
+                  <Link href={`/assignments/${assignment.id}`}>View Results</Link>
+                </Button>
+              </div>
+            ))
+          )}
+          <Button asChild variant="outline" className="w-full">
+            <Link href="/classes">Open Class Workflow</Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-amber-200/80 bg-linear-to-br from-white to-amber-50 shadow-[0_12px_28px_-20px_rgba(245,158,11,0.65)]">
+        <CardHeader>
+          <CardTitle className="text-base">Recent Assignment Results</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {loading ? (
+            Array.from({ length: 3 }).map((_, idx) => (
+              <div key={idx} className="rounded-lg border border-amber-100 bg-white/90 px-3 py-2">
+                <SkeletonLoading className="h-4 w-48" />
+                <SkeletonLoading className="mt-1 h-3 w-36" />
+              </div>
+            ))
+          ) : !data?.recentAssignmentResults?.length ? (
+            <p className="text-sm text-zinc-500">No reviewed assignment results yet.</p>
+          ) : (
+            data.recentAssignmentResults.map((assignment) => (
+              <div
+                key={assignment.id}
+                className="flex flex-col gap-2 rounded-xl border border-amber-100 bg-white/95 px-3 py-3 shadow-[0_6px_16px_-12px_rgba(245,158,11,0.45)]"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{assignment.title}</p>
+                  <Badge variant="secondary">{assignment.averageScore}% avg</Badge>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  {assignment.class.name} / {assignment.submissionCount} of {assignment.studentCount} submitted
+                </p>
+                <p className="text-xs text-zinc-500">
+                  {assignment.missingCount} missing
+                  {assignment.dueAt ? ` / Due ${new Date(assignment.dueAt).toLocaleString()}` : ""}
+                </p>
+                <Button asChild size="sm" variant="outline" className="w-fit">
+                  <Link href={`/assignments/${assignment.id}`}>Open Results</Link>
+                </Button>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card
+        id="dashboard-workflow-activity"
+        className="border-slate-200/90 bg-linear-to-br from-white to-slate-50 shadow-[0_12px_28px_-20px_rgba(71,85,105,0.45)]"
+      >
+        <CardHeader>
+          <CardTitle className="text-base">Workflow Activity</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {loading ? (
+            Array.from({ length: 3 }).map((_, idx) => (
+              <div key={idx} className="rounded-lg border border-slate-100 bg-white/90 px-3 py-2">
+                <SkeletonLoading className="h-4 w-48" />
+                <SkeletonLoading className="mt-1 h-3 w-40" />
+              </div>
+            ))
+          ) : !data?.recentWorkflowActivity?.length ? (
+            <p className="text-sm text-zinc-500">No recent share or email activity yet.</p>
+          ) : (
+            data.recentWorkflowActivity.map((item, idx) => (
+              <div
+                key={`${item.eventType}-${item.createdAt}-${idx}`}
+                className="rounded-xl border border-slate-200 bg-white/95 px-3 py-3 shadow-[0_6px_16px_-12px_rgba(71,85,105,0.35)]"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">
+                    {item.eventType === "assignment_shared"
+                      ? "Assignment link created"
+                      : item.eventType === "assignment_roster_emailed"
+                      ? "Assignment emailed to roster"
+                      : "Reminder sent to missing students"}
+                  </p>
+                  <Badge
+                    className={
+                      item.status === "success"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-rose-100 text-rose-700"
+                    }
+                  >
+                    {item.status}
+                  </Badge>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  {item.className || "Class workflow"} / {new Date(item.createdAt).toLocaleString()}
+                  {item.recipientCount !== null ? ` / ${item.recipientCount} recipients` : ""}
+                </p>
+                {item.error ? <p className="mt-1 text-xs text-rose-600">{item.error}</p> : null}
+                {item.assignmentId ? (
+                  <Button asChild size="sm" variant="outline" className="mt-2">
+                    <Link href={`/assignments/${item.assignmentId}`}>Open Assignment</Link>
+                  </Button>
+                ) : null}
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       <Card
         id="dashboard-student-submissions"
@@ -841,6 +1424,8 @@ export default function HomeDashboardPage() {
                           <p className="text-xs text-zinc-600">
                             {attempt.studentName} ({attempt.studentEmail}) • {attempt.correctAnswers}/
                             {attempt.totalQuestions} • {attempt.scorePercent}%
+                            {attempt.assignmentTitle ? ` • ${attempt.assignmentTitle}` : ""}
+                            {attempt.className ? ` • ${attempt.className}` : ""}
                           </p>
                           <p className="text-xs text-zinc-500">
                             Taken: {new Date(attempt.submittedAt).toLocaleDateString()}{" "}
@@ -933,7 +1518,13 @@ export default function HomeDashboardPage() {
         <CardHeader>
           <CardTitle className="text-base">Dashboard Quick Actions</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Button asChild variant="outline">
+            <Link href="/classes">Manage Classes</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/workspace">Open Workspace</Link>
+          </Button>
           <Button asChild className="bg-indigo-600 hover:bg-indigo-700 text-white">
             <Link href="/generate-quiz">Generate Quiz</Link>
           </Button>

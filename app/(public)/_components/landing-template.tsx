@@ -1,18 +1,28 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import Script from "next/script";
 
 type FaqItem = {
   question: string;
   answer: string;
 };
 
+type SummaryCard = {
+  title: string;
+  body: string;
+};
+
 type LandingTemplateProps = {
+  path?: string;
   title: string;
   subtitle: string;
   featureTitle: string;
   features: string[];
   useCasesTitle: string;
   useCases: string[];
+  workflowTitle?: string;
+  workflowSteps?: string[];
+  summaryCards?: SummaryCard[];
   lessonPlanUseCases?: string[];
   quizSamplePrompt?: string;
   lessonPlanSamplePrompt?: string;
@@ -44,12 +54,16 @@ export function createLandingMetadata(params: {
 }
 
 export default function LandingTemplate({
+  path = "",
   title,
   subtitle,
   featureTitle,
   features,
   useCasesTitle,
   useCases,
+  workflowTitle = "How the workflow unfolds",
+  workflowSteps = [],
+  summaryCards = [],
   lessonPlanUseCases = [
     "Generate a standards-aligned daily lesson sequence with clear objectives and time allocations.",
     "Get ready-to-edit classroom materials, then export to PDF, DOCX, or PPTX.",
@@ -61,14 +75,67 @@ export default function LandingTemplate({
   ctaText,
   ctaHref = "/sign-up",
   relatedLinks = [
-    { href: "/resources", label: "All Guides (10)" },
+    { href: "/resources", label: "All Guides" },
+    { href: "/teacher-workflow-platform", label: "Teacher Workflow Platform" },
+    { href: "/ai-tools-for-teachers", label: "AI Tools for Teachers" },
     { href: "/ai-quiz-generator", label: "AI Quiz + Lesson Plans" },
-    { href: "/quiz-generator-for-teachers", label: "Quiz Generator for Teachers" },
-    { href: "/interactive-quiz-maker-for-students", label: "Interactive Quiz Maker for Students" },
+    { href: "/classroom-workflow-software", label: "Classroom Workflow Software" },
   ],
 }: LandingTemplateProps) {
+  const url = path ? `https://www.quizmintai.com${path}` : "https://www.quizmintai.com";
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faq.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.answer,
+      },
+    })),
+  };
+  const breadcrumbSchema = path
+    ? {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: "Home",
+            item: "https://www.quizmintai.com",
+          },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: "Resources",
+            item: "https://www.quizmintai.com/resources",
+          },
+          {
+            "@type": "ListItem",
+            position: 3,
+            name: title,
+            item: url,
+          },
+        ],
+      }
+    : null;
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-12">
+      <Script
+        id={`faq-schema-${path || "landing"}`}
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
+      {breadcrumbSchema && (
+        <Script
+          id={`breadcrumb-schema-${path}`}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        />
+      )}
       <section className="mb-12 rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-8 text-center">
         <h1 className="mb-3 text-3xl font-bold text-zinc-900 md:text-4xl">{title}</h1>
         <p className="mx-auto max-w-3xl text-base text-zinc-700 md:text-lg">{subtitle}</p>
@@ -91,6 +158,39 @@ export default function LandingTemplate({
           ))}
         </ul>
       </section>
+
+      {workflowSteps.length > 0 && (
+        <section className="mb-10 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-cyan-50 p-6">
+          <h2 className="mb-4 text-2xl font-semibold text-zinc-900">{workflowTitle}</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            {workflowSteps.map((step, index) => (
+              <div
+                key={step}
+                className="rounded-lg border border-indigo-200/80 bg-white/90 p-4"
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                  Step {index + 1}
+                </p>
+                <p className="mt-2 text-sm text-zinc-700">{step}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {summaryCards.length > 0 && (
+        <section className="mb-10 grid gap-4 md:grid-cols-3">
+          {summaryCards.map((card) => (
+            <div
+              key={card.title}
+              className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm"
+            >
+              <h2 className="text-lg font-semibold text-zinc-900">{card.title}</h2>
+              <p className="mt-2 text-sm text-zinc-700">{card.body}</p>
+            </div>
+          ))}
+        </section>
+      )}
 
       <section className="mb-10 rounded-xl border border-zinc-200 bg-white p-6">
         <h2 className="mb-4 text-2xl font-semibold text-zinc-900">Lesson Plan Generation Workflows</h2>
@@ -125,6 +225,9 @@ export default function LandingTemplate({
 
       <section className="mb-10 rounded-xl border border-zinc-200 bg-white p-6">
         <h2 className="mb-4 text-2xl font-semibold text-zinc-900">Related Pages</h2>
+        <p className="mb-4 max-w-3xl text-sm text-zinc-600">
+          Use these pages to move from this entry point into the broader teacher workflow: planning, assignments, classroom results, follow-up, and reusable teaching assets.
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {relatedLinks.map((link) => (
             <Link
@@ -140,6 +243,9 @@ export default function LandingTemplate({
 
       <section className="rounded-2xl border border-blue-200 bg-gradient-to-r from-cyan-50 to-sky-50 p-8 text-center">
         <h2 className="mb-4 text-2xl font-semibold text-zinc-900">Ready to build faster?</h2>
+        <p className="mx-auto mb-5 max-w-2xl text-sm text-zinc-700">
+          Generate what you need, then keep working inside one teacher workflow for classes, assignments, results, and follow-up.
+        </p>
         <Link
           href={ctaHref}
           className="inline-flex items-center rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700"

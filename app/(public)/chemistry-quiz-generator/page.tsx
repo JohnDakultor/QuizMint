@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function ChemistryQuizGeneratorPage() {
   return (
     <LandingTemplate
+      path="/chemistry-quiz-generator"
       title="AI Chemistry Quiz Generator"
       subtitle="Generate chemistry quizzes aligned to your lessons on matter, reactions, and equations."
       featureTitle="Chemistry-ready workflow"

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
+import { resolveModelForFeature } from "@/lib/llm-models";
 
 type SimpleQuiz = {
   id: number;
@@ -82,6 +83,12 @@ async function callOpenRouterForInsights(payload: any) {
     return null;
   }
 }
+
+const ANALYTICS_MODEL = resolveModelForFeature({
+  feature: "analytics",
+  plan: "premium",
+  defaultModel: "gpt-4o-mini",
+});
 
 export async function GET(req: Request) {
   try {
@@ -220,7 +227,7 @@ export async function GET(req: Request) {
       dayMap.forEach((count, date) => trendData.push({ date, quizzes: count }));
 
       const insightPayload = {
-        model: "gpt-4o-mini",
+        model: ANALYTICS_MODEL,
         messages: [
           {
             role: "system",
@@ -495,7 +502,7 @@ ${JSON.stringify(fullDataSnapshot, null, 2)}
         : "\nAdaptive outcome signals: none available.";
 
     const aiPayload = {
-      model: "gpt-4o-mini",
+      model: ANALYTICS_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: `${userPrompt}\n${adaptiveContext}` },

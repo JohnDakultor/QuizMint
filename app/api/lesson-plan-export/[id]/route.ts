@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
+import { buildLessonPlanExportStatusSnapshot } from "@/lib/lesson-plan-export";
 
 export const runtime = "nodejs";
 
@@ -48,14 +49,12 @@ export async function GET(
       });
     }
 
-    return NextResponse.json({
-      jobId: job.id,
-      status: job.status,
-      error: job.error || null,
-      ready: job.status === "completed",
-      createdAt: job.createdAt,
-      completedAt: job.completedAt,
-    });
+    return NextResponse.json(
+      buildLessonPlanExportStatusSnapshot(job),
+      {
+        headers: { "Cache-Control": "no-store" },
+      }
+    );
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Failed to fetch export job" },

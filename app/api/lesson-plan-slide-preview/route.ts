@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth-option";
+import { resolveModelForFeature } from "@/lib/llm-models";
 import { prisma } from "@/lib/prisma";
 
-const MODEL =
-  process.env.OPENROUTER_MODEL_PRO ||
-  process.env.OPENROUTER_MODEL ||
-  "openai/gpt-4o-mini";
+const MODEL = resolveModelForFeature({
+  feature: "slide_preview",
+  plan: "premium",
+  defaultModel: "openai/gpt-4o-mini",
+});
 
 export async function POST(req: NextRequest) {
   try {

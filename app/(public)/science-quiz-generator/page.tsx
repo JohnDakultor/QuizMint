@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function ScienceQuizGeneratorPage() {
   return (
     <LandingTemplate
+      path="/science-quiz-generator"
       title="AI Science Quiz Generator"
       subtitle="Generate science assessments from ecosystems, matter, cells, and earth science topics with editable outputs."
       featureTitle="Why science teachers use it"

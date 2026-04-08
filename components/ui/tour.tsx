@@ -34,6 +34,27 @@ export default function Tour({
     );
   };
 
+  const syncQuizAdaptiveVisibility = (step: DriveStep | undefined) => {
+    const target = typeof step?.element === "string" ? step.element : "";
+    const shouldOpen =
+      target === "#quiz-adaptive-toggle" || target === "#quiz-adaptive-context";
+    window.dispatchEvent(
+      new CustomEvent("quiz-adaptive-visibility", {
+        detail: { open: shouldOpen },
+      })
+    );
+  };
+
+  const syncQuizGamifiedVisibility = (step: DriveStep | undefined) => {
+    const target = typeof step?.element === "string" ? step.element : "";
+    const shouldOpen = target === "#quiz-gamified-mode";
+    window.dispatchEvent(
+      new CustomEvent("quiz-gamified-visibility", {
+        detail: { open: shouldOpen },
+      })
+    );
+  };
+
   const startTour = () => {
     const tour = driver({
       showProgress: true,
@@ -41,10 +62,22 @@ export default function Tour({
       popoverClass: popoverClassName,
       onHighlightStarted: (_element, step) => {
         syncQuizInputToolsVisibility(step as DriveStep | undefined);
+        syncQuizAdaptiveVisibility(step as DriveStep | undefined);
+        syncQuizGamifiedVisibility(step as DriveStep | undefined);
       },
       onDestroyed: () => {
         window.dispatchEvent(
           new CustomEvent("quiz-input-tools-visibility", {
+            detail: { open: false },
+          })
+        );
+        window.dispatchEvent(
+          new CustomEvent("quiz-adaptive-visibility", {
+            detail: { open: false },
+          })
+        );
+        window.dispatchEvent(
+          new CustomEvent("quiz-gamified-visibility", {
             detail: { open: false },
           })
         );

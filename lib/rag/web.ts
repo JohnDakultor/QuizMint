@@ -1,6 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
 
+const webSearchCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    results: { url?: string; content?: string; title?: string }[];
+  }
+>();
+const WEB_SEARCH_CACHE_TTL_MS = 30 * 60 * 1000;
+const WEB_SEARCH_CACHE_MAX = 100;
+
 const ALLOWED_DOMAINS = [
   "khanacademy.org",
   "britannica.com",
@@ -103,6 +113,12 @@ function chunkText(text: string, chunkSize = 1200, overlap = 200) {
 }
 
 async function searchWeb(query: string, maxResults = 6) {
+  const cacheKey = `${query.trim().toLowerCase()}::${Math.min(Math.max(maxResults, 1), 10)}`;
+  const cached = webSearchCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.results.filter((r) => r.url && r.content);
+  }
+
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) throw new Error("Missing TAVILY_API_KEY");
 
@@ -131,7 +147,16 @@ async function searchWeb(query: string, maxResults = 6) {
   const data = (await res.json()) as {
     results?: { url?: string; content?: string; title?: string }[];
   };
-  return (data.results || []).filter((r) => r.url && r.content);
+  const results = data.results || [];
+  if (webSearchCache.size >= WEB_SEARCH_CACHE_MAX) {
+    const oldestKey = webSearchCache.keys().next().value;
+    if (oldestKey) webSearchCache.delete(oldestKey);
+  }
+  webSearchCache.set(cacheKey, {
+    expiresAt: Date.now() + WEB_SEARCH_CACHE_TTL_MS,
+    results,
+  });
+  return results.filter((r) => r.url && r.content);
 }
 
 function cosineSimilarity(a: number[], b: number[]) {

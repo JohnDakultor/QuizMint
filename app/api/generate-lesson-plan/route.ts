@@ -22,16 +22,22 @@ import {
   getLessonPlanFramework,
   normalizeLessonPlanFramework,
 } from "@/lib/lesson-plan-frameworks";
+import { attachLessonPlanArtifacts } from "@/lib/lesson-plan-artifacts";
 import {
-  hydrateLessonPlanUsageWindow,
-  incrementLessonPlanUsageAtomic,
-  LESSON_PLAN_FREE_LIMIT,
-  LESSON_PLAN_RESET_HOURS,
-} from "@/lib/usage-counters";
+  buildFreeLessonPlanPointsStatusPayload,
+  deductFreeLessonPlanPoints,
+  getLessonPlanGenerationPointCost,
+  isFreeLessonPlanPointLimited,
+  restoreFreeLessonPlanPoints,
+  type DeductFreeLessonPlanPointsResult,
+} from "@/lib/free-tier-points";
 import {
   runLessonPlanAssistiveRag,
   storeLessonPlanSemanticCache,
 } from "@/lib/lesson-plan-rag-service";
+import { invalidateDashboardSummarySnapshot } from "@/lib/dashboard-summary-snapshot";
+import { invalidateInterventionSummarySnapshots } from "@/lib/intervention-summary-snapshot";
+import { shouldQueueLessonPlanGeneration } from "@/lib/lesson-plan-workload-routing";
 
 const PROVIDER_ISSUE_MESSAGE =
   "Server issue - we're fixing it. Please try again in a few minutes.";
@@ -72,10 +78,45 @@ function isProviderIssueError(err: unknown): boolean {
   );
 }
 
+function parseLaunchContext(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const sourceType =
+    typeof (value as Record<string, unknown>).sourceType === "string"
+      ? String((value as Record<string, unknown>).sourceType)
+      : null;
+  const sourceId =
+    typeof (value as Record<string, unknown>).sourceId === "string"
+      ? String((value as Record<string, unknown>).sourceId)
+      : null;
+  const mode =
+    typeof (value as Record<string, unknown>).mode === "string"
+      ? String((value as Record<string, unknown>).mode)
+      : null;
+  if (!sourceType || !sourceId || !mode) return null;
+  return {
+    sourceType,
+    sourceId,
+    classId:
+      typeof (value as Record<string, unknown>).classId === "string"
+        ? String((value as Record<string, unknown>).classId)
+        : null,
+    className:
+      typeof (value as Record<string, unknown>).className === "string"
+        ? String((value as Record<string, unknown>).className)
+        : null,
+    assignmentTitle:
+      typeof (value as Record<string, unknown>).assignmentTitle === "string"
+        ? String((value as Record<string, unknown>).assignmentTitle)
+        : null,
+    mode,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   let eventUserId: string | null = null;
   let eventPlan: string | null = null;
+  let deductedFreeLessonPlanPoints: DeductFreeLessonPlanPointsResult | null = null;
   const requestId = createRequestId();
   const stageMs: Record<string, number> = {
     ingest: 0,
@@ -115,7 +156,7 @@ export async function POST(req: NextRequest) {
     eventPlan = user.subscriptionPlan || "free";
 
     const plan = String(user.subscriptionPlan || "free").trim().toLowerCase();
-    const isFree = plan === "free" || plan === "";
+    const isFree = isFreeLessonPlanPointLimited(plan);
 
     const burstCheck = await checkFeatureBurstLimitDistributed({
       userId: user.id,
@@ -137,14 +178,6 @@ export async function POST(req: NextRequest) {
     const liteMode = Boolean((user as any).liteMode);
     const debugCounters = process.env.DEBUG_LESSON_COUNTERS === "1";
 
-    let { currentLessonPlanUsage, freeResetInSeconds } =
-      await hydrateLessonPlanUsageWindow({
-        userId: user.id,
-        plan,
-        isFree,
-        debug: debugCounters,
-      });
-
     const body = await req.json();
     const isAsyncInternal = req.headers.get("x-async-internal") === "1";
     const queueRequested =
@@ -158,14 +191,33 @@ export async function POST(req: NextRequest) {
     const objectives = body.objectives || "";
     const constraints = body.constraints || "";
     const framework = normalizeLessonPlanFramework(body.framework);
+    const launchContext = parseLaunchContext(body.launchContext);
     const format = typeof body.format === "string" ? body.format.toLowerCase().trim() : "json";
     const frameworkConfig = getLessonPlanFramework(framework);
+    const pointCost = getLessonPlanGenerationPointCost();
+    const workloadDecision = shouldQueueLessonPlanGeneration(
+      {
+        topic,
+        subject,
+        grade,
+        framework,
+        objectives,
+        constraints,
+        days,
+        minutesPerDay,
+        adaptiveLaunch: Boolean(launchContext),
+        format,
+        hasProvidedPlan: Boolean(providedLessonPlan),
+      },
+      Number(process.env.LESSON_PLAN_QUEUE_SCORE_THRESHOLD || 6)
+    );
+    const shouldQueueWorkload = workloadDecision.shouldQueue;
 
     if (!topic || !subject || !grade || !days || !minutesPerDay) {
       return apiError(400, "Missing required fields", requestId);
     }
 
-    if (queueRequested && !isAsyncInternal) {
+    if ((queueRequested || shouldQueueWorkload) && !isAsyncInternal) {
       const queued = await createAsyncGenerationJob({
         userId: user.id,
         type: "lesson_plan_generate",
@@ -173,7 +225,9 @@ export async function POST(req: NextRequest) {
         requestId,
       });
       if (!queued) return apiError(500, "Failed to queue generation job", requestId);
-      const dispatched = await dispatchAsyncGenerationJob(req, queued.id);
+      const dispatched = await dispatchAsyncGenerationJob(req, queued.id, {
+        subscriptionPlan: user.subscriptionPlan,
+      });
       return NextResponse.json(
         {
           ok: true,
@@ -247,24 +301,43 @@ export async function POST(req: NextRequest) {
       | null = null;
     let cacheStored = false;
     const useProvidedPlan = Boolean(providedLessonPlan);
-    if (
-      isFree &&
-      format === "json" &&
-      !useProvidedPlan &&
-      currentLessonPlanUsage >= LESSON_PLAN_FREE_LIMIT
-    ) {
-      return NextResponse.json(
-        {
-          error: "Free limit reached",
-          message: `You've reached the free limit of ${LESSON_PLAN_FREE_LIMIT} lesson plans.`,
-          resetInSeconds: freeResetInSeconds,
-          requestId,
-        },
-        {
-          status: 403,
-          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
-        }
+    if (isFree && format === "json" && !useProvidedPlan) {
+      const pointStatus = buildFreeLessonPlanPointsStatusPayload(
+        user,
+        pointCost,
+        new Date()
       );
+      if (!pointStatus.canAfford) {
+        return NextResponse.json(
+          {
+            error: "Not enough free lesson plan credits.",
+            ...pointStatus,
+            requestId,
+          },
+          {
+            status: 403,
+            headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+          }
+        );
+      }
+      deductedFreeLessonPlanPoints = await deductFreeLessonPlanPoints(
+        user.id,
+        pointCost,
+        new Date()
+      );
+      if (!deductedFreeLessonPlanPoints) {
+        return NextResponse.json(
+          {
+            error: "Not enough free lesson plan credits.",
+            ...pointStatus,
+            requestId,
+          },
+          {
+            status: 403,
+            headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+          }
+        );
+      }
     }
 
     if (useProvidedPlan) {
@@ -695,36 +768,15 @@ export async function POST(req: NextRequest) {
           ];
     }
 
-    ensureNotAborted();
+    lessonPlan = attachLessonPlanArtifacts({
+      lessonPlan,
+      topic,
+      subject,
+      grade,
+      duration,
+    });
 
-    // Increment usage only for free plan on real lesson generation.
-    // Pro/Premium remain unlimited and are not counted.
-    if (isFree && format === "json" && !useProvidedPlan) {
-      const dbWriteStartedAt = Date.now();
-      const usageResult = await incrementLessonPlanUsageAtomic({
-        userId: user.id,
-        isFree,
-      });
-      if (!usageResult.ok) {
-        return apiError(403, "Free limit reached", requestId, {
-          limit: LESSON_PLAN_FREE_LIMIT,
-          resetHours: LESSON_PLAN_RESET_HOURS,
-          resetInSeconds: usageResult.resetInSeconds ?? 0,
-          message: `You've reached the free limit of ${LESSON_PLAN_FREE_LIMIT} lesson plans.`,
-        });
-      }
-      currentLessonPlanUsage = Number(usageResult.nextUsage || 0);
-      if (debugCounters) {
-        log.info("lesson_plan_counter_increment", {
-          userId: user.id,
-          plan,
-          updatedUsage: currentLessonPlanUsage,
-          format,
-          useProvidedPlan,
-        });
-      }
-      stageMs.dbWrite += Date.now() - dbWriteStartedAt;
-    }
+    ensureNotAborted();
 
     // Handle DOCX format
     if (format === "docx") {
@@ -834,6 +886,8 @@ export async function POST(req: NextRequest) {
 
     ensureNotAborted();
 
+    let savedLessonPlanRecord: { id: string; title: string } | null = null;
+
     if (format === "json" && !useProvidedPlan) {
       const lessonPlanForStorage =
         !liteMode && (sources?.length || sourceMode !== "none")
@@ -849,7 +903,7 @@ export async function POST(req: NextRequest) {
           : lessonPlan;
       try {
         const dbWriteStartedAt = Date.now();
-        await prisma.lessonPlan.create({
+        savedLessonPlanRecord = await prisma.lessonPlan.create({
           data: {
             userId: user.id,
             title: lessonPlan.title || `${topic} - ${subject}`,
@@ -860,6 +914,10 @@ export async function POST(req: NextRequest) {
             days,
             minutesPerDay,
             data: lessonPlanForStorage,
+          },
+          select: {
+            id: true,
+            title: true,
           },
         });
         stageMs.dbWrite += Date.now() - dbWriteStartedAt;
@@ -894,11 +952,23 @@ export async function POST(req: NextRequest) {
         completionTokens: lessonAiMeta?.completionTokens ?? 0,
         totalTokens: lessonAiMeta?.totalTokens ?? 0,
         costUsd: lessonAiMeta?.estimatedCostUsd ?? 0,
+        adaptiveLaunch: Boolean(launchContext),
+        interventionSourceType: launchContext?.sourceType ?? null,
+        interventionSourceId: launchContext?.sourceId ?? null,
+        interventionClassId: launchContext?.classId ?? null,
+        interventionClassName: launchContext?.className ?? null,
+        interventionAssignmentTitle: launchContext?.assignmentTitle ?? null,
+        interventionMode: launchContext?.mode ?? null,
+        workloadScore: workloadDecision.score,
+        workloadReasons: workloadDecision.reasons,
         stageMs,
       },
     });
+    invalidateDashboardSummarySnapshot(user.id);
+    invalidateInterventionSummarySnapshots(user.id);
     return new Response(JSON.stringify({ 
       lessonPlan,
+      savedLessonPlan: savedLessonPlanRecord,
       ...(liteMode
         ? {}
         : {
@@ -910,16 +980,16 @@ export async function POST(req: NextRequest) {
             },
           }),
       usage: isFree ? {
-        used: currentLessonPlanUsage,
-        limit: LESSON_PLAN_FREE_LIMIT,
-        resetsIn:
-          typeof freeResetInSeconds === "number"
-            ? freeResetInSeconds * 1000
-            : LESSON_PLAN_RESET_HOURS * 60 * 60 * 1000,
-        nextReset:
-          typeof freeResetInSeconds === "number"
-            ? new Date(Date.now() + freeResetInSeconds * 1000).toISOString()
-            : null,
+        remainingPoints:
+          deductedFreeLessonPlanPoints?.availablePoints ??
+          buildFreeLessonPlanPointsStatusPayload(user, pointCost).remainingPoints,
+        requiredPoints: pointCost,
+        maxPoints:
+          deductedFreeLessonPlanPoints?.maxPoints ??
+          buildFreeLessonPlanPointsStatusPayload(user, pointCost).maxPoints,
+        nextRechargeAt:
+          deductedFreeLessonPlanPoints?.rechargeAt?.toISOString() ??
+          buildFreeLessonPlanPointsStatusPayload(user, pointCost).nextRechargeAt,
       } : null,
       cache: {
         hit: Boolean(cachedResponse),
@@ -930,6 +1000,23 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err: any) {
+    if (
+      deductedFreeLessonPlanPoints?.userId &&
+      deductedFreeLessonPlanPoints.spentPoints > 0
+    ) {
+      try {
+        await restoreFreeLessonPlanPoints(
+          deductedFreeLessonPlanPoints.userId,
+          deductedFreeLessonPlanPoints.spentPoints
+        );
+      } catch (restoreErr) {
+        log.warn("free_lesson_plan_points_restore_failed", {
+          userId: deductedFreeLessonPlanPoints.userId,
+          err: restoreErr,
+        });
+      }
+    }
+
     if (err?.name === "AbortError" || err?.message === "REQUEST_ABORTED") {
       await trackGenerationEvent({
         userId: eventUserId,

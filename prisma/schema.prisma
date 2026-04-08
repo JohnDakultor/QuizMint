@@ -25,6 +25,12 @@ model User {
   lastQuizAdResetAt   DateTime?
   quizAdResetCount    Int      @default(0)
   quizAdResetWindowAt DateTime?
+  freeQuizPoints      Int      @default(100)
+  freeQuizPointsMax   Int      @default(100)
+  freeQuizPointsRechargeAt DateTime?
+  freeLessonPlanPoints Int     @default(100)
+  freeLessonPlanPointsMax Int  @default(100)
+  freeLessonPlanPointsRechargeAt DateTime?
   subscriptionEnd     DateTime?
   subscriptionPlan    String?
   subscriptionStart   DateTime?
@@ -54,6 +60,8 @@ model User {
   winbackEmails      WinbackEmailLog[]
   loginSessions      UserLoginSession[]
   asyncGenerationJobs AsyncGenerationJob[]
+  classes            Class[]
+  assignments        Assignment[]
 }
 
 model UserPolicyAcceptance {
@@ -79,6 +87,7 @@ model Quiz {
   attempts     StudentQuizAttempt[]
   takeLocks    StudentQuizTake[]
   shareSettings QuizShareSettings?
+  assignments  Assignment[]
 }
 
 model Question {
@@ -189,8 +198,70 @@ model LessonPlan {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   exports       LessonPlanExport[]
+  assignments   Assignment[]
 
   @@index([userId, createdAt])
+}
+
+model Class {
+  id         String        @id @default(cuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  subject    String?
+  gradeLevel String?
+  section    String?
+  schoolYear String?
+  archived   Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  students   ClassStudent[]
+  assignments Assignment[]
+
+  @@index([userId, createdAt])
+  @@index([userId, archived])
+}
+
+model ClassStudent {
+  id            String   @id @default(cuid())
+  classId        String
+  class          Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  studentName    String
+  studentEmail   String?
+  studentNumber  String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([classId, createdAt])
+  @@index([classId, studentEmail])
+}
+
+model Assignment {
+  id           String              @id @default(cuid())
+  userId       String
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classId      String
+  class        Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  quizId       Int?
+  quiz         Quiz?               @relation(fields: [quizId], references: [id], onDelete: SetNull)
+  lessonPlanId String?
+  lessonPlan   LessonPlan?         @relation(fields: [lessonPlanId], references: [id], onDelete: SetNull)
+  title        String
+  instructions String?
+  status       String              @default("draft")
+  availableFrom DateTime?
+  dueAt        DateTime?
+  closedAt     DateTime?
+  shareToken   String?             @unique
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  attempts     StudentQuizAttempt[]
+
+  @@index([userId, createdAt])
+  @@index([classId, status])
+  @@index([quizId])
+  @@index([lessonPlanId])
 }
 
 model LessonPlanExport {
@@ -294,6 +365,8 @@ model StudentQuizAttempt {
   id             String   @id @default(cuid())
   quizId         Int
   quiz           Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  assignmentId   String?
+  assignment     Assignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
   studentName    String?
   studentEmail   String?
   scorePercent   Int
@@ -306,8 +379,9 @@ model StudentQuizAttempt {
   createdAt      DateTime @default(now())
 
   @@index([quizId, submittedAt])
+  @@index([assignmentId, submittedAt])
   @@index([studentEmail, submittedAt])
-  @@unique([quizId, studentEmail])
+  @@unique([quizId, studentEmail, assignmentId])
 }
 
 model QuizShareSettings {
@@ -316,6 +390,7 @@ model QuizShareSettings {
   quiz      Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
   isOpen    Boolean  @default(true)
   expiresAt DateTime?
+  assessmentDurationMinutes Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -1,0 +1,241 @@
+QuizMintAI Google Classroom Integration Backlog
+
+Purpose
+- integrate Google Classroom as a class-sync and assignment-distribution layer
+- keep QuizMintAI as the primary workflow, analytics, and intervention system
+- avoid duplicating full Google Classroom behavior inside QuizMintAI
+
+Product Positioning
+- QuizMintAI remains the source of truth for:
+  - quiz generation
+  - lesson-plan generation
+  - assignment analytics
+  - student results
+  - intervention and reteach workflow
+  - teacher workspace
+- Google Classroom is used for:
+  - class import
+  - roster import
+  - assignment publishing
+  - teacher-facing distribution convenience
+
+Integration Principles
+- do not replace QuizMintAI classes with Google Classroom objects directly
+- do not make Google Classroom the only source of truth
+- store Google Classroom ids as linked external references on QuizMintAI records
+- keep result review and intervention inside QuizMintAI
+- design for partial sync, not full platform mirroring
+
+P1: Foundations
+
+1. Add Google Classroom Connection Model
+- priority: P1
+- impact: high
+- goal: let a teacher securely connect a Google Classroom account to QuizMintAI
+- tasks:
+  - add database model for Google Classroom connection
+  - store:
+    - user id
+    - Google subject id
+    - access token metadata
+    - refresh token metadata
+    - token expiry
+    - last successful sync timestamps
+  - separate Classroom scopes from normal Google sign-in scopes
+- likely files:
+  - [prisma/schema.prisma](c:/Users/User/Desktop/msaas/quiz-forge/prisma/schema.prisma)
+  - [lib/auth-option.ts](c:/Users/User/Desktop/msaas/quiz-forge/lib/auth-option.ts)
+  - new Google Classroom auth helpers under [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+
+2. Add Google Classroom OAuth Flow
+- priority: P1
+- impact: high
+- goal: connect a teacher’s Google Classroom account with the right Google scopes
+- tasks:
+  - create connect route
+  - create callback route
+  - request only Classroom scopes needed for first release
+  - store tokens securely
+  - show connected / disconnected state in account settings
+- likely files:
+  - new routes under [app/api/google-classroom](c:/Users/User/Desktop/msaas/quiz-forge/app/api)
+  - [app/(home)/account/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/account/page.tsx)
+  - auth utilities under [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+
+3. Add External Link Fields For Classes And Assignments
+- priority: P1
+- impact: high
+- goal: let QuizMintAI records remember which Google Classroom objects they map to
+- tasks:
+  - add optional external fields for:
+    - Google Classroom course id on QuizMintAI class
+    - Google Classroom courseWork id on QuizMintAI assignment
+  - add sync status fields
+  - add last published / last synced timestamps
+- likely files:
+  - [prisma/schema.prisma](c:/Users/User/Desktop/msaas/quiz-forge/prisma/schema.prisma)
+  - [app/api/classes/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/classes/route.ts)
+  - [app/api/assignments/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/assignments/route.ts)
+
+P2: Class And Roster Sync
+
+4. Import Google Classroom Courses Into QuizMintAI Classes
+- priority: P2
+- impact: high
+- goal: reduce duplicate class setup for teachers
+- tasks:
+  - fetch teacher courses from Google Classroom
+  - show import UI
+  - create or link QuizMintAI classes from imported courses
+  - prevent duplicate imports for already linked courses
+- likely files:
+  - new routes under [app/api/google-classroom](c:/Users/User/Desktop/msaas/quiz-forge/app/api)
+  - [app/(home)/classes/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/classes/page.tsx)
+  - [app/api/classes/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/classes/route.ts)
+
+5. Import Google Classroom Roster Into QuizMintAI Students
+- priority: P2
+- impact: high
+- goal: bring student rosters into QuizMintAI so assignments and results stay grounded
+- tasks:
+  - fetch course students from Google Classroom
+  - map roster entries into QuizMintAI students
+  - support refresh / resync
+  - avoid duplicate student records on repeated sync
+- likely files:
+  - [app/api/classes/[id]/students/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/classes/[id]/students/route.ts)
+  - [app/(home)/classes/[id]/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/classes/[id]/page.tsx)
+  - new Google Classroom sync routes
+
+P3: Assignment Publishing
+
+6. Publish QuizMintAI Quiz Assignments To Google Classroom
+- priority: P3
+- impact: very high
+- goal: let teachers create in QuizMintAI and distribute through Google Classroom
+- tasks:
+  - add `Post to Google Classroom` action on quiz assignments
+  - send:
+    - title
+    - instructions
+    - due date
+    - attached QuizMintAI student link
+  - store returned Google Classroom courseWork id
+  - show publish status on assignment pages
+- likely files:
+  - [app/(home)/generate-quiz/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/generate-quiz/page.tsx)
+  - [app/(home)/assignments/[id]/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/assignments/[id]/page.tsx)
+  - [app/api/assignments/[id]/share/route.ts](c:/Users/User/Desktop/msaas/quiz-forge/app/api/assignments/[id]/share/route.ts)
+  - new publish route under [app/api/google-classroom](c:/Users/User/Desktop/msaas/quiz-forge/app/api)
+
+7. Publish Lesson-Plan Assignments To Google Classroom
+- priority: P3
+- impact: high
+- goal: distribute lesson-plan work through Google Classroom without moving lesson workflow out of QuizMintAI
+- tasks:
+  - add `Post to Google Classroom` action for lesson-plan assignments
+  - attach:
+    - QuizMintAI lesson assignment link
+    - optional exported file later
+  - support due date and teacher notes
+- likely files:
+  - [app/(home)/lessonPlan/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/lessonPlan/page.tsx)
+  - [app/(home)/assignments/[id]/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/assignments/[id]/page.tsx)
+  - new publish route under [app/api/google-classroom](c:/Users/User/Desktop/msaas/quiz-forge/app/api)
+
+P4: Publishing UX And Sync Status
+
+8. Show Google Classroom Link State In Class And Assignment UI
+- priority: P4
+- impact: medium
+- goal: make sync state obvious to teachers
+- tasks:
+  - show whether a class is linked to Google Classroom
+  - show whether an assignment was published
+  - show external course / coursework ids in admin/debug-friendly form where useful
+  - show last sync and last publish times
+- likely files:
+  - [app/(home)/classes/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/classes/page.tsx)
+  - [app/(home)/classes/[id]/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/classes/[id]/page.tsx)
+  - [app/(home)/assignments/[id]/page.tsx](c:/Users/User/Desktop/msaas/quiz-forge/app/(home)/assignments/[id]/page.tsx)
+
+9. Add Safe Resync Actions
+- priority: P4
+- impact: medium
+- goal: let teachers refresh courses and rosters without breaking local workflow
+- tasks:
+  - add `Refresh Classroom Link`
+  - add `Resync roster`
+  - avoid destructive overwrites by default
+  - log sync issues and partial failures clearly
+- likely files:
+  - class pages and class API routes
+  - Google Classroom sync routes
+
+P5: Hardening
+
+10. Token Refresh And Failure Recovery
+- priority: P5
+- impact: high
+- goal: keep Google Classroom integration reliable after initial connect
+- tasks:
+  - refresh expired tokens
+  - recover gracefully when teacher revokes access
+  - prompt reconnect only when necessary
+  - log token failure reasons for support/debugging
+- likely files:
+  - Google Classroom auth helpers under [lib](c:/Users/User/Desktop/msaas/quiz-forge/lib)
+  - Google Classroom API routes under [app/api](c:/Users/User/Desktop/msaas/quiz-forge/app/api)
+
+11. Permission And Data-Boundary Review
+- priority: P5
+- impact: high
+- goal: make sure Google sync does not weaken QuizMintAI data integrity
+- tasks:
+  - scope sync actions to the current connected teacher
+  - verify linked classes belong to the current user
+  - prevent publishing assignments into the wrong course
+  - log publish and sync audit events
+- likely files:
+  - Google Classroom routes and shared helpers
+  - assignment/class mutation routes
+
+Recommended Release Order
+1. connection model
+2. OAuth flow
+3. class external-link fields
+4. class import
+5. roster sync
+6. publish quiz assignments
+7. publish lesson-plan assignments
+8. sync-state UI
+9. safe resync
+10. token refresh and hardening
+
+What Should Stay Native In QuizMintAI
+- generation
+- saved libraries
+- results review
+- analytics
+- intervention workflow
+- teacher workspace
+
+What Should Sync Or Publish To Google Classroom
+- classes
+- rosters
+- assignment metadata
+- due dates
+- student-facing assignment links
+
+What Should Not Be Rebuilt As A Full Duplicate
+- full Google Classroom gradebook
+- Classroom discussion stream
+- all Classroom permission surfaces
+- full submission experience inside Classroom
+
+Completion Criteria
+- teachers can connect Google Classroom from QuizMintAI
+- teachers can import a class and roster into QuizMintAI
+- teachers can publish a QuizMintAI assignment to Google Classroom
+- QuizMintAI still remains the place where results and intervention happen
+- sync and publish status are visible and recoverable

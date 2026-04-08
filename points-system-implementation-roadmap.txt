@@ -1,0 +1,375 @@
+Points System Implementation Roadmap
+
+Purpose
+This roadmap defines how QuizMintAI should migrate the current free-tier quiz waiting model from:
+
+- 3 free quiz uses
+- 3 hour cooldown
+
+into a points-based free tier such as:
+
+- 100 free points
+- point cost per generation
+- timed recharge after points are exhausted
+
+This is an implementation roadmap, not just an idea list.
+
+Recommended Product Model
+
+Default recommendation
+- free users start with 100 points
+- quiz generation consumes points
+- when points reach 0, the user must wait for recharge
+- full recharge every 12 hours
+
+Phase 1 status
+- completed
+- version 1 rules are now locked for implementation
+
+Why 12 hours instead of 1 day
+- less punishing for legitimate free users
+- still strong enough to protect AI costs
+- encourages return usage twice per day at most
+- easier acquisition loop than a full 24-hour lockout
+
+Finalized version 1 point costs
+- prompt-only quiz generation: 25 points
+- file-upload quiz generation: 40 points
+- version 1 will not use a more complex sliding scale yet
+
+Recommended first release rule
+- keep version 1 simple
+- start with one fixed cost for prompt-only quiz generation
+- optionally use a second higher fixed cost for file-based generation
+- do not start with a highly complicated formula unless needed
+
+Finalized version 1 pricing model
+- prompt-only quiz generation: 25 points
+- file-upload quiz generation: 40 points
+- max free balance: 100 points
+- recharge window: 12 hours
+
+This gives free users approximately:
+- 4 normal prompt generations per recharge window
+- or 2 to 3 heavier generations depending on type
+
+Core Migration Goal
+
+Replace this free-tier mental model
+- "I get 3 tries, then I wait 3 hours"
+
+With this model
+- "I have a free balance of points, and each generation uses some of it"
+
+This gives you:
+- more flexible monetization
+- cleaner upgrade messaging
+- easier future tuning
+- better handling for small vs heavy requests
+
+Phase 1 | Product Rules Finalization
+
+Goal
+- decide the exact point rules before code changes
+
+Decisions to lock
+1. max free points
+   - locked: 100
+
+2. recharge behavior
+   - locked: full refill every 12 hours
+
+3. point cost model
+   - locked version 1:
+     - prompt generation: 25
+     - upload generation: 40
+
+4. scope
+   - locked:
+     - first apply only to quiz generation
+     - lesson plan generation stays separate for version 1
+
+5. free-tier messaging
+   - locked:
+     - replace "3 uses left" with points-based balance messaging
+     - show remaining points and recharge timing when relevant
+
+Done when
+- the business rules are locked and written down before code migration starts
+
+Phase 2 | Data Model Changes
+
+Goal
+- add durable user fields for point tracking and recharge timing
+
+Phase 2 status
+- completed at schema level
+- Prisma User fields have been added
+
+Likely schema additions on User
+- freeQuizPoints
+- freeQuizPointsMax
+- freeQuizPointsRefreshedAt
+- freeQuizPointsRechargeAt
+
+Optional if you want auditability later
+- quizPointUsageWindowStart
+- quizPointUsageLastCost
+- quizPointUsageEvents table
+
+Recommended simple schema for version 1
+- freeQuizPoints: Int
+- freeQuizPointsMax: Int
+- freeQuizPointsRechargeAt: DateTime?
+
+Recommended defaults
+- freeQuizPoints = 100
+- freeQuizPointsMax = 100
+- freeQuizPointsRechargeAt = null until first depletion or first tracked cycle
+
+Migration tasks
+- update Prisma schema
+- generate Prisma client
+- add migration
+- define safe defaults for existing users
+
+Done when
+- the user table supports free-point balance and recharge timing
+
+Phase 3 | Shared Points Logic
+
+Goal
+- centralize all point calculations and recharge rules
+
+Phase 3 status
+- completed
+- shared helper module created in `lib/free-tier-points.ts`
+- version 1 constants, recharge helpers, affordability checks, and atomic deduction path are now centralized
+
+Create a shared helper module
+- example:
+  - lib/free-tier-points.ts
+
+Responsibilities
+- determine point cost for a request
+- determine whether recharge is due
+- refill points when recharge time has passed
+- validate whether the user has enough points
+- atomically deduct points
+- return user-facing status payload
+
+Key functions to create
+- getQuizGenerationPointCost(input)
+- refreshFreeQuizPointsIfDue(user)
+- getAvailableFreeQuizPoints(user)
+- canAffordQuizGeneration(user, cost)
+- deductFreeQuizPoints(userId, cost)
+- getNextQuizRechargeAt(user)
+
+Important rule
+- all deductions must be atomic
+- do not use fragile read-then-write patterns in separate steps
+
+Done when
+- the points system rules live in one reusable module instead of being scattered
+
+Phase 4 | Backend Quiz Generation Integration
+
+Goal
+- replace the old usage-count and cooldown checks in quiz generation
+
+Phase 4 status
+- completed for prompt-based quiz generation
+- `app/api/generate-quiz/route.ts` now uses the shared points helper instead of the old 3-use cooldown logic
+- free-tier rejections now return points-based metadata
+- successful free quiz generations now deduct points and return remaining balance metadata
+- point deductions are restored if generation fails after deduction
+- `app/api/upload-file/route.ts` still does not need free-tier points because uploads remain Pro or Premium only
+
+Likely files to update
+- app/api/generate-quiz/route.ts
+- app/api/upload-file/route.ts
+- possibly supporting middleware/helpers used by free-tier enforcement
+
+New backend behavior
+- calculate point cost
+- refresh balance if recharge time already passed
+- reject generation if points are insufficient
+- include response metadata such as:
+  - remainingPoints
+  - requiredPoints
+  - nextRechargeAt
+  - maxPoints
+
+Example rejection response
+- error: "Not enough free points"
+- remainingPoints: 10
+- requiredPoints: 25
+- nextRechargeAt: ISO date
+
+Example success response metadata
+- remainingPoints: 75
+- spentPoints: 25
+
+Done when
+- quiz generation no longer depends on 3-use cooldown logic
+
+Phase 5 | Frontend Free-Tier UI Migration
+
+Goal
+- replace all old usage/cooldown messaging with point balance UX
+
+Phase 5 status
+- completed for the in-app quiz generator
+- `app/(home)/generate-quiz/page.tsx` now tracks free quiz point balance instead of the old free-limit state
+- `components/quiz/quiz-input-card.tsx` now shows a free quiz points panel, point cost context, and recharge timing
+- `/api/user` now returns effective free quiz point data so the page can render current balance on load
+- public landing-page free-tier messaging remains part of Phase 6
+
+Likely files to update
+- app/(home)/generate-quiz/page.tsx
+- components/quiz/quiz-input-card.tsx
+- app/landing-page.tsx
+- any public/free generator status UI
+
+UI changes
+- replace "3 uses left" / cooldown text
+- show current points balance
+- show point cost before generation if useful
+- show recharge timer when balance is depleted
+- explain why upload costs more if you implement differential pricing
+
+Recommended UI model
+- a small free-tier status panel:
+  - Points: 75 / 100
+  - This generation will cost: 25
+  - Recharge in: 11h 22m
+
+Upgrade messaging
+- free: point-limited
+- pro/premium: more generous or unlimited generation
+
+Done when
+- users understand balance, cost, and recharge without confusion
+
+Phase 6 | Remove Old Quiz Usage Logic
+
+Goal
+- eliminate legacy fields and behavior once the new system is stable
+
+Implementation order step 6 status
+- completed for public and landing-page messaging
+- `app/landing-page.tsx` now distinguishes the public no-signup demo from the signed-in free points plan
+- public hero copy, free plan copy, FAQ copy, and the public demo limit modal now reflect the 100-point / 12-hour signed-in free plan
+- legacy database fields and old backend public demo logic still remain for later cleanup
+
+Likely legacy concepts to remove or stop using
+- quizUsage
+- lastQuizAt
+- old 3-hour cooldown messages
+- ad reset remnants already disabled
+
+Important note
+- do not remove legacy DB fields immediately if they are still referenced elsewhere
+- first stop using them
+- remove them in a cleanup migration later
+
+Done when
+- the app no longer depends on the old free-usage path
+
+Phase 7 | Testing And Validation
+
+Goal
+- make sure the system behaves correctly for free, pro, and premium users
+
+Test cases
+1. new free user starts with 100 points
+2. prompt quiz generation deducts 25 points
+3. upload generation deducts 40 points
+4. generation is blocked when points are insufficient
+5. recharge restores points after 12 hours
+6. pro user is not blocked by free-point limits
+7. premium user is not blocked by free-point limits
+8. UI correctly shows remaining balance
+9. API returns accurate point metadata
+10. concurrent requests do not overspend points
+
+Manual validation
+- generate several quizzes as a free user
+- force a depleted balance
+- verify recharge timestamp
+- simulate a post-recharge request
+
+Done when
+- the point system works consistently and does not allow race-condition overspending
+
+Phase 8 | Optional Future Improvements
+
+Not required for version 1, but useful later
+
+1. gradual recharge instead of full refill
+- example:
+  - +25 points every 3 hours
+
+2. dynamic point cost by request complexity
+- item count
+- upload usage
+- heavy parsing
+- generation mode
+
+3. unified free-tier point wallet
+- one point system for quizzes and lesson plans
+
+4. point event history
+- useful for analytics and support
+
+5. admin override tools
+- gift points
+- reset balance
+- inspect recent usage
+
+Recommended Implementation Order
+
+Step 1
+- finalize rules
+
+Step 2
+- add Prisma fields and migration
+
+Step 3
+- build shared points helper module
+
+Step 4
+- integrate backend quiz generation checks
+
+Step 5
+- update generate-quiz frontend UI
+
+Step 6
+- update landing/public free-tier messaging
+
+Step 7
+- test and clean old logic
+
+Recommended Version 1 Decision
+
+If you want the cleanest first implementation, use:
+- freeQuizPoints = 100
+- prompt quiz cost = 25
+- upload quiz cost = 40
+- full recharge every 12 hours
+
+Why this is the best first version
+- simple to explain
+- simple to implement
+- enough flexibility for future tuning
+- better than 3 uses / 3 hours
+
+Definition of done
+
+The migration is complete when:
+- quiz free-tier access is points-based
+- the old 3-use cooldown model is no longer active
+- users can clearly see balance and recharge timing
+- backend enforcement is atomic and reliable
+- pro and premium plans bypass or exceed the free limitation cleanly

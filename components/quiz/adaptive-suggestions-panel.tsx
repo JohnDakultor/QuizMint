@@ -5,6 +5,8 @@ type AdaptiveSuggestionsPanelProps = {
   suggestions: string[];
   onClose: () => void;
   onApply: (suggestion: string) => void;
+  title?: string;
+  emptyMessage?: string;
 };
 
 export function AdaptiveSuggestionsPanel({
@@ -12,13 +14,15 @@ export function AdaptiveSuggestionsPanel({
   suggestions,
   onClose,
   onApply,
+  title = "Adaptive Suggestions",
+  emptyMessage = "Generate a few quizzes first to unlock personalized prompt suggestions.",
 }: AdaptiveSuggestionsPanelProps) {
   if (!visible) return null;
 
   return (
     <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 dark:border-indigo-500/40 dark:bg-indigo-950/35">
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-xs font-medium text-indigo-900 dark:text-indigo-100">Adaptive Suggestions</div>
+        <div className="text-xs font-medium text-indigo-900 dark:text-indigo-100">{title}</div>
         <button
           type="button"
           onClick={onClose}
@@ -42,7 +46,7 @@ export function AdaptiveSuggestionsPanel({
         </div>
       ) : (
         <div className="text-xs text-indigo-700 dark:text-indigo-200">
-          Generate a few quizzes first to unlock personalized prompt suggestions.
+          {emptyMessage}
         </div>
       )}
     </div>

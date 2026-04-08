@@ -8,6 +8,7 @@ const base =
 
 const PRO_PLAN_ID = process.env.PAYPAL_PRO_PLAN_ID || "";
 const PREMIUM_PLAN_ID = process.env.PAYPAL_PREMIUM_PLAN_ID || "";
+const PREMIUM_FALLBACK_PRICE_USD = 39;
 
 async function getAccessToken() {
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
@@ -74,8 +75,11 @@ async function resolvePlanTypeFromSubscription(accessToken: string, planId: stri
   });
   if (!planRes.ok) return "pro";
   const plan = await planRes.json();
+  const planLabel = `${String(plan?.name || "")} ${String(plan?.description || "")}`.toLowerCase();
+  if (planLabel.includes("premium")) return "premium";
+  if (planLabel.includes("pro")) return "pro";
   const amount = Number(plan?.billing_cycles?.[0]?.pricing_scheme?.fixed_price?.value ?? "0");
-  return amount >= 15 ? "premium" : "pro";
+  return amount >= PREMIUM_FALLBACK_PRICE_USD ? "premium" : "pro";
 }
 
 export async function POST(req: NextRequest) {

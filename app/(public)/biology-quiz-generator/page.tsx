@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function BiologyQuizGeneratorPage() {
   return (
     <LandingTemplate
+      path="/biology-quiz-generator"
       title="AI Biology Quiz Generator"
       subtitle="Build biology assessments quickly for core topics like cells, genetics, and ecosystems."
       featureTitle="Biology teaching benefits"

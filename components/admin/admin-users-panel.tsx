@@ -24,8 +24,9 @@ type AdminUser = {
   subscriptionPlan: string | null;
   subscriptionStatus: string | null;
   quizUsage: number;
-  lessonPlanUsage: number;
-  lessonMaterialUploadUsage: number;
+  freeLessonPlanPoints: number | null;
+  freeLessonPlanPointsMax: number | null;
+  freeLessonPlanPointsRechargeAt: string | null;
   lastQuizAt: string | null;
   lastLessonPlanAt: string | null;
   createdAt: string;
@@ -706,8 +707,8 @@ export default function AdminUsersPanel() {
                 <th className="py-2 text-left">Plan</th>
                 <th className="py-2 text-left">Status</th>
                 <th className="py-2 text-left">Quiz Usage</th>
-                <th className="py-2 text-left">Lesson Usage</th>
-                <th className="py-2 text-left">File-&gt;PPTX Usage</th>
+                <th className="py-2 text-left">Lesson Credits</th>
+                <th className="py-2 text-left">Lesson Recharge</th>
                 <th className="py-2 text-left">Last Quiz</th>
                 <th className="py-2 text-left">Last Lesson</th>
                 <th className="py-2 text-left">Created</th>
@@ -720,8 +721,18 @@ export default function AdminUsersPanel() {
                   <td className="py-2">{u.subscriptionPlan || "free"}</td>
                   <td className="py-2">{u.subscriptionStatus || "-"}</td>
                   <td className="py-2">{u.quizUsage}</td>
-                  <td className="py-2">{u.lessonPlanUsage}</td>
-                  <td className="py-2">{u.lessonMaterialUploadUsage ?? 0}</td>
+                  <td className="py-2">
+                    {u.subscriptionPlan === "pro" || u.subscriptionPlan === "premium"
+                      ? "Unlimited"
+                      : `${u.freeLessonPlanPoints ?? 0}/${u.freeLessonPlanPointsMax ?? 100}`}
+                  </td>
+                  <td className="py-2">
+                    {u.subscriptionPlan === "pro" || u.subscriptionPlan === "premium"
+                      ? "-"
+                      : u.freeLessonPlanPointsRechargeAt
+                        ? new Date(u.freeLessonPlanPointsRechargeAt).toLocaleString()
+                        : "-"}
+                  </td>
                   <td className="py-2">{u.lastQuizAt ? new Date(u.lastQuizAt).toLocaleString() : "-"}</td>
                   <td className="py-2">
                     {u.lastLessonPlanAt ? new Date(u.lastLessonPlanAt).toLocaleString() : "-"}

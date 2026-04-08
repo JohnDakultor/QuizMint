@@ -3,15 +3,44 @@
 import LiteModeBadge from "@/components/ui/lite-mode-badge";
 import { BrainCircuit } from "lucide-react";
 
+type FreeQuizPointsInfo = {
+  remainingPoints: number;
+  maxPoints: number;
+  nextRechargeAt?: string | null;
+} | null;
+
 type QuizPageHeaderProps = {
   isPremiumAdaptiveEnabled: boolean;
   onToggleAdaptive: () => void;
+  freeQuizPointsInfo?: FreeQuizPointsInfo;
+  isFreePlan?: boolean;
 };
 
-export function QuizPageHeader({ isPremiumAdaptiveEnabled, onToggleAdaptive }: QuizPageHeaderProps) {
+export function QuizPageHeader({
+  isPremiumAdaptiveEnabled,
+  onToggleAdaptive,
+  freeQuizPointsInfo,
+  isFreePlan = false,
+}: QuizPageHeaderProps) {
   return (
     <div className="relative text-center pt-10 sm:pt-0">
-      <div className="absolute right-0 top-0 flex items-center gap-2">
+      <div className="absolute left-0 top-0 flex flex-wrap items-center justify-start gap-2">
+        {isFreePlan && freeQuizPointsInfo ? (
+          <div className="group relative overflow-hidden rounded-full border border-cyan-300/60 bg-linear-to-r from-slate-950 via-sky-950 to-cyan-900 px-3 py-1.5 text-left shadow-[0_14px_30px_-22px_rgba(8,145,178,0.9)] ring-1 ring-white/10 backdrop-blur-xl">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(125,211,252,0.2),transparent_40%),radial-gradient(circle_at_bottom_left,rgba(34,211,238,0.14),transparent_35%)]" />
+            <div className="relative flex items-center gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/85">
+                Credits:
+              </span>
+              <span className="text-sm font-black text-white">
+                {freeQuizPointsInfo.remainingPoints}
+              </span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="absolute right-0 top-0 flex flex-wrap items-center justify-end gap-2">
         {isPremiumAdaptiveEnabled && (
           <button
             id="quiz-adaptive-toggle"

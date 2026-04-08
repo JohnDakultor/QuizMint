@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Script from "next/script";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
@@ -87,9 +88,45 @@ export default async function BlogPostPage({
   };
 
   const headings = extractHeadings(post.content);
+  const url = `https://www.quizmintai.com/blog/${post.slug}`;
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: "https://www.quizmintai.com",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Blog",
+        item: "https://www.quizmintai.com/blog",
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: post.title,
+        item: url,
+      },
+    ],
+  };
+  const relatedWorkflowLinks = [
+    { href: "/classroom-quiz-workflow", label: "Classroom Quiz Workflow" },
+    { href: "/assignment-tracking-for-teachers", label: "Assignment Tracking for Teachers" },
+    { href: "/quiz-results-and-reteach-workflow", label: "Quiz Results and Reteach Workflow" },
+    { href: "/teacher-workspace-for-quizzes-and-lessons", label: "Teacher Workspace for Quizzes and Lessons" },
+  ];
 
   return (
     <div className="bg-gray-50 min-h-screen py-12 px-4 md:px-8 lg:px-16">
+      <Script
+        id="blog-post-breadcrumb-schema"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
       <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-12">
         <div className="flex-1 bg-white shadow-lg rounded-xl overflow-hidden">
           {post.featuredImage && (
@@ -122,6 +159,24 @@ export default async function BlogPostPage({
                 {post.content}
               </ReactMarkdown>
             </div>
+
+            <section className="mt-10 rounded-2xl border border-blue-200 bg-blue-50 p-6">
+              <h2 className="text-2xl font-semibold text-zinc-900">Related Teacher Workflow Guides</h2>
+              <p className="mt-2 text-sm text-zinc-700">
+                Continue from this article into the public workflow pages that explain how QuizMintAI connects generation, assignments, results, and follow-up.
+              </p>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {relatedWorkflowLinks.map((item) => (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    className="rounded-lg border border-blue-200 bg-white px-4 py-3 text-sm font-medium text-zinc-800 transition hover:border-blue-400 hover:text-blue-700"
+                  >
+                    {item.label}
+                  </a>
+                ))}
+              </div>
+            </section>
           </div>
         </div>
 

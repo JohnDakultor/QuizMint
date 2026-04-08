@@ -17,6 +17,14 @@ function clampDurationMinutes(raw: unknown) {
   return Math.min(MAX_DURATION_MINUTES, Math.max(MIN_DURATION_MINUTES, i));
 }
 
+function clampAssessmentDurationMinutes(raw: unknown) {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const i = Math.floor(n);
+  return Math.min(MAX_DURATION_MINUTES, Math.max(MIN_DURATION_MINUTES, i));
+}
+
 export async function POST(req: NextRequest) {
   const requestId = createRequestId();
   try {
@@ -29,6 +37,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const quizId = Number(body?.quizId);
+    const assignmentId =
+      typeof body?.assignmentId === "string" ? body.assignmentId.trim() : "";
     if (!Number.isInteger(quizId) || quizId <= 0) {
       return apiError(400, "Invalid quizId", requestId);
     }
@@ -41,8 +51,26 @@ export async function POST(req: NextRequest) {
       return apiError(404, "Quiz not found", requestId);
     }
 
+    if (assignmentId) {
+      const assignment = await prisma.assignment.findFirst({
+        where: {
+          id: assignmentId,
+          userId: user.id,
+          quizId: quiz.id,
+        },
+        select: { id: true },
+      });
+      if (!assignment) {
+        return apiError(404, "Assignment not found for this quiz", requestId);
+      }
+    }
+
     const durationMinutes = clampDurationMinutes(body?.durationMinutes);
     const shuffleQuestions = Boolean(body?.shuffleQuestions);
+    const assessmentDurationMinutes =
+      body?.timedAssessmentEnabled === true
+        ? clampAssessmentDurationMinutes(body?.assessmentDurationMinutes)
+        : null;
     const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000);
 
     await prisma.quizShareSettings.upsert({
@@ -51,15 +79,19 @@ export async function POST(req: NextRequest) {
         quizId: quiz.id,
         isOpen: true,
         expiresAt,
+        assessmentDurationMinutes,
       },
       update: {
         isOpen: true,
         expiresAt,
+        assessmentDurationMinutes,
       },
     });
 
     const token = createQuizShareToken(quiz.id, durationMinutes * 60, {
       shuffleQuestions,
+      assignmentId: assignmentId || null,
+      assessmentDurationMinutes,
     });
     const shareUrl = `${req.nextUrl.origin}/quiz/${encodeURIComponent(token)}`;
 
@@ -71,8 +103,10 @@ export async function POST(req: NextRequest) {
       metadata: {
         quizId: quiz.id,
         shareUrl,
+        assignmentId: assignmentId || null,
         shuffleQuestions,
         durationMinutes,
+        assessmentDurationMinutes,
         expiresAt: expiresAt.toISOString(),
       },
     });
@@ -87,6 +121,7 @@ export async function POST(req: NextRequest) {
           expiresAt,
           durationMinutes,
           shuffleQuestions,
+          assessmentDurationMinutes,
         },
         requestId,
       },
@@ -126,14 +161,24 @@ export async function PATCH(req: NextRequest) {
       body?.durationMinutes !== undefined
         ? clampDurationMinutes(body.durationMinutes)
         : undefined;
+    const assessmentDurationMinutes =
+      body?.timedAssessmentEnabled === true
+        ? clampAssessmentDurationMinutes(body?.assessmentDurationMinutes)
+        : body?.timedAssessmentEnabled === false
+        ? null
+        : undefined;
 
-    if (isOpen === undefined && durationMinutes === undefined) {
+    if (
+      isOpen === undefined &&
+      durationMinutes === undefined &&
+      assessmentDurationMinutes === undefined
+    ) {
       return apiError(400, "Nothing to update", requestId);
     }
 
     const existing = await prisma.quizShareSettings.findUnique({
       where: { quizId: quiz.id },
-      select: { isOpen: true, expiresAt: true },
+      select: { isOpen: true, expiresAt: true, assessmentDurationMinutes: true },
     });
     const nextOpen = isOpen ?? existing?.isOpen ?? true;
     const nextExpiresAt =
@@ -147,12 +192,20 @@ export async function PATCH(req: NextRequest) {
         quizId: quiz.id,
         isOpen: nextOpen,
         expiresAt: nextExpiresAt,
+        assessmentDurationMinutes:
+          assessmentDurationMinutes !== undefined
+            ? assessmentDurationMinutes
+            : existing?.assessmentDurationMinutes ?? null,
       },
       update: {
         isOpen: nextOpen,
         expiresAt: nextExpiresAt,
+        assessmentDurationMinutes:
+          assessmentDurationMinutes !== undefined
+            ? assessmentDurationMinutes
+            : existing?.assessmentDurationMinutes ?? null,
       },
-      select: { isOpen: true, expiresAt: true },
+      select: { isOpen: true, expiresAt: true, assessmentDurationMinutes: true },
     });
 
     return NextResponse.json(

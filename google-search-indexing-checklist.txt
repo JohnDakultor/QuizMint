@@ -1,0 +1,263 @@
+Google Search Indexing Checklist
+
+Purpose
+This file is the practical next-step checklist for getting QuizMintAI indexed in Google after the SEO migration work.
+
+This is not a strategy document.
+This is the execution checklist for Google Search Console, sitemap submission, URL inspection, and early indexing follow-up.
+
+Step 1 | Prepare before Search Console
+
+Confirm these first
+- the production domain is live
+- the production domain uses the correct canonical URLs
+- the production sitemap is reachable at:
+  - https://www.quizmintai.com/sitemap.xml
+- the main public pages load without errors
+- robots are not blocking indexable pages
+
+Quick pages to test manually
+- https://www.quizmintai.com/
+- https://www.quizmintai.com/resources
+- https://www.quizmintai.com/teacher-workflow-platform
+- https://www.quizmintai.com/ai-tools-for-teachers
+- https://www.quizmintai.com/classroom-workflow-software
+- https://www.quizmintai.com/quiz-generator-for-teachers
+- https://www.quizmintai.com/lesson-plan-generator-for-teachers
+- https://www.quizmintai.com/classroom-quiz-workflow
+- https://www.quizmintai.com/assignment-tracking-for-teachers
+- https://www.quizmintai.com/quiz-results-and-reteach-workflow
+
+Step 2 | Add the site to Google Search Console
+
+Recommended property type
+- use a Domain property if possible
+- if Domain property is not possible, use URL-prefix property for:
+  - https://www.quizmintai.com
+
+How to verify
+- best option:
+  - DNS TXT record verification
+- other possible methods:
+  - HTML file upload
+  - HTML tag
+  - Google Analytics
+  - Google Tag Manager
+
+Best practice
+- verify the full domain if possible so all subdomains and protocol variations are covered
+
+Step 3 | Submit the sitemap
+
+Sitemap URL
+- https://www.quizmintai.com/sitemap.xml
+
+In Search Console
+1. open the property
+2. go to Sitemaps
+3. paste:
+   - sitemap.xml
+4. submit
+
+After submission
+- confirm Google says the sitemap was read successfully
+- check whether discovered URLs start appearing
+
+Step 4 | Inspect and request indexing for the highest-priority pages
+
+Use URL Inspection for these first
+
+Tier 1 | Highest priority
+- https://www.quizmintai.com/
+- https://www.quizmintai.com/resources
+- https://www.quizmintai.com/teacher-workflow-platform
+- https://www.quizmintai.com/ai-tools-for-teachers
+- https://www.quizmintai.com/classroom-workflow-software
+
+Tier 2 | Core workflow pages
+- https://www.quizmintai.com/classroom-quiz-workflow
+- https://www.quizmintai.com/assignment-tracking-for-teachers
+- https://www.quizmintai.com/student-roster-and-reminders
+- https://www.quizmintai.com/quiz-results-and-reteach-workflow
+- https://www.quizmintai.com/teacher-workspace-for-quizzes-and-lessons
+- https://www.quizmintai.com/classroom-intervention-workflow
+
+Tier 3 | Main generator pages
+- https://www.quizmintai.com/quiz-generator-for-teachers
+- https://www.quizmintai.com/lesson-plan-generator-for-teachers
+- https://www.quizmintai.com/ai-quiz-generator
+
+Tier 4 | Segment and regional pages
+- https://www.quizmintai.com/ai-tools-for-private-school-teachers
+- https://www.quizmintai.com/ai-tools-for-tutors
+- https://www.quizmintai.com/teacher-workflow-for-training-centers
+- https://www.quizmintai.com/teacher-workflow-software-saudi-arabia
+- https://www.quizmintai.com/ai-tools-for-teachers-middle-east
+
+Tier 5 | Subject pages
+- https://www.quizmintai.com/science-quiz-generator
+- https://www.quizmintai.com/math-quiz-generator
+- https://www.quizmintai.com/history-quiz-generator
+- https://www.quizmintai.com/english-quiz-generator
+- https://www.quizmintai.com/biology-quiz-generator
+- https://www.quizmintai.com/chemistry-quiz-generator
+- https://www.quizmintai.com/physics-quiz-generator
+- https://www.quizmintai.com/exam-prep-quiz-generator
+
+How to inspect a URL
+1. paste the full URL into Search Console URL Inspection
+2. wait for the result
+3. if the page is not indexed, click:
+   - Request Indexing
+4. repeat for the next priority page
+
+Notes
+- do not panic if Google says the URL is not yet on Google at first
+- request indexing for priority pages first, not every URL blindly at once
+
+Step 5 | Check indexing blockers
+
+If a page does not index, review:
+- canonical points to the right URL
+- page is not marked noindex
+- robots.txt is not blocking it
+- page is in the sitemap
+- page has internal links from important pages
+- page content is not too thin or too similar to another page
+
+Common Search Console statuses to watch
+- Discovered - currently not indexed
+- Crawled - currently not indexed
+- Duplicate without user-selected canonical
+- Alternate page with proper canonical tag
+- Excluded by noindex tag
+- Blocked by robots.txt
+
+Step 6 | Submit pages in a sensible order
+
+Recommended order
+1. homepage
+2. resources page
+3. 3 category pages
+4. core workflow pages
+5. main generator pages
+6. segment and regional pages
+7. subject pages
+8. blog hub
+9. blog posts
+
+Why this order
+- Google should first understand the main site structure and category-level pages
+- deeper and narrower pages are easier to understand after the main architecture is crawled
+
+Step 7 | Watch the Pages report
+
+Inside Search Console, review
+- indexed pages
+- excluded pages
+- reasons for exclusion
+
+Check especially whether these get indexed
+- homepage
+- resources
+- teacher-workflow-platform
+- ai-tools-for-teachers
+- classroom-workflow-software
+- classroom-quiz-workflow
+- assignment-tracking-for-teachers
+- quiz-results-and-reteach-workflow
+
+Step 8 | Watch the Performance report
+
+Track
+- impressions
+- clicks
+- CTR
+- average position
+
+Break observations by
+- homepage
+- category pages
+- workflow pages
+- generator pages
+- segment pages
+- regional pages
+- subject pages
+
+What to look for
+- pages with impressions but low CTR
+- pages getting indexed but not attracting clicks
+- pages attracting the wrong queries
+- pages with strong impressions that deserve deeper content improvement
+
+Step 9 | Improve pages after first indexing
+
+If impressions appear but clicks are weak
+- improve title
+- improve meta description
+- improve H1 clarity
+- improve internal links from homepage, resources, and related pages
+
+If Google ignores a page
+- make the page more distinct
+- add stronger internal links
+- reduce overlap with similar pages
+- ensure the page solves a clearly different user need
+
+Step 10 | Keep a simple weekly indexing routine
+
+Weekly checklist
+- check sitemap status
+- inspect newly added public pages
+- review Pages report
+- review Performance report
+- note which pages gained impressions
+- note which pages still are not indexed
+- improve 1 to 3 pages each week based on live data
+
+Suggested first-week indexing batch
+
+Day 1
+- verify property
+- submit sitemap
+- inspect homepage
+- inspect resources
+- inspect teacher-workflow-platform
+- inspect ai-tools-for-teachers
+- inspect classroom-workflow-software
+
+Day 2
+- inspect classroom-quiz-workflow
+- inspect assignment-tracking-for-teachers
+- inspect quiz-results-and-reteach-workflow
+- inspect teacher-workspace-for-quizzes-and-lessons
+- inspect classroom-intervention-workflow
+
+Day 3
+- inspect quiz-generator-for-teachers
+- inspect lesson-plan-generator-for-teachers
+- inspect ai-quiz-generator
+
+Day 4
+- inspect segment pages
+- inspect regional pages
+
+Day 5
+- inspect subject pages
+- review sitemap status
+- review Pages report
+
+Important reminders
+- indexing is not instant
+- requesting indexing does not guarantee indexing
+- sitemap submission helps discovery, not ranking by itself
+- internal linking and page quality still matter
+- category and workflow pages should be prioritized over lower-value long-tail pages
+
+Simple success signs
+- sitemap accepted
+- homepage indexed
+- category pages indexed
+- workflow pages begin getting impressions
+- generator pages start supporting broader workflow discovery
+- Search Console begins showing real query data for the new public pages

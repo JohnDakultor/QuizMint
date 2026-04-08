@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   LessonPlanExportFormat,
   LessonPlanExportInput,
+  buildLessonPlanExportStatusSnapshot,
   getLessonPlanExportHash,
 } from "@/lib/lesson-plan-export";
 
@@ -93,19 +94,23 @@ export async function POST(req: NextRequest) {
     });
 
     if (existing && existing.status === "completed") {
-      return NextResponse.json({
-        jobId: existing.id,
-        status: existing.status,
-        ready: true,
-      });
+      return NextResponse.json(
+        buildLessonPlanExportStatusSnapshot({
+          ...existing,
+          format,
+          error: null,
+        })
+      );
     }
 
     if (existing && (existing.status === "queued" || existing.status === "processing")) {
-      return NextResponse.json({
-        jobId: existing.id,
-        status: existing.status,
-        ready: false,
-      });
+      return NextResponse.json(
+        buildLessonPlanExportStatusSnapshot({
+          ...existing,
+          format,
+          error: null,
+        })
+      );
     }
 
     const job = await prisma.lessonPlanExport.upsert({
@@ -135,11 +140,15 @@ export async function POST(req: NextRequest) {
       select: { id: true, status: true },
     });
 
-    return NextResponse.json({
-      jobId: job.id,
-      status: job.status,
-      ready: false,
-    });
+    return NextResponse.json(
+      buildLessonPlanExportStatusSnapshot({
+        ...job,
+        format,
+        error: null,
+        createdAt: null,
+        completedAt: null,
+      })
+    );
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Failed to queue export" },

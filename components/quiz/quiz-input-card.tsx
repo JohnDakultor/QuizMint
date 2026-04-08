@@ -6,18 +6,22 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import FileUpload from "@/components/ui/file-upload";
 import LoadingProgress from "@/components/ui/loading-progress";
-import AdUnlockButton from "@/components/ad-unlock-button";
+import { QUIZ_GENERATION_PROGRESS } from "@/lib/loading-stage-labels";
 import { ArrowRight, ChevronDown, Copy, FileText, PauseCircle, Share2, Sparkles, X } from "lucide-react";
 
-type AdUnlockInfo = {
-  available: boolean;
-  nextAdResetAt?: string | null;
-  nextFreeAt?: string | null;
-  remaining?: number;
+type FreeQuizPointsInfo = {
+  remainingPoints: number;
+  maxPoints: number;
+  nextRechargeAt?: string | null;
+  requiredPoints?: number;
+  spentPoints?: number | null;
 } | null;
 
 type UserLike = {
   subscriptionPlan?: string | null;
+  freeQuizPoints?: number | null;
+  freeQuizPointsMax?: number | null;
+  freeQuizPointsRechargeAt?: string | null;
 };
 
 type QuizInputCardProps = {
@@ -30,7 +34,7 @@ type QuizInputCardProps = {
   quizProgress: number;
   infoMessage: string;
   error: string;
-  adUnlockInfo: AdUnlockInfo;
+  freeQuizPointsInfo: FreeQuizPointsInfo;
   uploadedFiles: File[];
   setUploadedFiles: (files: File[]) => void;
   onPaste: () => void;
@@ -39,7 +43,6 @@ type QuizInputCardProps = {
   onCopyTemplateLink: () => void;
   onShareTemplateLink: () => void;
   onShowSubscribe: () => void;
-  onAdUnlocked: () => void;
 };
 
 export function QuizInputCard(props: QuizInputCardProps) {
@@ -54,7 +57,7 @@ export function QuizInputCard(props: QuizInputCardProps) {
     quizProgress,
     infoMessage,
     error,
-    adUnlockInfo,
+    freeQuizPointsInfo,
     uploadedFiles,
     setUploadedFiles,
     onPaste,
@@ -63,7 +66,6 @@ export function QuizInputCard(props: QuizInputCardProps) {
     onCopyTemplateLink,
     onShareTemplateLink,
     onShowSubscribe,
-    onAdUnlocked,
   } = props;
   const uploadedPreviewUrls = useMemo(
     () =>
@@ -93,6 +95,12 @@ export function QuizInputCard(props: QuizInputCardProps) {
       });
     };
   }, [uploadedPreviewUrls]);
+
+  const nextRechargeAt =
+    freeQuizPointsInfo?.nextRechargeAt ??
+    (typeof user?.freeQuizPointsRechargeAt === "string"
+      ? user.freeQuizPointsRechargeAt
+      : null);
 
   return (
     <Card className="h-137.5 w-full overflow-hidden border border-indigo-200/80 bg-linear-to-b from-white to-indigo-50/40 shadow-[0_24px_60px_-24px_rgba(30,64,175,0.45)] lg:flex-1 flex flex-col dark:border-indigo-400/25 dark:from-slate-950/80 dark:to-indigo-950/45 dark:shadow-[0_24px_60px_-24px_rgba(30,64,175,0.75)]">
@@ -148,7 +156,13 @@ export function QuizInputCard(props: QuizInputCardProps) {
         <div className="mt-auto space-y-2">
           {(loading || infoMessage || error) && (
             <div className="space-y-2">
-              {loading && <LoadingProgress label="Generating quiz..." percent={quizProgress} />}
+              {loading && (
+                <LoadingProgress
+                  stage={QUIZ_GENERATION_PROGRESS.stage}
+                  label={QUIZ_GENERATION_PROGRESS.label}
+                  percent={quizProgress}
+                />
+              )}
 
               {infoMessage && (
                 <Alert className="border-blue-300 bg-blue-50 text-blue-900 dark:border-sky-500/50 dark:bg-sky-950/40 dark:text-sky-100">
@@ -161,9 +175,16 @@ export function QuizInputCard(props: QuizInputCardProps) {
                   <AlertDescription>
                     <div className="space-y-2">
                       <div>{error}</div>
-                      {adUnlockInfo?.nextFreeAt && (
+                      {freeQuizPointsInfo?.requiredPoints !== undefined &&
+                      freeQuizPointsInfo?.remainingPoints !== undefined ? (
                         <div className="text-sm text-muted-foreground">
-                          Free limit resets at {new Date(adUnlockInfo.nextFreeAt).toLocaleTimeString()}
+                          This quiz needs {freeQuizPointsInfo.requiredPoints} points. You currently have{" "}
+                          {freeQuizPointsInfo.remainingPoints}.
+                        </div>
+                      ) : null}
+                      {nextRechargeAt && (
+                        <div className="text-sm text-muted-foreground">
+                          Free quiz points recharge at {new Date(nextRechargeAt).toLocaleString()}.
                         </div>
                       )}
                     </div>
@@ -228,7 +249,13 @@ export function QuizInputCard(props: QuizInputCardProps) {
                 </Button>
                 <FileUpload
                   onFilesSelect={(files) => {
-                    if (!user || user.subscriptionPlan !== "premium") {
+                    const normalizedPlan = String(
+                      user?.subscriptionPlan || "free"
+                    ).toLowerCase();
+                    if (
+                      !user ||
+                      (normalizedPlan !== "pro" && normalizedPlan !== "premium")
+                    ) {
                       onShowSubscribe();
                       return;
                     }
@@ -280,14 +307,6 @@ export function QuizInputCard(props: QuizInputCardProps) {
             </div>
           )}
         </div>
-
-        {adUnlockInfo && (
-          <AdUnlockButton
-            cooldownUntil={adUnlockInfo.nextAdResetAt || adUnlockInfo.nextFreeAt}
-            remaining={adUnlockInfo.remaining}
-            onUnlocked={onAdUnlocked}
-          />
-        )}
       </CardContent>
     </Card>
   );

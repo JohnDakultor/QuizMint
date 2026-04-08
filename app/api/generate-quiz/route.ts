@@ -15,6 +15,14 @@ import { createAsyncGenerationJob } from "@/lib/async-generation-jobs";
 import { dispatchAsyncGenerationJob } from "@/lib/async-job-dispatch";
 import { log } from "@/lib/logger";
 import {
+  buildFreeQuizPointsStatusPayload,
+  deductFreeQuizPoints,
+  getQuizGenerationPointCost,
+  isFreeQuizPointLimited,
+  restoreFreeQuizPoints,
+  type DeductFreeQuizPointsResult,
+} from "@/lib/free-tier-points";
+import {
   buildBalancedContentWindow,
   chunkText,
   extractTextFromURL,
@@ -29,9 +37,10 @@ import {
   encodeAnswerWithStructure,
   stripStructuredMeta,
 } from "@/lib/quiz-structured";
-
-const COOLDOWN_HOURS = 3;
-const FREE_QUIZ_LIMIT = 3;
+import { invalidateDashboardSummarySnapshot } from "@/lib/dashboard-summary-snapshot";
+import { invalidateInterventionSummarySnapshots } from "@/lib/intervention-summary-snapshot";
+import { buildQuizArtifactsFromPersistedQuiz } from "@/lib/quiz-artifacts";
+import { shouldQueueQuizGeneration } from "@/lib/quiz-workload-routing";
 type LocalGamifiedMode = "bingo" | "timeline" | "puzzle";
 
 function hashString(input: string) {
@@ -118,10 +127,46 @@ function stripInlineAnswerArtifacts(value: string) {
     .trim();
 }
 
+function parseLaunchContext(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const sourceType =
+    typeof (value as Record<string, unknown>).sourceType === "string"
+      ? String((value as Record<string, unknown>).sourceType)
+      : null;
+  const sourceId =
+    typeof (value as Record<string, unknown>).sourceId === "string"
+      ? String((value as Record<string, unknown>).sourceId)
+      : null;
+  const mode =
+    typeof (value as Record<string, unknown>).mode === "string"
+      ? String((value as Record<string, unknown>).mode)
+      : null;
+  if (!sourceType || !sourceId || !mode) return null;
+  return {
+    sourceType,
+    sourceId,
+    classId:
+      typeof (value as Record<string, unknown>).classId === "string"
+        ? String((value as Record<string, unknown>).classId)
+        : null,
+    className:
+      typeof (value as Record<string, unknown>).className === "string"
+        ? String((value as Record<string, unknown>).className)
+        : null,
+    assignmentTitle:
+      typeof (value as Record<string, unknown>).assignmentTitle === "string"
+        ? String((value as Record<string, unknown>).assignmentTitle)
+        : null,
+    mode,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   let eventUserId: string | null = null;
   let eventPlan: string | null = null;
+  let eventLaunchContext: ReturnType<typeof parseLaunchContext> = null;
+  let deductedFreeQuizPoints: DeductFreeQuizPointsResult | null = null;
   const requestId = createRequestId();
   const stageMs = {
     contentPrep: 0,
@@ -172,15 +217,17 @@ export async function POST(req: NextRequest) {
       subscriptionPlan: user.subscriptionPlan,
       aiDifficulty: user.aiDifficulty,
       adaptiveLearning: user.adaptiveLearning,
-      quizUsage: user.quizUsage,
+      freeQuizPoints: user.freeQuizPoints,
+      freeQuizPointsRechargeAt: user.freeQuizPointsRechargeAt,
       liteMode,
     });
 
     const now = new Date();
     const subscriptionPlan = user.subscriptionPlan || "free";
-    const isFree = subscriptionPlan === "free";
+    const isFree = isFreeQuizPointLimited(subscriptionPlan);
     const isProOrPremium =
       user.subscriptionPlan === "pro" || user.subscriptionPlan === "premium";
+    const pointCost = getQuizGenerationPointCost({ hasUploads: false });
 
     const burstCheck = await checkFeatureBurstLimitDistributed({
       userId: user.id,
@@ -199,88 +246,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (isFree && user.quizUsage >= FREE_QUIZ_LIMIT) {
-      if (user.lastQuizAt) {
-        const hoursSinceLastQuiz =
-          (now.getTime() - new Date(user.lastQuizAt).getTime()) /
-          1000 /
-          60 /
-          60;
-        if (hoursSinceLastQuiz < COOLDOWN_HOURS) {
-          const nextFreeAt = new Date(
-            new Date(user.lastQuizAt).getTime() +
-              COOLDOWN_HOURS * 60 * 60 * 1000
-          );
-          const adCooldownMs = COOLDOWN_HOURS * 60 * 60 * 1000;
-          const windowStart = user.quizAdResetWindowAt
-            ? new Date(user.quizAdResetWindowAt)
-            : null;
-          const resetCount = user.quizAdResetCount ?? 0;
-          const windowExpired =
-            !windowStart || now.getTime() - windowStart.getTime() >= adCooldownMs;
-          const remainingResets = windowExpired ? 5 : Math.max(5 - resetCount, 0);
-          const adResetAvailable = remainingResets > 0;
-          const nextAdResetAt = adResetAvailable
-            ? null
-            : new Date(
-                (windowStart ? windowStart.getTime() : now.getTime()) + adCooldownMs
-              ).toISOString();
-          return NextResponse.json(
-            {
-              error: "Free limit reached. Come back later.",
-              nextFreeAt,
-              quizUsage: user.quizUsage,
-              adResetAvailable,
-              nextAdResetAt,
-              adResetsRemaining: remainingResets,
-              requestId,
-            },
-            {
-              status: 403,
-              headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
-            }
-          );
-        }
-
-        // Reset usage after cooldown
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { quizUsage: 0 },
-        });
-        user.quizUsage = 0;
-      }
-    }
-
     // Parse body
     const body = await req.json();
     const isAsyncInternal = req.headers.get("x-async-internal") === "1";
-    const queueRequested =
+    const queueRequestedExplicit =
       body?.async === true || body?.async === "true" || body?.queue === true;
-    if (queueRequested && !isAsyncInternal) {
-      const queued = await createAsyncGenerationJob({
-        userId: user.id,
-        type: "quiz_generate",
-        request: { body },
-        requestId,
-      });
-      if (!queued) return apiError(500, "Failed to queue generation job", requestId);
-      const dispatched = await dispatchAsyncGenerationJob(req, queued.id);
-      return NextResponse.json(
-        {
-          ok: true,
-          queued: true,
-          jobId: queued.id,
-          status: queued.status,
-          dispatched,
-          requestId,
-        },
-        {
-          status: 202,
-          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
-        }
-      );
+    if (isFree) {
+      const pointStatus = buildFreeQuizPointsStatusPayload(user, pointCost, now);
+      if (!pointStatus.canAfford) {
+        return NextResponse.json(
+          {
+            error: "Not enough free quiz points.",
+            ...pointStatus,
+            requestId,
+          },
+          {
+            status: 403,
+            headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+          }
+        );
+      }
     }
-    
     // Safely get requested values with defaults
     const requestedDifficulty = body.difficulty && typeof body.difficulty === "string" 
       ? body.difficulty.toLowerCase().trim() 
@@ -343,9 +329,49 @@ export async function POST(req: NextRequest) {
         ? body.adaptiveLearning.toLowerCase() === "true"
         : undefined);
     const forceFreshGeneration = Boolean(body.forceFreshGeneration === true || body.forceFresh === true);
+    const launchContext = parseLaunchContext(body.launchContext);
+    eventLaunchContext = launchContext;
     const text = body.text?.trim();
     if (!text)
       return apiError(400, "No input provided", requestId);
+    const workloadDecision = shouldQueueQuizGeneration(
+      {
+        text,
+        requestedItemCount,
+        questionMix: parsedQuestionMix,
+        adaptiveLearning: Boolean(requestedAdaptive),
+      },
+      Number(process.env.QUIZ_QUEUE_SCORE_THRESHOLD || 6)
+    );
+    const queueRequested =
+      queueRequestedExplicit ||
+      workloadDecision.shouldQueue;
+    if (queueRequested && !isAsyncInternal) {
+      const queued = await createAsyncGenerationJob({
+        userId: user.id,
+        type: "quiz_generate",
+        request: { body },
+        requestId,
+      });
+      if (!queued) return apiError(500, "Failed to queue generation job", requestId);
+      const dispatched = await dispatchAsyncGenerationJob(req, queued.id, {
+        subscriptionPlan: user.subscriptionPlan,
+      });
+      return NextResponse.json(
+        {
+          ok: true,
+          queued: true,
+          jobId: queued.id,
+          status: queued.status,
+          dispatched,
+          requestId,
+        },
+        {
+          status: 202,
+          headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+        }
+      );
+    }
     if (parsedQuestionMix && questionMixTotal <= 0) {
       return apiError(400, "Question mix is invalid.", requestId);
     }
@@ -412,11 +438,6 @@ export async function POST(req: NextRequest) {
           content = `Source URL: ${text}\nLite mode is enabled, so deep URL extraction was skipped.`;
         }
       } else if (content.includes("youtube.com") || content.includes("youtu.be")) {
-        // Premium check
-        if (isFree) {
-          return apiError(403, "YouTube link generation is premium only", requestId);
-        }
-
         // Extract video ID correctly
         let videoId: string | undefined;
         try {
@@ -475,6 +496,24 @@ export async function POST(req: NextRequest) {
     if (!content?.trim())
       return apiError(400, "Content Not Available", requestId);
     content = buildBalancedContentWindow(content, 8000);
+    if (isFree) {
+      ensureNotAborted();
+      deductedFreeQuizPoints = await deductFreeQuizPoints(user.id, pointCost, now);
+      if (!deductedFreeQuizPoints) {
+        const pointStatus = buildFreeQuizPointsStatusPayload(user, pointCost, now);
+        return NextResponse.json(
+          {
+            error: "Not enough free quiz points.",
+            ...pointStatus,
+            requestId,
+          },
+          {
+            status: 403,
+            headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+          }
+        );
+      }
+    }
     const promptProfile = buildPromptProfile(
       buildAdaptiveProfileInput({
         rawInput: text,
@@ -755,35 +794,14 @@ export async function POST(req: NextRequest) {
         answer: stripStructuredMeta(q.answer),
       })),
     };
+    const quizArtifacts = buildQuizArtifactsFromPersistedQuiz(savedQuiz);
 
-    let nextQuizUsage: number | null = null;
     if (isFree) {
       ensureNotAborted();
-      const updatedUsageRows = await prisma.$queryRaw<Array<{ quizUsage: number | null }>>`
-        UPDATE "User"
-        SET
-          "quizUsage" = CASE
-            WHEN "lastQuizAt" IS NULL OR "lastQuizAt" <= (NOW() - INTERVAL '3 hours') THEN 1
-            ELSE COALESCE("quizUsage", 0) + 1
-          END,
-          "lastQuizAt" = NOW(),
-          "lastActiveAt" = NOW()
-        WHERE id = ${user.id}
-          AND (
-            "lastQuizAt" IS NULL
-            OR "lastQuizAt" <= (NOW() - INTERVAL '3 hours')
-            OR COALESCE("quizUsage", 0) < ${FREE_QUIZ_LIMIT}
-          )
-        RETURNING COALESCE("quizUsage", 0) AS "quizUsage"
-      `;
-      if (!updatedUsageRows[0]) {
-        return apiError(
-          403,
-          "Free limit reached. Come back later.",
-          requestId
-        );
-      }
-      nextQuizUsage = Number(updatedUsageRows[0].quizUsage || 0);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastQuizAt: now, lastActiveAt: now },
+      });
     } else {
       ensureNotAborted();
       await prisma.user.update({
@@ -812,6 +830,7 @@ export async function POST(req: NextRequest) {
         cacheHit: Boolean(cachedResponse),
         forceFreshGeneration,
         quizId: savedQuiz.id,
+        quizArtifacts,
         promptTopic: promptProfile.topic,
         promptKeywords: promptProfile.keywords,
         promptPreview: promptProfile.preview,
@@ -823,9 +842,21 @@ export async function POST(req: NextRequest) {
         completionTokens: aiResult?.meta.completionTokens ?? 0,
         totalTokens: aiResult?.meta.totalTokens ?? 0,
         costUsd: aiResult?.meta.estimatedCostUsd ?? 0,
+        adaptiveLaunch: Boolean(launchContext),
+        interventionSourceType: launchContext?.sourceType ?? null,
+        interventionSourceId: launchContext?.sourceId ?? null,
+        interventionClassId: launchContext?.classId ?? null,
+        interventionClassName: launchContext?.className ?? null,
+        interventionAssignmentTitle: launchContext?.assignmentTitle ?? null,
+        interventionMode: launchContext?.mode ?? null,
+        workloadScore: workloadDecision.score,
+        workloadReasons: workloadDecision.reasons,
         stageMs,
       },
     });
+
+    invalidateDashboardSummarySnapshot(user.id);
+    invalidateInterventionSummarySnapshots(user.id);
 
     return NextResponse.json({
       message: "Quiz generated successfully",
@@ -841,10 +872,12 @@ export async function POST(req: NextRequest) {
               sourceCount: (sources ?? []).length,
             },
           }),
-      quizUsage: isFree ? nextQuizUsage : null,
-      remaining:
-        isFree && nextQuizUsage !== null
-          ? Math.max(FREE_QUIZ_LIMIT - nextQuizUsage, 0)
+      remainingPoints: isFree ? deductedFreeQuizPoints?.availablePoints ?? null : null,
+      spentPoints: isFree ? deductedFreeQuizPoints?.spentPoints ?? null : null,
+      maxPoints: isFree ? deductedFreeQuizPoints?.maxPoints ?? null : null,
+      nextRechargeAt:
+        isFree && deductedFreeQuizPoints?.rechargeAt
+          ? deductedFreeQuizPoints.rechargeAt.toISOString()
           : null,
       cache: {
         hit: Boolean(cachedResponse),
@@ -853,6 +886,20 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err: any) {
+    if (deductedFreeQuizPoints?.userId && deductedFreeQuizPoints.spentPoints > 0) {
+      try {
+        await restoreFreeQuizPoints(
+          deductedFreeQuizPoints.userId,
+          deductedFreeQuizPoints.spentPoints
+        );
+      } catch (restoreErr) {
+        log.warn("free_quiz_points_restore_failed", {
+          userId: deductedFreeQuizPoints.userId,
+          err: restoreErr,
+        });
+      }
+    }
+
     if (err?.name === "AbortError" || err?.message === "REQUEST_ABORTED") {
       await trackGenerationEvent({
         userId: eventUserId,
@@ -894,6 +941,13 @@ export async function POST(req: NextRequest) {
           providerIssue: true,
           provider: providerError.provider ?? "unknown",
           providerCode: providerError.code,
+          adaptiveLaunch: Boolean(eventLaunchContext),
+          interventionSourceType: eventLaunchContext?.sourceType ?? null,
+          interventionSourceId: eventLaunchContext?.sourceId ?? null,
+          interventionClassId: eventLaunchContext?.classId ?? null,
+          interventionClassName: eventLaunchContext?.className ?? null,
+          interventionAssignmentTitle: eventLaunchContext?.assignmentTitle ?? null,
+          interventionMode: eventLaunchContext?.mode ?? null,
           stageMs,
         },
       });

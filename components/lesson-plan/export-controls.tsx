@@ -8,12 +8,17 @@ type PendingExportJob = {
   format: "docx" | "pdf" | "pptx";
   topic: string;
   createdAt: number;
+  status?: "queued" | "processing" | "completed" | "failed";
+  stageLabel?: string | null;
+  progress?: number | null;
+  canRetry?: boolean;
 };
 
 type ExportControlsProps = {
   downloadingPdf: boolean;
   downloadingDocx: boolean;
   pendingExportJobs: PendingExportJob[];
+  latestPendingExport: PendingExportJob | null;
   retryingPendingExport: boolean;
   onDownloadPdf: () => void;
   onDownloadDocx: () => void;
@@ -24,6 +29,7 @@ export function LessonPlanExportControls({
   downloadingPdf,
   downloadingDocx,
   pendingExportJobs,
+  latestPendingExport,
   retryingPendingExport,
   onDownloadPdf,
   onDownloadDocx,
@@ -74,7 +80,7 @@ export function LessonPlanExportControls({
           ) : (
             <RefreshCw className="mr-2 h-4 w-4" />
           )}
-          Download when ready
+          {latestPendingExport?.canRetry ? "Retry export" : "Download when ready"}
         </Button>
       )}
     </div>

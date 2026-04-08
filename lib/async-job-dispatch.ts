@@ -23,16 +23,23 @@ function getInternalJobSecret(): string | null {
 
 export async function dispatchAsyncGenerationJob(
   req: NextRequest,
-  jobId: string
+  jobId: string,
+  options?: {
+    subscriptionPlan?: string | null;
+  }
 ): Promise<boolean> {
   const secret = getInternalJobSecret();
   if (!secret) return false;
+  const normalizedPlan = String(options?.subscriptionPlan || "free")
+    .trim()
+    .toLowerCase();
+  const priorityDispatch = normalizedPlan === "premium";
   const eagerDispatchEnabled = ["1", "true", "yes", "on"].includes(
     String(process.env.GENERATION_JOB_EAGER_DISPATCH || "")
       .trim()
       .toLowerCase()
   );
-  if (!eagerDispatchEnabled) return false;
+  if (!eagerDispatchEnabled && !priorityDispatch) return false;
 
   const baseUrl = resolveBaseUrl(req);
   // Fire-and-forget dispatch (best effort): this avoids blocking the user request.

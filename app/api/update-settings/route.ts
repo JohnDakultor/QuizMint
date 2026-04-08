@@ -11,12 +11,22 @@ export async function POST(req: Request) {
   }
 
   const { difficulty, adaptiveLearning, liteMode } = await req.json();
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { subscriptionPlan: true },
+  });
+
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  const premiumInterventionAccess = (user.subscriptionPlan || "free") === "premium";
 
   await prisma.user.update({
     where: { email: session.user.email },
     data: {
       aiDifficulty: difficulty,
-      adaptiveLearning,
+      adaptiveLearning: premiumInterventionAccess ? Boolean(adaptiveLearning) : false,
       liteMode: Boolean(liteMode),
     },
   });

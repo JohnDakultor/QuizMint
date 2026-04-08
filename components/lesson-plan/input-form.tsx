@@ -7,6 +7,10 @@ import { Textarea } from "@/components/ui/textarea";
 import LoadingProgress from "@/components/ui/loading-progress";
 import { LESSON_PLAN_FRAMEWORKS, type LessonPlanFrameworkId } from "@/lib/lesson-plan-frameworks";
 import {
+  LESSON_PLAN_GENERATION_PROGRESS,
+  LESSON_PLAN_PPTX_EXPORT_PROGRESS,
+} from "@/lib/loading-stage-labels";
+import {
   AlertCircle,
   BookOpen,
   CheckCircle2,
@@ -36,11 +40,18 @@ type LessonTemplateDefaults = {
 };
 
 type LessonMaterialUsage = {
-  used: number;
-  limit: number;
-  remaining: number;
+  remainingPoints: number;
+  maxPoints: number;
+  requiredPoints: number;
   resetAtMs: number | null;
 };
+
+type LessonPlanCreditsUsage = {
+  remainingPoints?: number;
+  maxPoints?: number;
+  requiredPoints?: number;
+  nextRechargeAt?: string | null;
+} | null;
 
 type LessonPlanInputFormProps = {
   lessonTemplateKey: string;
@@ -52,10 +63,12 @@ type LessonPlanInputFormProps = {
   lessonPlanExists: boolean;
   downloadingPptx: boolean;
   lessonProgress: number;
+  slidesLoadingStage: string | null;
   slidesProgress: number;
   slidesLoadingLabel: string | null;
   pptxProgress: number;
   isFree: boolean;
+  usageInfo: LessonPlanCreditsUsage;
   lessonMaterialUploadUsage: LessonMaterialUsage | null;
   countdownNowMs: number;
   infoMessage: string | null;
@@ -81,10 +94,12 @@ export function LessonPlanInputForm({
   lessonPlanExists,
   downloadingPptx,
   lessonProgress,
+  slidesLoadingStage,
   slidesProgress,
   slidesLoadingLabel,
   pptxProgress,
   isFree,
+  usageInfo,
   lessonMaterialUploadUsage,
   countdownNowMs,
   infoMessage,
@@ -106,6 +121,25 @@ export function LessonPlanInputForm({
       </div>
       <CardContent className="p-6">
         <form key={lessonTemplateKey} ref={lessonFormRef} onSubmit={onSubmit} className="space-y-6">
+          {isFree && usageInfo && (
+            <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 text-sm text-blue-900 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800 dark:text-slate-100">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold">Lesson Plan Credits</span>
+                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 dark:bg-slate-950 dark:text-slate-100">
+                  {Number(usageInfo.remainingPoints || 0)}/{Number(usageInfo.maxPoints || 100)} credits
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-blue-700 dark:text-slate-300">
+                {Number(usageInfo.requiredPoints || 30)} credits per lesson plan
+                {" • "}
+                {Number(lessonMaterialUploadUsage?.requiredPoints || 40)} credits per file-to-PPTX upload
+                {usageInfo.nextRechargeAt
+                  ? ` • recharges at ${new Date(usageInfo.nextRechargeAt).toLocaleString()}`
+                  : ""}
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-3">
               <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
@@ -264,7 +298,12 @@ export function LessonPlanInputForm({
               type="button"
               variant="outline"
               onClick={onOpenUploadPicker}
-              disabled={loadingSlides || (isFree && (lessonMaterialUploadUsage?.remaining ?? 3) <= 0)}
+              disabled={
+                loadingSlides ||
+                (isFree &&
+                  (lessonMaterialUploadUsage?.remainingPoints ?? 100) <
+                    (lessonMaterialUploadUsage?.requiredPoints ?? 40))
+              }
               className="text-xs border-indigo-200 bg-white hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-indigo-500/20 dark:hover:border-indigo-400/50"
             >
               <FileUp className="mr-1 h-3.5 w-3.5" />
@@ -284,13 +323,14 @@ export function LessonPlanInputForm({
 
           {isFree && lessonMaterialUploadUsage && (
             <div className="rounded-lg border border-indigo-200 bg-gradient-to-r from-indigo-50 to-cyan-50 px-3 py-2 text-xs text-indigo-800 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800 dark:text-slate-200">
-              File-to-PPTX uploads: {lessonMaterialUploadUsage.used}/{lessonMaterialUploadUsage.limit} used
+              File-to-PPTX uses your Lesson Plan Credits balance
               {" • "}
-              {lessonMaterialUploadUsage.remaining} remaining
-              {lessonMaterialUploadUsage.resetAtMs && lessonMaterialUploadUsage.remaining <= 0 && (
+              {lessonMaterialUploadUsage.requiredPoints} credits per upload
+              {lessonMaterialUploadUsage.resetAtMs &&
+              lessonMaterialUploadUsage.remainingPoints < lessonMaterialUploadUsage.requiredPoints && (
                 <>
                   {" • "}
-                  resets in{" "}
+                  recharges in{" "}
                   {(() => {
                     const remainingMs = Math.max(lessonMaterialUploadUsage.resetAtMs - countdownNowMs, 0);
                     const hh = Math.floor(remainingMs / (1000 * 60 * 60));
@@ -336,15 +376,26 @@ export function LessonPlanInputForm({
               </Button>
             )}
           </div>
-          {loading && <LoadingProgress label="Generating lesson plan..." percent={lessonProgress} />}
-          {loadingSlides && !lessonPlanExists && (
+          {loading && (
             <LoadingProgress
+              stage={LESSON_PLAN_GENERATION_PROGRESS.stage}
+              label={LESSON_PLAN_GENERATION_PROGRESS.label}
+              percent={lessonProgress}
+            />
+          )}
+          {loadingSlides && (
+            <LoadingProgress
+              stage={slidesLoadingStage || "Preparing"}
               label={slidesLoadingLabel || "Preparing lesson material slides..."}
               percent={slidesProgress}
             />
           )}
           {downloadingPptx && !lessonPlanExists && (
-            <LoadingProgress label="Generating PPTX file..." percent={pptxProgress} />
+            <LoadingProgress
+              stage={LESSON_PLAN_PPTX_EXPORT_PROGRESS.stage}
+              label={LESSON_PLAN_PPTX_EXPORT_PROGRESS.label}
+              percent={pptxProgress}
+            />
           )}
         </form>
 

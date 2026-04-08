@@ -32,8 +32,8 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 const BASE_PRICES = {
-  pro: 5,      // in USD
-  premium: 15, // in USD
+  pro: 15,      // in USD
+  premium: 39, // in USD
 };
 
 export async function GET(req: Request) {

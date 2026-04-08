@@ -28,18 +28,25 @@ function applyAuthTheme(preference: ThemePreference) {
   html.style.colorScheme = resolved;
 }
 
+function getBootThemePreference(): ThemePreference {
+  if (typeof window === "undefined") return "system";
+  const liteMode = localStorage.getItem("quizmint_lite_mode");
+  if (liteMode === "1") return "light";
+  return (localStorage.getItem("quizmint-theme") as ThemePreference | null) ?? "system";
+}
+
 export default function ClientLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   useEffect(() => {
-    const stored = (localStorage.getItem("quizmint-theme") as ThemePreference | null) ?? "system";
+    const stored = getBootThemePreference();
     applyAuthTheme(stored);
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
-      const pref = (localStorage.getItem("quizmint-theme") as ThemePreference | null) ?? "system";
+      const pref = getBootThemePreference();
       if (pref === "system") applyAuthTheme(pref);
     };
     media.addEventListener("change", onChange);

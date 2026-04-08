@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function InteractiveQuizMakerForStudentsPage() {
   return (
     <LandingTemplate
+      path="/interactive-quiz-maker-for-students"
       title="Interactive Quiz Maker for Students"
       subtitle="Generate self-practice quizzes in seconds to improve retention and exam confidence."
       featureTitle="Student-friendly capabilities"

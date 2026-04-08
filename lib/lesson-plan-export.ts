@@ -16,6 +16,36 @@ export type LessonPlanExportInput = {
   minutesPerDay: number;
 };
 
+type LessonPlanExportJobLike = {
+  id: string;
+  format: string;
+  status: string;
+  error?: string | null;
+  createdAt?: Date | null;
+  completedAt?: Date | null;
+};
+
+export type LessonPlanExportStage =
+  | "queued"
+  | "preparing"
+  | "exporting"
+  | "completed"
+  | "failed";
+
+export type LessonPlanExportStatusSnapshot = {
+  jobId: string;
+  format: LessonPlanExportFormat;
+  status: string;
+  stage: LessonPlanExportStage;
+  stageLabel: string;
+  progress: number;
+  ready: boolean;
+  canRetry: boolean;
+  error: string | null;
+  createdAt: Date | null;
+  completedAt: Date | null;
+};
+
 export function getLessonPlanExportHash(input: LessonPlanExportInput) {
   const stable = JSON.stringify({
     lessonPlan: input.lessonPlan,
@@ -38,6 +68,68 @@ export function getMimeType(format: LessonPlanExportFormat) {
 export function getFileName(topic: string, format: LessonPlanExportFormat) {
   const safe = (topic || "Lesson_Plan").replace(/\s+/g, "_");
   return `${safe}_Lesson_Plan.${format}`;
+}
+
+function normalizeLessonPlanExportFormat(format: string): LessonPlanExportFormat {
+  return format === "pdf" || format === "pptx" ? format : "docx";
+}
+
+function getExportStageLabel(
+  format: LessonPlanExportFormat,
+  status: string
+): { stage: LessonPlanExportStage; stageLabel: string; progress: number } {
+  if (status === "completed") {
+    return {
+      stage: "completed",
+      stageLabel: `Your ${format.toUpperCase()} export is ready`,
+      progress: 100,
+    };
+  }
+
+  if (status === "failed") {
+    return {
+      stage: "failed",
+      stageLabel: `We couldn't finish the ${format.toUpperCase()} export`,
+      progress: 100,
+    };
+  }
+
+  if (status === "processing") {
+    return {
+      stage: format === "pptx" ? "preparing" : "exporting",
+      stageLabel:
+        format === "pptx"
+          ? "Preparing PPTX slides and rendering deck"
+          : `Rendering ${format.toUpperCase()} export`,
+      progress: format === "pptx" ? 72 : 78,
+    };
+  }
+
+  return {
+    stage: "queued",
+    stageLabel: "Queued for export",
+    progress: 18,
+  };
+}
+
+export function buildLessonPlanExportStatusSnapshot(
+  job: LessonPlanExportJobLike
+): LessonPlanExportStatusSnapshot {
+  const format = normalizeLessonPlanExportFormat(job.format);
+  const stageState = getExportStageLabel(format, job.status);
+  return {
+    jobId: job.id,
+    format,
+    status: job.status,
+    stage: stageState.stage,
+    stageLabel: stageState.stageLabel,
+    progress: stageState.progress,
+    ready: job.status === "completed",
+    canRetry: job.status === "failed",
+    error: job.error || null,
+    createdAt: job.createdAt ?? null,
+    completedAt: job.completedAt ?? null,
+  };
 }
 
 export async function generateExportBuffer(
@@ -96,12 +188,18 @@ export async function processLessonPlanExportJob(jobId: string, userId: string) 
     where: {
       id: jobId,
       userId,
-      status: "queued",
+      status: {
+        in: ["queued", "failed"],
+      },
     },
     data: {
       status: "processing",
       startedAt: new Date(),
       error: null,
+      completedAt: null,
+      resultData: null,
+      mimeType: null,
+      fileName: null,
     },
   });
 

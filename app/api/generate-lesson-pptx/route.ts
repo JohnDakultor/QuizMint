@@ -95,7 +95,9 @@ export async function POST(req: NextRequest) {
         requestId,
       });
       if (!queued) return apiError(500, "Failed to queue generation job", requestId);
-      const dispatched = await dispatchAsyncGenerationJob(req, queued.id);
+      const dispatched = await dispatchAsyncGenerationJob(req, queued.id, {
+        subscriptionPlan: user.subscriptionPlan,
+      });
       return Response.json(
         {
           ok: true,
@@ -134,20 +136,6 @@ export async function POST(req: NextRequest) {
     if (source === "lesson_plan" && !isPremium) {
       return apiError(403, "Premium required", requestId);
     }
-    if (source === "lesson_material_upload" && isFree) {
-      const usageRows = await prisma.$queryRaw<Array<{ lessonMaterialUploadUsage: number | null }>>`
-        SELECT "lessonMaterialUploadUsage" FROM "User" WHERE id = ${user.id} LIMIT 1
-      `;
-      const uploadUsage = Number(usageRows?.[0]?.lessonMaterialUploadUsage || 0);
-      if (uploadUsage <= 0) {
-        return apiError(
-          403,
-          "Generate slides from an uploaded lesson file first before downloading PPTX.",
-          requestId
-        );
-      }
-    }
-
     const pptxBuffer = await generateLessonPlanPptx(deck, {
       liteMode: Boolean((user as any).liteMode),
     });

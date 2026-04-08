@@ -12,7 +12,15 @@ export const quizTourSteps = [
     popover: {
       title: "Adaptive Suggestions",
       description:
-        "Premium users can toggle adaptive suggestions based on past quiz generation patterns.",
+        "Premium users can open adaptive help here and turn class-result patterns into smarter follow-up quiz generation.",
+    },
+  },
+  {
+    element: "#quiz-adaptive-context",
+    popover: {
+      title: "Adaptive Workflow Hub",
+      description:
+        "This adaptive hub pulls in results-based class context, recommended follow-up prompts, and adaptive suggestions in one place.",
     },
   },
   {
@@ -40,7 +48,7 @@ export const quizTourSteps = [
     },
   },
   {
-    element: "#quiz-gamified-mode",
+    element: "#quiz-gamified-mode-card",
     popover: {
       title: "Game Type",
       description:
@@ -59,7 +67,7 @@ export const quizTourSteps = [
     element: "#quiz-generate",
     popover: {
       title: "Generate quiz",
-      description: "Click to generate your quiz using AI and your sources.",
+      description: "Generate a quiz here, then move it into assignment, sharing, and teacher workflow.",
     },
   },
   {
@@ -105,7 +113,15 @@ export const quizTourSteps = [
     popover: {
       title: "Share To Students",
       description:
-        "Open the share modal, set timer in minutes, then generate a student-facing quiz link.",
+        "Open the share flow to create a student-facing link or move this quiz into class assignment workflow.",
+    },
+  },
+  {
+    element: "#quiz-assign-class",
+    popover: {
+      title: "Assign To Class",
+      description:
+        "Turn the generated quiz into a real class assignment with title, instructions, schedule, and roster-linked student workflow.",
     },
   },
   {
@@ -150,7 +166,7 @@ export const quizTourSteps = [
     popover: {
       title: "Your quiz",
       description:
-        "Your generated quiz appears here. You can copy or download it.",
+        "Your generated quiz appears here, ready for export, sharing, assignment, or follow-up use in the teacher workflow.",
     },
   },
 ];

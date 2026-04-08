@@ -181,6 +181,7 @@ import { prisma } from "@/lib/prisma";
 import { v4 as uuidv4 } from "uuid";
 import { publicQuizRateLimit } from "@/lib/ratelimit";
 import { verifyRecaptcha } from "@/lib/verifyRecaptcha";
+import { resolveModelForFeature } from "@/lib/llm-models";
 
 const FREE_LIMIT = 3;
 const COOLDOWN_HOURS = 3;
@@ -406,11 +407,10 @@ VALIDATION:
 
 
     
-    const model =
-      process.env.OPENROUTER_MODEL_PUBLIC ||
-      process.env.OPENROUTER_MODEL_FREE ||
-      process.env.OPENROUTER_MODEL ||
-      "tngtech/deepseek-r1t2-chimera";
+    const model = resolveModelForFeature({
+      feature: "quiz",
+      plan: "public",
+    });
 
     const aiResponse = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",

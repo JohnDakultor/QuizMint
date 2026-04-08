@@ -1,4 +1,5 @@
 import { log } from "@/lib/logger";
+import { resolveModelForFeature } from "@/lib/llm-models";
 
 export type ExtractedImageContent = {
   text: string;
@@ -28,15 +29,17 @@ export async function extractImageContent(input: {
   mimeType: string;
   fileName?: string;
   requestId?: string;
+  plan?: string | null;
 }) : Promise<ExtractedImageContent> {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error("OPENROUTER_API_KEY is required for image extraction.");
   }
 
-  const model =
-    process.env.OPENROUTER_VISION_MODEL ||
-    process.env.OPENROUTER_MODEL_VISION ||
-    "openai/gpt-4.1-mini";
+  const model = resolveModelForFeature({
+    feature: "vision_quiz",
+    plan: input.plan,
+    defaultModel: "openai/gpt-4.1-mini",
+  });
 
   const imageUrl = toDataUrl(input.buffer, input.mimeType);
 

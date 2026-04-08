@@ -4,12 +4,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { generateSlideImage } from "@/lib/generate-lesson-plan-pptx";
 import type { PptDeck } from "@/lib/lesson-plan-ppt-ai";
+import { resolveModelForFeature } from "@/lib/llm-models";
 import { prisma } from "@/lib/prisma";
 
-const MODEL =
-  process.env.OPENROUTER_MODEL_PRO ||
-  process.env.OPENROUTER_MODEL ||
-  "openai/gpt-4o-mini";
+const MODEL = resolveModelForFeature({
+  feature: "deck_preview",
+  plan: "premium",
+  defaultModel: "openai/gpt-4o-mini",
+});
 
 type DeckPreviewSlide = {
   title?: string;

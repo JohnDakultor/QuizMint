@@ -152,6 +152,7 @@
 
 import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
 import { log } from "@/lib/logger";
+import { resolveFallbackModelForFeature, resolveModelForFeature, resolvePaidPlanTier } from "@/lib/llm-models";
 import type { GamifiedMode } from "@/lib/quiz-question-types";
 
 interface OpenRouterResponse {
@@ -449,16 +450,14 @@ JSON SCHEMA (MUST MATCH EXACTLY):
        ${userPrompt ? `User Instructions (must follow): ${userPrompt}` : ''}
        Primary Topic (must dominate output): ${requestTopic}`;
 
-  const modelToUse = isProOrPremium
-    ? process.env.OPENROUTER_MODEL_PRO ||
-      process.env.OPENROUTER_MODEL ||
-      "tngtech/deepseek-r1t2-chimera"
-    : process.env.OPENROUTER_MODEL_FREE ||
-      process.env.OPENROUTER_MODEL ||
-      "tngtech/deepseek-r1t2-chimera";
-
-  const fallbackModel =
-    process.env.OPENROUTER_FALLBACK_MODEL || "openai/gpt-4o-mini";
+  const planTier = resolvePaidPlanTier(isProOrPremium);
+  const modelToUse = resolveModelForFeature({
+    feature: "quiz",
+    plan: planTier,
+  });
+  const fallbackModel = resolveFallbackModelForFeature({
+    feature: "quiz",
+  });
 
   let retryCount = 0;
   let fallbackUsed = false;

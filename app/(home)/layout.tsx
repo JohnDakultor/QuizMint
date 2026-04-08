@@ -34,6 +34,9 @@ export default async function HomeLayout({ children }: { children: React.ReactNo
           <main
           className="
             app-shell
+            min-h-screen
+            overflow-x-hidden
+            overflow-y-auto
             transition-all duration-300
             px-4 pt-6
             pb-28 sm:pb-6

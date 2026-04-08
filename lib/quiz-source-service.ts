@@ -3,6 +3,11 @@ import * as cheerio from "cheerio";
 import { fetchTranscript } from "@/lib/youtube-transcript";
 import { normalizeForEmbedding } from "@/lib/rag/embed";
 import { log } from "@/lib/logger";
+import {
+  getCachedUrlExtraction,
+  getCachedYouTubeMetadata,
+  getCachedYouTubeTranscript,
+} from "@/lib/source-extraction-cache";
 
 interface YouTubeSnippet {
   title: string;
@@ -61,69 +66,77 @@ export async function extractTextFromURL(
   url: string,
 ): Promise<{ text: string; title: string }> {
   try {
-    const googleExtracted = await tryExtractGoogleFileText(url);
-    if (googleExtracted) {
-      return googleExtracted;
-    }
+    const { value, cacheHit } = await getCachedUrlExtraction(url, async () => {
+      const googleExtracted = await tryExtractGoogleFileText(url);
+      if (googleExtracted) {
+        return googleExtracted;
+      }
 
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml",
-      },
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml",
+        },
+      });
+      if (!res.ok) {
+        throw new Error(`URL fetch failed: ${res.status}`);
+      }
+
+      const html = await res.text();
+      const $ = cheerio.load(html);
+      $("script, style, noscript, iframe, svg, nav, footer, header, aside, form").remove();
+
+      const title =
+        $('meta[property="og:title"]').attr("content")?.trim() ||
+        $("title").first().text().trim() ||
+        $("h1").first().text().trim() ||
+        "";
+
+      const selectors = [
+        "article p",
+        "main p",
+        '[role="main"] p',
+        ".post-content p",
+        ".entry-content p",
+        ".article-content p",
+        ".content p",
+      ];
+
+      let text = "";
+      for (const selector of selectors) {
+        const candidate = $(selector)
+          .map((_: number, el: cheerio.Element) => $(el).text().trim())
+          .get()
+          .filter(Boolean)
+          .join("\n\n");
+        if (candidate.length > text.length) text = candidate;
+      }
+
+      if (!text) {
+        text = $("p")
+          .map((_: number, el: cheerio.Element) => $(el).text().trim())
+          .get()
+          .filter(Boolean)
+          .join("\n\n");
+      }
+
+      if (!text) {
+        text = $("main, article, body")
+          .first()
+          .text()
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      return { text, title };
     });
-    if (!res.ok) {
-      throw new Error(`URL fetch failed: ${res.status}`);
+
+    if (cacheHit) {
+      log.debug("url_extract_cache_hit", { url });
     }
 
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    $("script, style, noscript, iframe, svg, nav, footer, header, aside, form").remove();
-
-    const title =
-      $('meta[property="og:title"]').attr("content")?.trim() ||
-      $("title").first().text().trim() ||
-      $("h1").first().text().trim() ||
-      "";
-
-    const selectors = [
-      "article p",
-      "main p",
-      '[role="main"] p',
-      ".post-content p",
-      ".entry-content p",
-      ".article-content p",
-      ".content p",
-    ];
-
-    let text = "";
-    for (const selector of selectors) {
-      const candidate = $(selector)
-        .map((_: number, el: cheerio.Element) => $(el).text().trim())
-        .get()
-        .filter(Boolean)
-        .join("\n\n");
-      if (candidate.length > text.length) text = candidate;
-    }
-
-    if (!text) {
-      text = $("p")
-        .map((_: number, el: cheerio.Element) => $(el).text().trim())
-        .get()
-        .filter(Boolean)
-        .join("\n\n");
-    }
-
-    if (!text) {
-      text = $("main, article, body")
-        .first()
-        .text()
-        .replace(/\s+/g, " ")
-        .trim();
-    }
-
-    return { text, title };
+    return value;
   } catch (err) {
     log.warn("url_extract_failed", { err });
     return { text: "", title: "" };
@@ -238,14 +251,20 @@ async function transformYoutubeData(data: Array<{ text?: string }>) {
 
 export async function extractYouTubeTranscript(videoId: string) {
   try {
-    const transcript = await fetchTranscript(videoId);
-    const transformData = await transformYoutubeData(transcript);
+    const { value, cacheHit } = await getCachedYouTubeTranscript(videoId, async () => {
+      const transcript = await fetchTranscript(videoId);
+      const transformData = await transformYoutubeData(transcript);
+      return transformData.text;
+    });
+    if (cacheHit) {
+      log.debug("youtube_transcript_cache_hit", { videoId });
+    }
     log.debug("youtube_transcript_extracted", {
       videoId,
-      segmentCount: Array.isArray(transcript) ? transcript.length : 0,
-      textChars: transformData.text.length,
+      textChars: value.length,
+      cacheHit,
     });
-    return transformData.text;
+    return value;
   } catch (err) {
     log.warn("youtube_transcript_failed", { videoId, err });
     return "";
@@ -253,19 +272,27 @@ export async function extractYouTubeTranscript(videoId: string) {
 }
 
 export async function fetchYouTubeMetadata(videoId: string) {
-  const res = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${process.env.YT_API_KEY}`
-  );
+  const { value, cacheHit } = await getCachedYouTubeMetadata(videoId, async () => {
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${process.env.YT_API_KEY}`
+    );
 
-  if (!res.ok) {
-    throw new Error(`YouTube API error: ${res.status}`);
+    if (!res.ok) {
+      throw new Error(`YouTube API error: ${res.status}`);
+    }
+
+    const data = (await res.json()) as YouTubeAPIResponse;
+    const snippet = data.items?.[0]?.snippet;
+
+    return {
+      title: snippet?.title || "",
+      description: snippet?.description || "",
+    };
+  });
+
+  if (cacheHit) {
+    log.debug("youtube_metadata_cache_hit", { videoId });
   }
 
-  const data = (await res.json()) as YouTubeAPIResponse;
-  const snippet = data.items?.[0]?.snippet;
-
-  return {
-    title: snippet?.title || "",
-    description: snippet?.description || "",
-  };
+  return value;
 }

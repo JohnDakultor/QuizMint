@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function EnglishQuizGeneratorPage() {
   return (
     <LandingTemplate
+      path="/english-quiz-generator"
       title="AI English Quiz Generator"
       subtitle="Generate grammar, vocabulary, and reading quizzes with instructions tailored to your class level."
       featureTitle="English language teaching use"

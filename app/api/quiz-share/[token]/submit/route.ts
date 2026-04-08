@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
-import { verifyQuizShareToken } from "@/lib/quiz-share";
+import {
+  verifyQuizShareToken,
+  verifyTimedAssessmentSessionToken,
+} from "@/lib/quiz-share";
 import { trackGenerationEvent } from "@/lib/generation-events";
 import { randomUUID } from "crypto";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { inferQuizQuestionType } from "@/lib/quiz-question-types";
+import { validateAssignmentRosterEmail } from "@/lib/roster-validation";
+import { invalidateDashboardSummarySnapshot } from "@/lib/dashboard-summary-snapshot";
+import { invalidateInterventionSummarySnapshots } from "@/lib/intervention-summary-snapshot";
 import {
   decodeStoredAnswer,
   gradeMatchingFromStructure,
@@ -200,11 +206,79 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     ) {
       return apiError(410, "Quiz timer has ended", requestId);
     }
+    const assignment = verified.assignmentId
+      ? await prisma.assignment.findFirst({
+          where: {
+            id: verified.assignmentId,
+            quizId: quiz.id,
+          },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            availableFrom: true,
+            dueAt: true,
+            closedAt: true,
+            classId: true,
+          },
+        })
+      : null;
+    if (verified.assignmentId && !assignment) {
+      return apiError(410, "Assignment is no longer available", requestId);
+    }
+    if (assignment?.status === "closed" || assignment?.closedAt) {
+      return apiError(410, "Assignment is closed by the teacher", requestId);
+    }
+    if (assignment?.availableFrom && new Date(assignment.availableFrom).getTime() > Date.now()) {
+      return apiError(403, "Assignment is not available yet", requestId);
+    }
+    if (assignment) {
+      const rosterValidation = await validateAssignmentRosterEmail({
+        classId: assignment.classId,
+        studentEmail,
+      });
+      if (!rosterValidation.ok) {
+        return apiError(403, rosterValidation.message, requestId);
+      }
+    }
+    if (assignment?.dueAt && new Date(assignment.dueAt).getTime() < Date.now()) {
+      return apiError(410, "Assignment due date has passed", requestId);
+    }
+
+    const cookieName = `quiz_take_${quiz.id}`;
+    const assessmentDurationMinutes =
+      verified.assessmentDurationMinutes ??
+      quiz.shareSettings?.assessmentDurationMinutes ??
+      null;
+    const assessmentCookieName = `quiz_assessment_${quiz.id}`;
+    if (assessmentDurationMinutes) {
+      const assessmentToken = req.cookies.get(assessmentCookieName)?.value ?? "";
+      const verifiedAssessment = assessmentToken
+        ? verifyTimedAssessmentSessionToken(assessmentToken)
+        : null;
+      const activeTakeSessionId = req.cookies.get(cookieName)?.value ?? "";
+      if (
+        !verifiedAssessment?.ok ||
+        verifiedAssessment.quizId !== quiz.id ||
+        verifiedAssessment.takeSessionId !== activeTakeSessionId
+      ) {
+        return apiError(
+          410,
+          "Timed assessment session is no longer active. Reopen the shared link to start again.",
+          requestId
+        );
+      }
+      if (verifiedAssessment.expiresAt < Date.now()) {
+        return apiError(410, "Assessment timer has ended", requestId);
+      }
+    }
+
     const existingRows = await prisma.$queryRaw<Array<{ count: number }>>`
       SELECT COUNT(*)::int AS count
       FROM "StudentQuizAttempt"
       WHERE "quizId" = ${quiz.id}
         AND "studentEmail" = ${studentEmail}
+        AND "assignmentId" IS NOT DISTINCT FROM ${assignment?.id ?? null}
     `;
     if ((existingRows[0]?.count ?? 0) > 0) {
       return apiError(
@@ -214,7 +288,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const cookieName = `quiz_take_${quiz.id}`;
     let takeSessionId = req.cookies.get(cookieName)?.value ?? randomUUID();
 
     try {
@@ -288,6 +361,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       INSERT INTO "StudentQuizAttempt" (
         "id",
         "quizId",
+        "assignmentId",
         "studentName",
         "studentEmail",
         "scorePercent",
@@ -302,6 +376,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       VALUES (
         ${randomUUID()},
         ${quiz.id},
+        ${assignment?.id ?? null},
         ${studentName},
         ${studentEmail},
         ${scorePercent},
@@ -325,6 +400,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       costUsd: 0,
       metadata: {
         quizId: quiz.id,
+        assignmentId: assignment?.id ?? null,
+        assignmentTitle: assignment?.title ?? null,
         studentName,
         studentEmail,
         totalQuestions: total,
@@ -332,6 +409,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         scorePercent,
       },
     });
+
+    invalidateDashboardSummarySnapshot(quiz.userId);
+    invalidateInterventionSummarySnapshots(quiz.userId);
 
     const response = NextResponse.json(
       {
@@ -356,6 +436,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       path: "/",
+    });
+    response.cookies.set(assessmentCookieName, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      expires: new Date(0),
     });
     return response;
   } catch (err) {

@@ -1,0 +1,286 @@
+Teacher Workflow Maturity Checklist
+
+Purpose
+This file separates what is already in place from what still needs to be built for QuizMintAI to feel like a fully mature teacher workflow platform instead of a strong early workflow system.
+
+Current Status
+
+The platform has already crossed the line from "tool" to "workflow".
+Teachers can now:
+- create classes
+- build rosters
+- import rosters
+- assign quizzes to classes
+- share assignment links
+- validate student identity against roster emails
+- collect class-aware submissions
+- review assignment results
+- see missing students
+- view hardest questions
+- email assignment links
+- send reminders to missing students
+- launch reteach and follow-up flows
+- work from dashboard, workspace, classes, and library
+
+This is a major workflow foundation.
+
+What Is Already Done
+
+1. Classroom Foundation
+- Classes exist
+- Class profile editing exists
+- Class archive/reopen exists
+- Student roster exists
+- Manual roster entry exists
+- Bulk roster paste exists
+- Roster file upload exists
+
+2. Assignment Workflow
+- Quiz can be assigned to a class
+- Assignment entity exists
+- Assignment share link exists
+- Dedicated student assignment route exists
+- Assignment submission is stored in assignment context
+- Assignment results page exists
+
+3. Student Identity And Submission Integrity
+- Assignment roster email validation exists
+- Student submission is class-aware
+- Missing submission tracking exists
+- Repeat submission protection exists
+
+4. Teacher Review
+- Assignment results page exists
+- Student-by-student results exist
+- Missing students list exists
+- Hardest-question summary exists
+- Recent assignment results exist on dashboard
+
+5. Teacher Follow-Up
+- Generate reteach quiz action exists
+- Create follow-up lesson plan action exists
+- Send reminder to missing students exists
+
+6. Teacher Workspace Surfaces
+- Dashboard now reflects class workflow
+- Workspace page exists
+- Library page exists
+- Active classes section exists
+- Active assignments section exists
+- Continue working paths exist
+
+What Still Needs To Be Built For Full Maturity
+
+Phase A. Assignment Operations Maturity
+
+Goal
+Teachers should be able to manage assignments end-to-end without jumping between scattered screens or using workaround flows.
+
+Needed features
+- Edit assignment details from assignment results page
+- Reopen assignment from results page
+- Close assignment from results page
+- Duplicate assignment to same class
+- Reassign assignment to another class
+- Extend due date from results page
+- Resend assignment link to all roster students
+- See reminder history per assignment
+
+Why this matters
+- Mature workflow products let teachers manage the lifecycle of an assignment, not just create and view it.
+
+Suggested files
+- app/api/assignments/[id]/route.ts
+- app/(home)/assignments/[id]/page.tsx
+- app/(home)/classes/[id]/page.tsx
+- app/(home)/library/page.tsx
+
+Phase B. Class Overview Maturity
+
+Goal
+Each class should feel like an operating hub, not just a profile page with roster and assignment lists.
+
+Needed features
+- dedicated class overview panel using app/api/classes/[id]/overview/route.ts
+- active assignment summary
+- class average performance
+- missing submissions summary
+- recent class results
+- upcoming due work
+- quick follow-up actions from class page
+
+Why this matters
+- Teachers usually think in terms of classes first, not isolated assignments.
+
+Suggested files
+- app/api/classes/[id]/overview/route.ts
+- app/(home)/classes/[id]/page.tsx
+
+Phase C. Library Reuse Maturity
+
+Goal
+The library should become a reusable teaching asset system, not only a list.
+
+Needed features
+- duplicate quiz from library
+- duplicate lesson plan from library
+- duplicate assignment from library
+- reassign quiz directly from library
+- archive/unarchive library assets
+- simple filters for subject, grade, class, status
+- saved templates section
+- lightweight asset tags later
+
+Why this matters
+- Mature workflow platforms keep teachers returning because prior work becomes reusable capital.
+
+Suggested files
+- app/api/library/route.ts
+- app/(home)/library/page.tsx
+
+Phase D. Results And Intervention Maturity
+
+Goal
+Results should drive targeted intervention, not just passive reporting.
+
+Needed features
+- question trends over multiple assignments
+- class-level weak-concept trends
+- student-level repeated weaknesses
+- "students at risk" section
+- grouped low-score alerts by class
+- trend view over time
+- easier export or print of results summary
+
+Why this matters
+- This is where the platform starts helping teachers decide what to do next, not just show data.
+
+Suggested files
+- app/api/assignments/[id]/results/route.ts
+- app/api/classes/[id]/overview/route.ts
+- app/(home)/assignments/[id]/page.tsx
+- app/(home)/workspace/page.tsx
+
+Phase E. Lesson Plan Workflow Parity
+
+Goal
+Lesson plans should participate in the same workflow depth as quizzes.
+
+Needed features
+- assign lesson plans to classes more explicitly
+- lesson-plan scheduling and class linkage tracking
+- lesson-plan completion/status from the teacher workflow side
+- class-linked lesson plan history
+- follow-up lesson versioning
+- lesson plan duplication in library
+- tighter links between lesson plans and follow-up quizzes
+- clearer teacher-facing lesson plan operations from class/workspace/library surfaces
+
+Why this matters
+- Right now quiz workflow is ahead of lesson-plan workflow.
+- Full maturity means both core products live in the same classroom system.
+
+Important note
+- Lesson plans are primarily teacher-facing workflow assets in this product.
+- So unlike quizzes, lesson plans do not need a default student reminder flow unless they later become a student-delivered artifact.
+- Parity here should focus on planning, scheduling, reuse, versioning, and teacher continuity more than student submission mechanics.
+
+Suggested files
+- app/(home)/lessonPlan/page.tsx
+- app/api/assignments/route.ts
+- app/(home)/library/page.tsx
+- app/(home)/classes/[id]/page.tsx
+
+Phase F. Teacher Daily Operations
+
+Goal
+The teacher should be able to open the app and immediately know what needs attention today.
+
+Needed features
+- today view in workspace
+- overdue assignment alerts
+- reminders not yet sent
+- low-score class alerts
+- quick "resume latest class" action
+- unfinished draft assignment panel
+- more explicit suggested next action engine
+
+Why this matters
+- Daily operational value creates habit and retention.
+
+Suggested files
+- app/(home)/workspace/page.tsx
+- app/api/dashboard/summary/route.ts
+- app/(home)/home/page.tsx
+
+Phase G. Administrative And Quality Maturity
+
+Goal
+Stabilize the workflow so teachers trust it over time.
+
+Needed features
+- audit trail for assignment email sends and reminders
+- clearer activity history
+- more robust error states for send/share flows
+- optional retry queues for reminder emails
+- assignment event history
+- better loading states and confirmations on workflow actions
+
+Why this matters
+- Mature workflow systems are not only feature-rich, they are trustworthy and traceable.
+
+Suggested files
+- app/api/assignments/[id]/email/route.ts
+- app/api/assignments/[id]/share/route.ts
+- app/api/dashboard/summary/route.ts
+- app/(home)/assignments/[id]/page.tsx
+
+Priority Order To Reach "Fully Mature Workflow"
+
+Priority 1
+- Assignment operations maturity
+- Class overview maturity
+- Library reuse maturity
+
+Priority 2
+- Results/intervention maturity
+- Lesson plan workflow parity
+
+Priority 3
+- Teacher daily operations polish
+- Administrative/history/audit maturity
+
+Definition Of Fully Mature Teacher Workflow
+
+The platform is fully mature when a teacher can:
+- create and manage classes
+- keep rostered students and class identity accurate
+- generate quizzes and lesson plans
+- assign them to classes
+- share and deliver them to students
+- validate student identity
+- review results and missing work
+- launch follow-up teaching actions
+- reuse prior materials from a library
+- manage all active work from one dashboard/workspace
+- operate daily without falling back to external tools or memory
+
+Practical Next Build Sequence
+
+1. Add assignment edit, close, reopen, duplicate, and reassign actions
+2. Upgrade class detail page into a full class overview page
+3. Add duplicate/reassign/archive actions to library
+4. Add stronger analytics and intervention cues
+5. Bring lesson plan workflow up to quiz workflow level
+6. Add audit/history and polished daily workspace
+
+Bottom Line
+
+Current state:
+- strong early teacher workflow platform
+
+Target state:
+- complete classroom operations platform
+
+Biggest remaining gap:
+- operational management depth, especially around assignment management, class overview, and reusable library actions

@@ -1,8 +1,29 @@
 import { MetadataRoute } from "next";
+import { prisma } from "@/lib/prisma";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = "https://www.quizmintai.com";
   const now = new Date();
+  const highPriorityWorkflowRoutes = new Set([
+    "",
+    "/resources",
+    "/teacher-workflow-platform",
+    "/ai-tools-for-teachers",
+    "/classroom-workflow-software",
+    "/ai-tools-for-private-school-teachers",
+    "/ai-tools-for-tutors",
+    "/teacher-workflow-for-training-centers",
+    "/teacher-workflow-software-saudi-arabia",
+    "/ai-tools-for-teachers-middle-east",
+    "/classroom-quiz-workflow",
+    "/assignment-tracking-for-teachers",
+    "/quiz-results-and-reteach-workflow",
+    "/teacher-workspace-for-quizzes-and-lessons",
+    "/classroom-intervention-workflow",
+    "/quiz-generator-for-teachers",
+    "/lesson-plan-generator-for-teachers",
+    "/blog",
+  ]);
 
   const routes = [
     "",
@@ -12,7 +33,21 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/terms",
     "/disclaimer",
     "/resources",
+    "/teacher-workflow-platform",
+    "/ai-tools-for-teachers",
+    "/classroom-workflow-software",
+    "/ai-tools-for-private-school-teachers",
+    "/ai-tools-for-tutors",
+    "/teacher-workflow-for-training-centers",
+    "/teacher-workflow-software-saudi-arabia",
+    "/ai-tools-for-teachers-middle-east",
     "/ai-quiz-generator",
+    "/classroom-quiz-workflow",
+    "/assignment-tracking-for-teachers",
+    "/student-roster-and-reminders",
+    "/quiz-results-and-reteach-workflow",
+    "/teacher-workspace-for-quizzes-and-lessons",
+    "/classroom-intervention-workflow",
     "/quiz-generator-for-teachers",
     "/quiz-generator-for-students",
     "/quiz-generator-for-corporate",
@@ -29,10 +64,39 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/blog",
   ];
 
-  return routes.map((path, index) => ({
+  const staticRoutes: MetadataRoute.Sitemap = routes.map((path, index) => ({
     url: `${base}${path}`,
     lastModified: now,
-    changeFrequency: index === 0 ? "daily" : "weekly",
-    priority: index === 0 ? 1 : 0.7,
+    changeFrequency:
+      path === ""
+        ? "daily"
+        : highPriorityWorkflowRoutes.has(path)
+          ? "weekly"
+          : "monthly",
+    priority:
+      path === ""
+        ? 1
+        : highPriorityWorkflowRoutes.has(path)
+          ? 0.85
+          : 0.7,
   }));
+
+  const publishedPosts = await prisma.blogPost.findMany({
+    where: { published: true },
+    select: {
+      slug: true,
+      updatedAt: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const blogRoutes: MetadataRoute.Sitemap = publishedPosts.map((post) => ({
+    url: `${base}/blog/${post.slug}`,
+    lastModified: post.updatedAt || post.createdAt,
+    changeFrequency: "monthly",
+    priority: 0.75,
+  }));
+
+  return [...staticRoutes, ...blogRoutes];
 }

@@ -103,11 +103,16 @@ import {
   encodeAnswerWithStructure,
   stripStructuredMeta,
 } from "@/lib/quiz-structured";
+import { buildQuizArtifactsFromPersistedQuiz } from "@/lib/quiz-artifacts";
 import { extractImageContent } from "@/lib/extract-image-content";
 import { generateQuizFromImageAI } from "@/lib/quiz-image-ai";
 import { buildReferenceOnlyContext, validateUploadedFiles } from "@/lib/upload-guards";
 import { createAsyncGenerationJob } from "@/lib/async-generation-jobs";
 import { dispatchAsyncGenerationJob } from "@/lib/async-job-dispatch";
+import {
+  buildFileExtractionCacheKey,
+  getCachedFileExtraction,
+} from "@/lib/source-extraction-cache";
 
 export const runtime = "nodejs";
 
@@ -201,6 +206,64 @@ function normalizeQuestionCountInput(value: unknown): number | null {
   return Math.min(50, Math.max(1, Math.floor(n)));
 }
 
+async function extractCachedUploadText(input: {
+  fileName: string;
+  ext: string;
+  arrayBuffer: ArrayBuffer;
+  requestId: string;
+}) {
+  const key = buildFileExtractionCacheKey({
+    fileName: input.fileName,
+    ext: input.ext,
+    bytes: input.arrayBuffer,
+  });
+
+  const result = await getCachedFileExtraction(key, async () => {
+    if (input.ext === "txt") {
+      return new TextDecoder().decode(input.arrayBuffer);
+    }
+    if (input.ext === "docx") {
+      return (
+        await mammoth.extractRawText({ buffer: Buffer.from(input.arrayBuffer) })
+      ).value;
+    }
+    if (input.ext === "xlsx") {
+      let content = "";
+      const workbook = XLSX.read(Buffer.from(input.arrayBuffer), {
+        type: "buffer",
+      });
+      workbook.SheetNames.forEach((sheetName) => {
+        const sheet = workbook.Sheets[sheetName];
+        content += XLSX.utils.sheet_to_csv(sheet) + "\n";
+      });
+      return content;
+    }
+    if (input.ext === "pptx" || input.ext === "ppt") {
+      const tempFilePath = path.join(
+        os.tmpdir(),
+        `${Date.now()}-${input.fileName}`,
+      );
+      try {
+        await fs.writeFile(tempFilePath, Buffer.from(input.arrayBuffer));
+        return await pptxTextParser(tempFilePath, "text");
+      } finally {
+        await fs.unlink(tempFilePath).catch(() => {});
+      }
+    }
+    throw new Error("Unsupported cached upload text extraction type");
+  });
+
+  if (result.cacheHit) {
+    logDebug("upload_file_text_extract_cache_hit", {
+      requestId: input.requestId,
+      fileName: input.fileName,
+      ext: input.ext,
+    });
+  }
+
+  return result.value;
+}
+
 function normalizeMixCountInput(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
@@ -213,6 +276,27 @@ function stripInlineAnswerArtifacts(value: string) {
     .replace(/\n?\s*answer\s*:\s*.*$/i, "")
     .replace(/\n?\s*correct answer\s*:\s*.*$/i, "")
     .trim();
+}
+
+function parseLaunchContext(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const sourceType = typeof parsed.sourceType === "string" ? parsed.sourceType : null;
+    const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId : null;
+    const mode = typeof parsed.mode === "string" ? parsed.mode : null;
+    if (!sourceType || !sourceId || !mode) return null;
+    return {
+      sourceType,
+      sourceId,
+      classId: typeof parsed.classId === "string" ? parsed.classId : null,
+      className: typeof parsed.className === "string" ? parsed.className : null,
+      assignmentTitle: typeof parsed.assignmentTitle === "string" ? parsed.assignmentTitle : null,
+      mode,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req: Request) {
@@ -246,8 +330,15 @@ export async function POST(req: Request) {
         return apiError(401, "Unauthorized", requestId);
       user = await prisma.user.findUnique({ where: { email } });
     }
-    if (!user || user.subscriptionPlan !== "premium")
-      return apiError(403, "You must subscribe to upload files.", requestId);
+    const normalizedPlan = String(user?.subscriptionPlan || "free").toLowerCase();
+    const isProOrPremium =
+      normalizedPlan === "pro" || normalizedPlan === "premium";
+    if (!user || !isProOrPremium)
+      return apiError(
+        403,
+        "You must subscribe to Pro or Premium to upload files.",
+        requestId
+      );
     eventUserId = user.id;
     eventPlan = user.subscriptionPlan || "free";
 
@@ -307,12 +398,15 @@ export async function POST(req: Request) {
             ),
             mixGamified: String(formData.get("mixGamified") || ""),
             gamifiedMode: String(formData.get("gamifiedMode") || ""),
+            launchContext: String(formData.get("launchContext") || ""),
           },
         },
         requestId,
       });
       if (!queued) return apiError(500, "Failed to queue generation job", requestId);
-      const dispatched = await dispatchAsyncGenerationJob(nextReq as any, queued.id);
+      const dispatched = await dispatchAsyncGenerationJob(nextReq as any, queued.id, {
+        subscriptionPlan: user.subscriptionPlan,
+      });
       return NextResponse.json(
         {
           ok: true,
@@ -329,6 +423,7 @@ export async function POST(req: Request) {
       );
     }
     const prompt = (formData.get("prompt") as string) || "";
+    const launchContext = parseLaunchContext(formData.get("launchContext"));
     const requestedItemCount = normalizeQuestionCountInput(
       formData.get("numberOfItems")
     );
@@ -392,7 +487,12 @@ export async function POST(req: Request) {
       const arrayBuffer = await file.arrayBuffer();
 
       if (ext === "txt") {
-        content = new TextDecoder().decode(arrayBuffer);
+        content = await extractCachedUploadText({
+          fileName: file.name,
+          ext,
+          arrayBuffer,
+          requestId,
+        });
       } else if (["png", "jpg", "jpeg", "webp"].includes(ext)) {
         const imageBuffer = Buffer.from(arrayBuffer);
         const extracted = await extractImageContent({
@@ -400,6 +500,7 @@ export async function POST(req: Request) {
           mimeType: file.type || `image/${ext === "jpg" ? "jpeg" : ext}`,
           fileName: file.name,
           requestId,
+          plan: user.subscriptionPlan,
         });
 
         const namespace = `quiz:${user.id}`;
@@ -486,7 +587,7 @@ export async function POST(req: Request) {
               extractedLabels: extracted.labels,
               difficulty,
               adaptiveLearning,
-              isProOrPremium: true,
+              isProOrPremium,
               userPrompt: enhancedPrompt,
               requestedItemCount,
               questionMix: questionMixTotal > 0 ? questionMix : null,
@@ -573,6 +674,7 @@ export async function POST(req: Request) {
             answer: stripStructuredMeta(q.answer),
           })),
         };
+        const quizArtifacts = buildQuizArtifactsFromPersistedQuiz(savedQuiz);
 
         const promptProfile = buildPromptProfile(
           [prompt, file.name, extracted.summary, extracted.text.slice(0, 1200)]
@@ -594,6 +696,7 @@ export async function POST(req: Request) {
             promptKeywords: promptProfile.keywords,
             promptPreview: promptProfile.preview,
             quizId: savedQuiz.id,
+            quizArtifacts,
             sourceMode: sourceMode === "none" ? "image_multimodal" : sourceMode,
             sourceCount: sources.length,
             sources,
@@ -603,6 +706,13 @@ export async function POST(req: Request) {
             fileType: sourceType,
             extractedSummary: extracted.summary,
             extractedLabels: extracted.labels,
+            adaptiveLaunch: Boolean(launchContext),
+            interventionSourceType: launchContext?.sourceType ?? null,
+            interventionSourceId: launchContext?.sourceId ?? null,
+            interventionClassId: launchContext?.classId ?? null,
+            interventionClassName: launchContext?.className ?? null,
+            interventionAssignmentTitle: launchContext?.assignmentTitle ?? null,
+            interventionMode: launchContext?.mode ?? null,
           },
         });
 
@@ -627,34 +737,33 @@ export async function POST(req: Request) {
           },
         });
       } else if (ext === "docx") {
-        content = (
-          await mammoth.extractRawText({ buffer: Buffer.from(arrayBuffer) })
-        ).value;
-      } else if (ext === "xlsx") {
-        const workbook = XLSX.read(Buffer.from(arrayBuffer), {
-          type: "buffer",
+        content = await extractCachedUploadText({
+          fileName: file.name,
+          ext,
+          arrayBuffer,
+          requestId,
         });
-        workbook.SheetNames.forEach((sheetName) => {
-          const sheet = workbook.Sheets[sheetName];
-          content += XLSX.utils.sheet_to_csv(sheet) + "\n";
+      } else if (ext === "xlsx") {
+        content = await extractCachedUploadText({
+          fileName: file.name,
+          ext,
+          arrayBuffer,
+          requestId,
         });
       } else if (ext === "pptx" || ext === "ppt") {
         try {
-          const tempFilePath = path.join(
-            os.tmpdir(),
-            `${Date.now()}-${file.name}`,
-          );
-          await fs.writeFile(tempFilePath, Buffer.from(arrayBuffer));
-
-          content = await pptxTextParser(tempFilePath, "text");
+          content = await extractCachedUploadText({
+            fileName: file.name,
+            ext,
+            arrayBuffer,
+            requestId,
+          });
 
           logDebug("PPT extracted text preview", {
             requestId,
             chars: content.length,
             preview: content.slice(0, 300),
           });
-
-          await fs.unlink(tempFilePath);
 
           // --- CHECK FOR MEANINGFUL CONTENT ---
           const meaningfulText = content
@@ -698,7 +807,14 @@ content = meaningfulText;  // override to pass to AI
         const arrayBuffer = await currentFile.arrayBuffer();
 
         if (ext === "txt") {
-          const text = new TextDecoder().decode(arrayBuffer).trim();
+          const text = (
+            await extractCachedUploadText({
+              fileName: currentFile.name,
+              ext,
+              arrayBuffer,
+              requestId,
+            })
+          ).trim();
           if (text) {
             extractedParts.push(`File: ${currentFile.name}\n${text}`);
           }
@@ -708,36 +824,41 @@ content = meaningfulText;  // override to pass to AI
             mimeType: currentFile.type || `image/${ext === "jpg" ? "jpeg" : ext}`,
             fileName: currentFile.name,
             requestId,
+            plan: user.subscriptionPlan,
           });
           extractedParts.push(`Image: ${currentFile.name}\n${extracted.text}`);
         } else if (ext === "docx") {
           const text = (
-            await mammoth.extractRawText({ buffer: Buffer.from(arrayBuffer) })
-          ).value.trim();
+            await extractCachedUploadText({
+              fileName: currentFile.name,
+              ext,
+              arrayBuffer,
+              requestId,
+            })
+          ).trim();
           if (text) {
             extractedParts.push(`File: ${currentFile.name}\n${text}`);
           }
         } else if (ext === "xlsx") {
-          let sheetContent = "";
-          const workbook = XLSX.read(Buffer.from(arrayBuffer), {
-            type: "buffer",
-          });
-          workbook.SheetNames.forEach((sheetName) => {
-            const sheet = workbook.Sheets[sheetName];
-            sheetContent += XLSX.utils.sheet_to_csv(sheet) + "\n";
-          });
+          const sheetContent = (
+            await extractCachedUploadText({
+              fileName: currentFile.name,
+              ext,
+              arrayBuffer,
+              requestId,
+            })
+          ).trim();
           if (sheetContent.trim()) {
             extractedParts.push(`File: ${currentFile.name}\n${sheetContent.trim()}`);
           }
         } else if (ext === "pptx" || ext === "ppt") {
           try {
-            const tempFilePath = path.join(
-              os.tmpdir(),
-              `${Date.now()}-${currentFile.name}`,
-            );
-            await fs.writeFile(tempFilePath, Buffer.from(arrayBuffer));
-            const pptText = await pptxTextParser(tempFilePath, "text");
-            await fs.unlink(tempFilePath);
+            const pptText = await extractCachedUploadText({
+              fileName: currentFile.name,
+              ext,
+              arrayBuffer,
+              requestId,
+            });
             const meaningfulText = pptText
               .split("\n")
               .map((line) => line.trim())
@@ -946,6 +1067,7 @@ content = meaningfulText;  // override to pass to AI
         answer: stripStructuredMeta(q.answer),
       })),
     };
+    const quizArtifacts = buildQuizArtifactsFromPersistedQuiz(savedQuiz);
 
     const promptProfile = buildPromptProfile(
       [basePrompt, title, content.slice(0, 1200)].filter(Boolean).join("\n\n"),
@@ -975,6 +1097,7 @@ content = meaningfulText;  // override to pass to AI
         promptKeywords: promptProfile.keywords,
         promptPreview: promptProfile.preview,
         quizId: savedQuiz.id,
+        quizArtifacts,
         sourceMode: sourceMode ?? "documents",
         sourceCount: (sources ?? []).length,
         sources: normalizedSources,
@@ -982,6 +1105,13 @@ content = meaningfulText;  // override to pass to AI
         liteMode,
         fileName: file?.name ?? null,
         fileType: sourceType,
+        adaptiveLaunch: Boolean(launchContext),
+        interventionSourceType: launchContext?.sourceType ?? null,
+        interventionSourceId: launchContext?.sourceId ?? null,
+        interventionClassId: launchContext?.classId ?? null,
+        interventionClassName: launchContext?.className ?? null,
+        interventionAssignmentTitle: launchContext?.assignmentTitle ?? null,
+        interventionMode: launchContext?.mode ?? null,
       },
     });
 

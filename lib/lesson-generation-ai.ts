@@ -1,3 +1,5 @@
+import { resolveModelForFeature } from "@/lib/llm-models";
+
 export async function generateLessonAI(
   lessonPlan: any,
   subscriptionPlan: string
@@ -102,10 +104,14 @@ HOMEWORK:
 ${lessonPlan.assignment.join("; ")}
 `;
 
-  const model =
-    subscriptionPlan === "free"
-      ? "tngtech/deepseek-r1t-chimera:free"
-      : "tngtech/deepseek-r1t2-chimera:free";
+  const model = resolveModelForFeature({
+    feature: "lesson_content",
+    plan: subscriptionPlan,
+    defaultModel:
+      subscriptionPlan === "free"
+        ? "tngtech/deepseek-r1t-chimera:free"
+        : "tngtech/deepseek-r1t2-chimera:free",
+  });
 
   const res = await fetch(
     "https://openrouter.ai/api/v1/chat/completions",

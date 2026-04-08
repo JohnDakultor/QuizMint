@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function HistoryQuizGeneratorPage() {
   return (
     <LandingTemplate
+      path="/history-quiz-generator"
       title="AI History Quiz Generator"
       subtitle="Create engaging history quizzes for timelines, key events, and historical figures."
       featureTitle="Built for history instruction"

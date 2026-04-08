@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function QuizGeneratorForCorporatePage() {
   return (
     <LandingTemplate
+      path="/quiz-generator-for-corporate"
       title="AI Quiz Generator for Corporate Training"
       subtitle="Generate fast assessments for workforce learning, onboarding modules, and professional development."
       featureTitle="Corporate training benefits"

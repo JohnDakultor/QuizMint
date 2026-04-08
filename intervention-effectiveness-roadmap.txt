@@ -1,0 +1,244 @@
+Intervention Effectiveness And Operational Polish Roadmap
+
+Purpose
+This roadmap extends the adaptive workflow after Phase 4. The goal is to make intervention guidance measurable, reusable, and easier for teachers to act on at scale.
+
+Core Principle
+
+Adaptive workflow is most valuable when teachers can answer:
+- what intervention did we run?
+- who was it for?
+- did it help?
+- should we reuse it?
+
+That means the next phase is not more generic AI. It is operational maturity around the intervention loop.
+
+What Is Already Done
+
+Current adaptive workflow now supports:
+- assignment-level adaptive summary
+- class-level adaptive summary
+- workspace adaptive focus
+- adaptive lesson-plan context
+- adaptive library tags
+- grouped support bands
+- difficulty-shift recommendations
+- remediation sequencing
+
+This is strong guidance, but it is still mostly present-tense. The platform now needs memory and outcome tracking.
+
+Next Phase Goal
+
+Turn adaptive follow-up into a closed-loop system:
+1. detect weakness
+2. recommend intervention
+3. launch intervention
+4. record intervention
+5. compare later outcomes
+6. show whether it worked
+
+Priority 1: Intervention History
+
+Goal
+- preserve what intervention was launched so teachers can review and reuse it later
+
+Needed features
+- store when a reteach quiz was generated from an assignment or class
+- store when a follow-up lesson plan was created from adaptive flow
+- show source context:
+  - class
+  - assignment
+  - weak concepts
+  - support level
+- show intervention assets together in one timeline
+
+Best UI surfaces
+- assignment results page
+- class page
+- library
+- workspace activity feed
+
+Suggested implementation
+- add structured metadata for adaptive launches
+- extend generation event tracking with adaptive source fields
+- render an intervention history block per class and per assignment
+
+Suggested files
+- lib/generation-events.ts
+- app/api/assignments/[id]/results/route.ts
+- app/api/classes/[id]/overview/route.ts
+- app/(home)/assignments/[id]/page.tsx
+- app/(home)/classes/[id]/page.tsx
+
+Priority 2: Intervention Effectiveness Tracking
+
+Goal
+- show whether a follow-up action improved outcomes
+
+Needed features
+- compare pre-intervention vs post-intervention average score
+- compare missing-submission recovery
+- compare weak-question improvement
+- identify whether the same students improved or remained at risk
+
+Best UI examples
+- "Average score improved from 58% to 74% after the reteach quiz."
+- "Missing submissions dropped from 8 to 2 after reminder + follow-up."
+- "Students still weak after intervention: 3"
+
+Best measurement model
+- choose a source assignment or class state
+- link the follow-up quiz or lesson plan assignment to that source
+- when later results arrive, compute delta
+
+Important rule
+- effect metrics must stay deterministic
+- AI may summarize the meaning, but should not calculate the improvement itself
+
+Suggested files
+- prisma/schema.prisma
+- app/api/assignments/[id]/results/route.ts
+- app/api/classes/[id]/overview/route.ts
+- lib/results-intervention.ts
+
+Priority 3: One-Click Intervention Bundles
+
+Goal
+- reduce teacher friction by bundling common follow-up actions
+
+Examples
+- "Reteach bundle"
+  - follow-up lesson plan
+  - reteach quiz
+  - reminder message draft
+- "Recovery bundle"
+  - missing-student reminder
+  - easy mastery check
+  - next-class review plan
+
+Best UI surfaces
+- assignment results page
+- workspace adaptive focus
+
+Suggested files
+- app/(home)/assignments/[id]/page.tsx
+- app/(home)/workspace/page.tsx
+- app/(home)/generate-quiz/page.tsx
+- app/(home)/lessonPlan/page.tsx
+
+Priority 4: Export And Share Intervention Summaries
+
+Goal
+- make the intervention work visible outside the screen
+
+Needed features
+- print-friendly intervention summary
+- export class intervention summary
+- export assignment intervention summary
+- copy summary for meetings or reporting
+
+Useful outputs
+- teacher reflection notes
+- department review notes
+- parent communication draft
+- support meeting snapshot
+
+Suggested files
+- app/(home)/assignments/[id]/page.tsx
+- app/(home)/classes/[id]/page.tsx
+- app/(home)/workspace/page.tsx
+
+Priority 5: Reusable Proven Interventions
+
+Goal
+- help teachers reuse what already worked
+
+Needed features
+- mark adaptive assets as "used in intervention"
+- optionally mark later as "effective"
+- filter library by:
+  - follow-up
+  - reteach
+  - intervention
+  - proven effective
+- show the source weak concept and class context
+
+Best product value
+- the platform starts becoming a memory of what teaching actions worked before
+
+Suggested files
+- app/api/library/route.ts
+- app/(home)/library/page.tsx
+
+Priority 6: AI Summary Layer For Effectiveness
+
+Goal
+- help teachers interpret intervention outcomes quickly
+
+Appropriate AI uses
+- summarize improvement after follow-up
+- explain whether difficulty was too high or too low
+- recommend next step:
+  - reteach again
+  - move on
+  - split support groups
+  - assign independent practice
+
+Not appropriate
+- AI inventing improvement numbers
+- AI replacing deterministic metrics
+
+Best framing
+- "Intervention Review"
+- "What changed after follow-up"
+- "Recommended next move"
+
+Suggested files
+- lib/results-intervention.ts
+- app/api/dashboard/summary/route.ts
+- app/api/classes/[id]/overview/route.ts
+- app/api/assignments/[id]/results/route.ts
+
+Best Incremental Rollout
+
+Phase H1
+- intervention history
+- adaptive launch metadata
+- class and assignment intervention timeline
+
+Phase H2
+- intervention effectiveness comparison
+- pre/post score delta
+- weak-concept improvement tracking
+
+Phase H3
+- one-click intervention bundles
+- print/export/copy intervention summary
+
+Phase H4
+- proven-effective intervention reuse in library
+- AI interpretation of intervention outcomes
+
+Best Product Framing
+
+Do not frame this only as:
+- more analytics
+
+Better framing:
+- "Intervention Review"
+- "Follow-Up Impact"
+- "Teaching Actions That Worked"
+- "Results-Based Improvement"
+
+Bottom Line
+
+The adaptive roadmap is complete for guidance.
+The next roadmap is about proof and reuse.
+
+The platform should now evolve from:
+- identifying what needs intervention
+
+to:
+- remembering what intervention was used
+- measuring whether it helped
+- helping teachers reuse what works

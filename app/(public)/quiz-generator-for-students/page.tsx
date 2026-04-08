@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function QuizGeneratorForStudentsPage() {
   return (
     <LandingTemplate
+      path="/quiz-generator-for-students"
       title="AI Quiz Generator for Students"
       subtitle="Create self-review quizzes from your topics and study plan, then iterate fast on weak areas."
       featureTitle="Student learning advantages"

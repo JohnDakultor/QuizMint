@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,13 @@ type SharedQuiz = {
   instructions: string;
   difficulty?: "easy" | "medium" | "hard";
   questions: SharedQuestion[];
+};
+
+type SharedAvailability = {
+  isOpen: boolean;
+  expiresAt: string | null;
+  shuffleQuestions: boolean;
+  assessmentDurationMinutes: number | null;
 };
 
 type SubmitResult = {
@@ -109,6 +116,7 @@ export default function StudentQuizPage() {
   const token = params?.token ?? "";
 
   const [quiz, setQuiz] = useState<SharedQuiz | null>(null);
+  const [availability, setAvailability] = useState<SharedAvailability | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [studentName, setStudentName] = useState("");
@@ -119,11 +127,13 @@ export default function StudentQuizPage() {
   const [showSubmittedDialog, setShowSubmittedDialog] = useState(false);
   const [closeCountdown, setCloseCountdown] = useState(5);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const [assessmentEndsAt, setAssessmentEndsAt] = useState<number | null>(null);
   const [nowTick, setNowTick] = useState<number>(Date.now());
   const [quizStarted, setQuizStarted] = useState(false);
   const [showFullscreenWarning, setShowFullscreenWarning] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [showReloadWarning, setShowReloadWarning] = useState(false);
+  const timeoutSubmitTriggeredRef = useRef(false);
 
   useEffect(() => {
     const load = async () => {
@@ -140,6 +150,11 @@ export default function StudentQuizPage() {
           return;
         }
         setQuiz(data.quiz as SharedQuiz);
+        setAvailability(
+          data?.availability && typeof data.availability === "object"
+            ? (data.availability as SharedAvailability)
+            : null
+        );
       } catch {
         setError("Failed to load shared quiz.");
       } finally {
@@ -167,8 +182,14 @@ export default function StudentQuizPage() {
     ? quiz.questions.reduce((acc, q) => (answers[String(q.id)] ? acc + 1 : acc), 0)
     : 0;
   const elapsedSeconds = sessionStartedAt ? Math.max(0, Math.floor((nowTick - sessionStartedAt) / 1000)) : 0;
-  const minutes = Math.floor(elapsedSeconds / 60);
-  const seconds = String(elapsedSeconds % 60).padStart(2, "0");
+  const remainingSeconds = assessmentEndsAt
+    ? Math.max(0, Math.floor((assessmentEndsAt - nowTick) / 1000))
+    : null;
+  const displaySeconds = remainingSeconds ?? elapsedSeconds;
+  const minutes = Math.floor(displaySeconds / 60);
+  const seconds = String(displaySeconds % 60).padStart(2, "0");
+  const hasTimedAssessment = Boolean(availability?.assessmentDurationMinutes);
+  const timeLabel = hasTimedAssessment ? "Time Left" : "Time";
   const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(studentEmail.trim());
   const canSubmit =
     Boolean(studentName.trim()) &&
@@ -222,6 +243,21 @@ export default function StudentQuizPage() {
   }, [quiz, result, quizStarted, sessionStartedAt]);
 
   useEffect(() => {
+    if (!quizStarted || !assessmentEndsAt || result || sessionExpired) return;
+    if (remainingSeconds === null || remainingSeconds > 0) return;
+    if (timeoutSubmitTriggeredRef.current) return;
+    timeoutSubmitTriggeredRef.current = true;
+    setError("Time is up. Submitting your quiz now...");
+    void submitQuiz({ autoSubmit: true });
+  }, [assessmentEndsAt, quizStarted, remainingSeconds, result, sessionExpired]);
+
+  useEffect(() => {
+    if (!quizStarted) {
+      timeoutSubmitTriggeredRef.current = false;
+    }
+  }, [quizStarted]);
+
+  useEffect(() => {
     if (!quizStarted || result) return;
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
@@ -268,6 +304,34 @@ export default function StudentQuizPage() {
   };
 
   const startQuiz = async () => {
+    if (hasTimedAssessment && (!studentName.trim() || !emailLooksValid)) {
+      setError("Enter your name and a valid email before starting a timed assessment.");
+      return;
+    }
+
+    let timedAssessmentStartedAt = Date.now();
+    let timedAssessmentExpiresAt: number | null = null;
+    if (hasTimedAssessment) {
+      try {
+        const res = await fetch(`/api/quiz-share/${encodeURIComponent(token)}/start`, {
+          method: "POST",
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || "Failed to start timed assessment.");
+          return;
+        }
+        const startedAtRaw = Date.parse(String(data?.timedAssessment?.startedAt || ""));
+        const expiresAtRaw = Date.parse(String(data?.timedAssessment?.expiresAt || ""));
+        timedAssessmentStartedAt = Number.isFinite(startedAtRaw) ? startedAtRaw : Date.now();
+        timedAssessmentExpiresAt = Number.isFinite(expiresAtRaw) ? expiresAtRaw : null;
+      } catch {
+        setError("Failed to start timed assessment.");
+        return;
+      }
+    }
+
     try {
       if (document.fullscreenElement == null) {
         await document.documentElement.requestFullscreen();
@@ -285,16 +349,20 @@ export default function StudentQuizPage() {
       // ignore unsupported orientation locking
     }
 
-    setSessionStartedAt(Date.now());
+    setError("");
+    setSessionStartedAt(timedAssessmentStartedAt);
+    setAssessmentEndsAt(timedAssessmentExpiresAt);
     setQuizStarted(true);
     setShowFullscreenWarning(false);
     setSessionExpired(false);
   };
 
-  const submitQuiz = async () => {
+  const submitQuiz = async (options?: { autoSubmit?: boolean }) => {
     if (!quiz) return;
     setSubmitting(true);
-    setError("");
+    if (!options?.autoSubmit) {
+      setError("");
+    }
     try {
       const res = await fetch(`/api/quiz-share/${encodeURIComponent(token)}/submit`, {
         method: "POST",
@@ -307,7 +375,11 @@ export default function StudentQuizPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data?.error || "Failed to submit quiz.");
+        setError(
+          options?.autoSubmit
+            ? data?.error || "Time ended and the quiz could not be submitted automatically."
+            : data?.error || "Failed to submit quiz."
+        );
         return;
       }
       try {
@@ -320,8 +392,13 @@ export default function StudentQuizPage() {
       setResult(data.result as SubmitResult);
       setShowSubmittedDialog(true);
       setShowFullscreenWarning(false);
+      setAssessmentEndsAt(null);
     } catch {
-      setError("Failed to submit quiz.");
+      setError(
+        options?.autoSubmit
+          ? "Time ended and the quiz could not be submitted automatically."
+          : "Failed to submit quiz."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -375,11 +452,62 @@ export default function StudentQuizPage() {
                           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
                             Difficulty: {quiz.difficulty || "medium"}
                           </span>
+                          {availability?.expiresAt ? (
+                            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                              Link ends: {new Date(availability.expiresAt).toLocaleString()}
+                            </span>
+                          ) : null}
+                          {availability?.assessmentDurationMinutes ? (
+                            <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-cyan-100">
+                              Timed assessment: {availability.assessmentDurationMinutes} min
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                       <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
                         Leaving fullscreen or refreshing this page before submission will expire this quiz session. If that happens, you will need to reopen the shared link and start again.
+                        {availability?.assessmentDurationMinutes ? (
+                          <span className="mt-2 block">
+                            Once you start, your countdown begins immediately and unanswered items will be submitted blank if time runs out.
+                          </span>
+                        ) : null}
                       </div>
+                      {availability?.assessmentDurationMinutes ? (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">
+                            Student Details
+                          </p>
+                          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <div className="space-y-1">
+                              <label className="text-sm font-medium text-slate-100">
+                                Name <span className="text-rose-300">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Your full name"
+                                value={studentName}
+                                onChange={(e) => setStudentName(e.target.value)}
+                                className="w-full rounded-xl border border-white/15 bg-slate-950/45 px-3 py-2 text-sm text-white outline-none ring-0 placeholder:text-slate-400"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-sm font-medium text-slate-100">
+                                Email <span className="text-rose-300">*</span>
+                              </label>
+                              <input
+                                type="email"
+                                placeholder="you@email.com"
+                                value={studentEmail}
+                                onChange={(e) => setStudentEmail(e.target.value)}
+                                className="w-full rounded-xl border border-white/15 bg-slate-950/45 px-3 py-2 text-sm text-white outline-none ring-0 placeholder:text-slate-400"
+                              />
+                              {studentEmail && !emailLooksValid ? (
+                                <p className="text-xs text-rose-200">Enter a valid email address before starting.</p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="flex justify-end">
                         <Button onClick={() => void startQuiz()} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
                           Start Quiz
@@ -407,7 +535,7 @@ export default function StudentQuizPage() {
                     <div className="rounded border bg-white px-2 py-1">XP: {xp}</div>
                     <div className="rounded border bg-white px-2 py-1">Streak: {streak}</div>
                     <div className="rounded border bg-white px-2 py-1">
-                      Time: {minutes}:{seconds}
+                      {timeLabel}: {minutes}:{seconds}
                     </div>
                   </div>
                   <div className="mt-2 text-[11px] text-emerald-700">Badge: {badge}</div>
@@ -424,7 +552,7 @@ export default function StudentQuizPage() {
                       value={studentName}
                       onChange={(e) => setStudentName(e.target.value)}
                       className="w-full rounded border px-3 py-2 text-sm"
-                      disabled={Boolean(result)}
+                      disabled={Boolean(result) || (hasTimedAssessment && quizStarted)}
                     />
                   </div>
                   <div className="space-y-1">
@@ -437,7 +565,7 @@ export default function StudentQuizPage() {
                       value={studentEmail}
                       onChange={(e) => setStudentEmail(e.target.value)}
                       className="w-full rounded border px-3 py-2 text-sm"
-                      disabled={Boolean(result)}
+                      disabled={Boolean(result) || (hasTimedAssessment && quizStarted)}
                     />
                     {!result && studentEmail && !emailLooksValid && (
                       <p className="text-xs text-red-600">Enter a valid email.</p>
@@ -605,9 +733,11 @@ export default function StudentQuizPage() {
                   {!result ? (
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <p className="text-xs text-zinc-500">
-                        All fields marked with * are required. You must answer all questions before submitting.
+                        {hasTimedAssessment
+                          ? "All fields marked with * are required. If time runs out, your current answers will be submitted automatically."
+                          : "All fields marked with * are required. You must answer all questions before submitting."}
                       </p>
-                      <Button onClick={submitQuiz} disabled={!canSubmit}>
+                      <Button onClick={() => void submitQuiz()} disabled={!canSubmit}>
                         {submitting ? "Submitting..." : "Submit Quiz"}
                       </Button>
                     </div>

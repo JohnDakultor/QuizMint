@@ -118,12 +118,31 @@ export async function requeueAsyncGenerationJob(jobId: string, userId: string, e
 export async function listQueuedAsyncGenerationJobs(limit = 10) {
   const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
   const rows = await prisma.$queryRaw<
-    Array<{ id: string; userId: string; type: AsyncJobType; attemptCount: number }>
+    Array<{
+      id: string;
+      userId: string;
+      type: AsyncJobType;
+      attemptCount: number;
+      subscriptionPlan: string | null;
+    }>
   >`
-    SELECT "id", "userId", "type", COALESCE("attemptCount", 0) AS "attemptCount"
-    FROM "AsyncGenerationJob"
-    WHERE "status" = 'queued'
-    ORDER BY "createdAt" ASC
+    SELECT
+      job."id",
+      job."userId",
+      job."type",
+      COALESCE(job."attemptCount", 0) AS "attemptCount",
+      usr."subscriptionPlan" AS "subscriptionPlan"
+    FROM "AsyncGenerationJob" job
+    INNER JOIN "User" usr
+      ON usr."id" = job."userId"
+    WHERE job."status" = 'queued'
+    ORDER BY
+      CASE
+        WHEN LOWER(COALESCE(usr."subscriptionPlan", 'free')) = 'premium' THEN 0
+        WHEN LOWER(COALESCE(usr."subscriptionPlan", 'free')) = 'pro' THEN 1
+        ELSE 2
+      END ASC,
+      job."createdAt" ASC
     LIMIT ${safeLimit}
   `;
   return rows;

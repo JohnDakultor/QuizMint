@@ -65,7 +65,7 @@ export function SourceIcons({
       <div
         className={
           isPills
-            ? "flex flex-wrap gap-2 max-w-full items-start sm:items-center sm:flex-row flex-col"
+            ? "flex max-w-full items-center gap-2 overflow-x-auto whitespace-nowrap pb-1 premium-scrollbar"
             : "flex items-center gap-2 max-w-full"
         }
         role="list"
@@ -75,7 +75,7 @@ export function SourceIcons({
           const label = s.title || getHostname(s.url) || `Source ${i + 1}`;
           const favicon = s.iconUrl || getFaviconUrl(s.url, Math.max(size, 16));
           const itemClass = isPills
-            ? "inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1 text-sm text-black/80 max-w-full dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            ? "inline-flex shrink-0 items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1 text-sm text-black/80 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             : "inline-flex items-center";
           const content = (
             <>
@@ -98,7 +98,7 @@ export function SourceIcons({
                 )}
               </span>
               {isPills ? (
-                <span className="whitespace-nowrap truncate max-w-[140px]">
+                <span className="max-w-[170px] truncate whitespace-nowrap">
                   {label}
                 </span>
               ) : null}

@@ -12,6 +12,7 @@ export const metadata = createLandingMetadata({
 export default function ExamPrepQuizGeneratorPage() {
   return (
     <LandingTemplate
+      path="/exam-prep-quiz-generator"
       title="AI Exam Prep Quiz Generator"
       subtitle="Build focused review quizzes before exams using your target topics and question mix."
       featureTitle="Exam prep workflow"

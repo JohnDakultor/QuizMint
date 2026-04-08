@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-import { processLessonPlanExportJob } from "@/lib/lesson-plan-export";
+import {
+  buildLessonPlanExportStatusSnapshot,
+  processLessonPlanExportJob,
+} from "@/lib/lesson-plan-export";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 
@@ -117,14 +120,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({
-      jobId: job.id,
-      status: job.status,
-      error: job.error || null,
-      requestId,
-    }, {
-      headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
-    });
+    return NextResponse.json(
+      {
+        ...buildLessonPlanExportStatusSnapshot(job),
+        requestId,
+      },
+      {
+        headers: { "x-request-id": requestId, "Cache-Control": "no-store" },
+      }
+    );
   } catch (err: any) {
     if (isProviderIssueError(err)) {
       const providerError = extractProviderErrorDetails(err);

@@ -1,0 +1,126 @@
+Production Readiness Checklist
+
+Purpose
+This file turns the production audit into a concrete deployment checklist for QuizMintAI.
+
+Status legend
+- must fix before deploy
+- high priority soon after
+- safe to defer
+
+Must fix before deploy
+
+1. Disable unsafe ad unlock flow
+Files
+- components/ad-unlock-button.tsx
+- components/quiz/quiz-input-card.tsx
+- app/(home)/generate-quiz/page.tsx
+- app/api/quiz-ad-reset/route.ts
+
+Why
+- the current flow resets free usage without verifying a real ad completion event
+- this is both abuse-prone and risky for ad-policy compliance
+
+Done when
+- free users no longer see a fake "watch ad to unlock" path
+- the reset API no longer resets usage
+- the quiz UI only tells users to wait for reset or upgrade
+
+2. Stop automatic policy acceptance
+Files
+- lib/auth-option.ts
+
+Why
+- terms/privacy acceptance must come from explicit user action, not from session creation
+
+Done when
+- login and session callbacks no longer write automatic acceptance records
+- policy acceptance is only recorded through a dedicated explicit flow
+
+3. Align stale global metadata
+Files
+- app/layout.tsx
+
+Why
+- the root metadata still reflects an older product story and brand naming
+
+Done when
+- the root title and description match the current QuizMintAI branding and teacher workflow positioning
+
+4. Harden Content Security Policy
+Files
+- next.config.ts
+
+Why
+- current CSP still allows third-party domains that need justification
+
+Done when
+- unexplained domains are removed
+- only current, necessary providers remain in the allowlist
+
+5. Run real production build in CI
+Files
+- .github/workflows/ci.yml
+
+Why
+- lint, typecheck, and smoke tests do not catch all Next.js production build failures
+
+Done when
+- CI runs next build
+- deployment regressions are caught before release
+
+High priority soon after
+
+6. Add webhook idempotency
+Files
+- app/api/paypal/webhooks/route.ts
+
+Why
+- duplicate webhook delivery should not risk repeated state changes
+
+7. Replace external testimonial image placeholders
+Files
+- app/landing-page.tsx
+
+Why
+- production should not depend on random external portrait placeholders
+
+8. Increase integration test coverage
+Files
+- tests/*
+- app/api/*
+
+Why
+- core revenue and generation flows need more than smoke coverage
+
+Test targets
+- quiz generation
+- lesson plan generation
+- upload flows
+- free tier limit flows
+- share/assignment flows
+- PayPal webhooks
+
+Safe to defer
+
+9. Break up oversized pages and routes
+- app/(home)/generate-quiz/page.tsx
+- app/(home)/lessonPlan/page.tsx
+- app/api/generate-quiz/route.ts
+- app/api/generate-lesson-plan/route.ts
+
+10. Scale architecture upgrades
+- distributed limiting
+- deeper queue/worker separation
+- analytics precompute
+- load testing gates
+
+Recommended order
+1. disable ad unlock
+2. remove auto policy acceptance
+3. align root metadata
+4. clean CSP
+5. add build to CI
+6. harden PayPal webhook idempotency
+7. replace testimonial image dependencies
+8. expand integration coverage

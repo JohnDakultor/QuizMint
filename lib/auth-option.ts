@@ -205,27 +205,55 @@ export const authOptions: NextAuthOptions = {
 
       return `${appBaseUrl}/home`;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       // Add user info from login to token
       if (user) {
-        token.id = user.id;
-        token.name = user.name;
-
-        const sessionId = randomUUID();
-        const tokenWithSession = token as typeof token & { sessionId?: string };
-        tokenWithSession.sessionId = sessionId;
-
         try {
+          const email = String(user.email || token.email || "").trim().toLowerCase();
+          if (!email) {
+            throw new Error("Missing email for session registration");
+          }
+
+          const dbUser = await prisma.user.upsert({
+            where: { email },
+            update: {
+              ...(user.name ? { name: String(user.name) } : {}),
+              ...(user.image ? { image: String(user.image) } : {}),
+              ...(account?.provider === "google" ? { authProvider: "google" } : {}),
+            },
+            create: {
+              email,
+              username: null,
+              name: user.name ? String(user.name) : null,
+              authProvider: account?.provider === "google" ? "google" : "credentials",
+              image: user.image ? String(user.image) : null,
+              aiDifficulty: "easy",
+              adaptiveLearning: false,
+              password: null,
+              subscriptionPlan: "free",
+            },
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              username: true,
+              subscriptionPlan: true,
+            },
+          });
+
+          token.id = dbUser.id;
+          token.email = dbUser.email;
+          token.name = dbUser.name || dbUser.username || user.name || null;
+
+          const sessionId = randomUUID();
+          const tokenWithSession = token as typeof token & { sessionId?: string };
+          tokenWithSession.sessionId = sessionId;
+
           const headerStore = await headers();
           const forwardedFor = headerStore.get("x-forwarded-for") || "";
           const ip = forwardedFor.split(",")[0]?.trim() || null;
           const userAgent = headerStore.get("user-agent") || null;
-          const userId = String(user.id);
-
-          const dbUser = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { subscriptionPlan: true },
-          });
+          const userId = dbUser.id;
           const sessionLimit = getSessionLimitByPlan(dbUser?.subscriptionPlan);
 
           await prisma.$transaction(async (tx) => {
@@ -346,19 +374,6 @@ export const authOptions: NextAuthOptions = {
           },
         });
 
-        const now = new Date();
-        await Promise.all([
-          prisma.userPolicyAcceptance.upsert({
-            where: { userId_policyType: { userId: user.id, policyType: "terms" } },
-            update: { accepted: true, acceptedAt: now },
-            create: { userId: user.id, policyType: "terms", accepted: true, acceptedAt: now },
-          }),
-          prisma.userPolicyAcceptance.upsert({
-            where: { userId_policyType: { userId: user.id, policyType: "privacy" } },
-            update: { accepted: true, acceptedAt: now },
-            create: { userId: user.id, policyType: "privacy", accepted: true, acceptedAt: now },
-          }),
-        ]);
       } catch (err) {
         if ((err as Error)?.message === "SESSION_REVOKED") {
           throw err;

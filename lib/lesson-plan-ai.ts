@@ -2,6 +2,7 @@
 import { estimateOpenRouterCost, extractOpenRouterUsage } from "@/lib/unit-economics";
 import { log } from "@/lib/logger";
 import { buildFrameworkPhaseModel, getLessonPlanFramework, type LessonPlanFrameworkId } from "@/lib/lesson-plan-frameworks";
+import { resolveFallbackModelForFeature, resolveModelForFeature, resolvePaidPlanTier } from "@/lib/llm-models";
 
 interface LessonPlanInput {
   framework: LessonPlanFrameworkId;
@@ -175,17 +176,14 @@ ${input.ragContext ? `\nRETRIEVED CONTEXT (assistive):\n${input.ragContext}\n\nU
 
 Return ONLY valid JSON, no other text.`;
 
-  const model = input.isProOrPremium
-    ? process.env.OPENROUTER_MODEL_PRO ||
-      process.env.OPENROUTER_MODEL ||
-      "tngtech/deepseek-r1t2-chimera"
-    : process.env.OPENROUTER_MODEL_FREE ||
-      process.env.OPENROUTER_MODEL ||
-      "tngtech/deepseek-r1t2-chimera";
-  const fallbackModel =
-    process.env.OPENROUTER_FALLBACK_MODEL_LESSON ||
-    process.env.OPENROUTER_FALLBACK_MODEL ||
-    "openai/gpt-4o-mini";
+  const planTier = resolvePaidPlanTier(input.isProOrPremium);
+  const model = resolveModelForFeature({
+    feature: "lesson_plan",
+    plan: planTier,
+  });
+  const fallbackModel = resolveFallbackModelForFeature({
+    feature: "lesson_plan",
+  });
   const maxTokens = options?.liteMode
     ? Number(process.env.LESSON_PLAN_MAX_TOKENS_LITE || 4200)
     : Number(process.env.LESSON_PLAN_MAX_TOKENS || 8000);
