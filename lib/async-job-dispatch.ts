@@ -34,12 +34,15 @@ export async function dispatchAsyncGenerationJob(
     .trim()
     .toLowerCase();
   const priorityDispatch = normalizedPlan === "premium";
-  const eagerDispatchEnabled = ["1", "true", "yes", "on"].includes(
-    String(process.env.GENERATION_JOB_EAGER_DISPATCH || "")
-      .trim()
-      .toLowerCase()
+  const eagerDispatchSetting = String(
+    process.env.GENERATION_JOB_EAGER_DISPATCH || "true"
+  )
+    .trim()
+    .toLowerCase();
+  const eagerDispatchDisabled = ["0", "false", "no", "off"].includes(
+    eagerDispatchSetting
   );
-  if (!eagerDispatchEnabled && !priorityDispatch) return false;
+  if (eagerDispatchDisabled && !priorityDispatch) return false;
 
   const baseUrl = resolveBaseUrl(req);
   // Fire-and-forget dispatch (best effort): this avoids blocking the user request.
