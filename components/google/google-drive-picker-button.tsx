@@ -177,7 +177,7 @@ export function GoogleDrivePickerButton(props: {
 
       const tokenClient = googleSdk.accounts.oauth2.initTokenClient({
         client_id: String(configData.clientId),
-        scope: String(configData.scope || "https://www.googleapis.com/auth/drive.readonly"),
+        scope: String(configData.scope || "https://www.googleapis.com/auth/drive.file"),
         callback: async (tokenResp: { access_token?: string; error?: string }) => {
           const accessToken = tokenResp?.access_token;
           if (!accessToken) {

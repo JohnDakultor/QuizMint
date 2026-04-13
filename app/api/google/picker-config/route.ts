@@ -22,9 +22,8 @@ export async function GET() {
       enabled: Boolean(clientId && apiKey),
       clientId,
       apiKey,
-      scope: "https://www.googleapis.com/auth/drive.readonly",
+      scope: "https://www.googleapis.com/auth/drive.file",
     },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
-
