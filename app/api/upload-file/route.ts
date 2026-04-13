@@ -200,6 +200,73 @@ function enforceDefaultQuestionCount(prompt: string, defaultCount = 10) {
   return `${trimmed}\n\n${defaultRule}`;
 }
 
+async function generateUploadedQuizWithFallback(input: {
+  generationPrompt: string;
+  strictPrompt: string;
+  difficulty: string;
+  adaptiveLearning: boolean;
+  requestedItemCount: number;
+  liteMode: boolean;
+  questionMix:
+    | {
+        mcq?: number;
+        trueFalse?: number;
+        fillBlank?: number;
+        shortAnswer?: number;
+        matching?: number;
+        essayRubric?: number;
+        worksheet?: number;
+        gamified?: number;
+      }
+    | null;
+  gamifiedMode: GamifiedMode | null;
+}) {
+  try {
+    return await generateQuizAI(
+      input.generationPrompt,
+      input.difficulty,
+      input.adaptiveLearning,
+      true,
+      input.strictPrompt,
+      {
+        liteMode: input.liteMode,
+        questionMix: input.questionMix,
+        gamifiedMode: input.gamifiedMode,
+      },
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    const shouldRetryWithoutMix =
+      Boolean(input.questionMix) &&
+      /AI returned invalid question set/i.test(message);
+    if (!shouldRetryWithoutMix) {
+      throw err;
+    }
+
+    const fallbackPrompt = enforceDefaultQuestionCount(
+      `${input.strictPrompt}
+
+FALLBACK MODE:
+Return exactly ${input.requestedItemCount} valid questions from the uploaded material.
+If the requested question-type mix cannot be satisfied exactly, prioritize completing the correct total number of high-quality questions.`,
+      input.requestedItemCount,
+    );
+
+    return await generateQuizAI(
+      input.generationPrompt,
+      input.difficulty,
+      input.adaptiveLearning,
+      true,
+      fallbackPrompt,
+      {
+        liteMode: input.liteMode,
+        questionMix: null,
+        gamifiedMode: input.gamifiedMode,
+      },
+    );
+  }
+}
+
 function normalizeQuestionCountInput(value: unknown): number | null {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
@@ -968,18 +1035,17 @@ content = meaningfulText;  // override to pass to AI
     // --- GENERATE QUIZ ---
     const quiz = cachedResponse
       ? JSON.parse(cachedResponse)
-        : await generateQuizAI(
-            enhancedPrompt,
-            difficulty,
-            adaptiveLearning,
-            true,
-            basePrompt,
-            {
-              liteMode,
-              questionMix: questionMixTotal > 0 ? questionMix : null,
-              gamifiedMode,
-            },
-          );
+      : await generateUploadedQuizWithFallback({
+          generationPrompt: enhancedPrompt,
+          strictPrompt: basePrompt,
+          difficulty,
+          adaptiveLearning,
+          requestedItemCount:
+            requestedItemCount ?? (questionMixTotal > 0 ? questionMixTotal : 10),
+          liteMode,
+          questionMix: questionMixTotal > 0 ? questionMix : null,
+          gamifiedMode,
+        });
 
     if (!liteMode && ragMeta && !cachedResponse) {
       try {

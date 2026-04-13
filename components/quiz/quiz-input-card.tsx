@@ -101,6 +101,10 @@ export function QuizInputCard(props: QuizInputCardProps) {
     (typeof user?.freeQuizPointsRechargeAt === "string"
       ? user.freeQuizPointsRechargeAt
       : null);
+  const normalizedPlan = String(user?.subscriptionPlan || "free")
+    .trim()
+    .toLowerCase();
+  const showFreeRechargeMessage = normalizedPlan === "free";
 
   return (
     <Card className="h-137.5 w-full overflow-hidden border border-indigo-200/80 bg-linear-to-b from-white to-indigo-50/40 shadow-[0_24px_60px_-24px_rgba(30,64,175,0.45)] lg:flex-1 flex flex-col dark:border-indigo-400/25 dark:from-slate-950/80 dark:to-indigo-950/45 dark:shadow-[0_24px_60px_-24px_rgba(30,64,175,0.75)]">
@@ -182,7 +186,7 @@ export function QuizInputCard(props: QuizInputCardProps) {
                           {freeQuizPointsInfo.remainingPoints}.
                         </div>
                       ) : null}
-                      {nextRechargeAt && (
+                      {showFreeRechargeMessage && nextRechargeAt && (
                         <div className="text-sm text-muted-foreground">
                           Free quiz points recharge at {new Date(nextRechargeAt).toLocaleString()}.
                         </div>
