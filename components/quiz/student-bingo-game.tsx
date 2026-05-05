@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { MathText } from "@/components/quiz/math-text";
 
 const StudentBingoStage = dynamic(
   () => import("@/components/quiz/student-bingo-stage"),
@@ -13,7 +14,6 @@ type Props = {
   question: string;
   options: string[];
   difficulty?: "easy" | "medium" | "hard";
-  answerKey?: string;
   value: string;
   disabled?: boolean;
   onPick: (next: string) => void;
@@ -24,17 +24,16 @@ export function StudentBingoGame({
   question,
   options,
   difficulty = "medium",
-  answerKey,
   value,
   disabled,
   onPick,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [stageWidth, setStageWidth] = useState(520);
-  const safeOptions = Array.isArray(options) ? options.filter(Boolean) : [];
-  const normalizedAnswerKey = String(answerKey || "")
-    .replace(/[^a-zA-Z0-9_-]/g, "")
-    .toUpperCase();
+  const safeOptions = useMemo(
+    () => (Array.isArray(options) ? options.filter(Boolean) : []),
+    [options]
+  );
   const questionTerms = String(question || "")
     .toUpperCase()
     .replace(/[^A-Z0-9\s]/g, " ")
@@ -48,7 +47,7 @@ export function StudentBingoGame({
         )
     );
 
-  const fallbackCells = Array.from(new Set([normalizedAnswerKey, ...questionTerms]))
+  const fallbackCells = Array.from(new Set(questionTerms))
     .filter(Boolean)
     .slice(0, 6);
   const [raceMessage, setRaceMessage] = useState<string>("");
@@ -99,12 +98,7 @@ export function StudentBingoGame({
 
   const handleBingoCellClick = (cell: string) => {
     if (disabled) return;
-    const hasKnownAnswer = Boolean(normalizedAnswerKey) || safeOptions.length > 0;
-    const isCorrectCandidate =
-      !hasKnownAnswer ||
-      cell.toUpperCase() === normalizedAnswerKey ||
-      safeOptions.includes(cell);
-    setRaceMessage(isCorrectCandidate ? "Lane locked in." : "Wrong lane. Pick again.");
+    setRaceMessage("Lane locked in.");
     onPick(cell);
   };
 
@@ -130,6 +124,23 @@ export function StudentBingoGame({
           {raceMessage}
         </div>
       ) : null}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {cells.map((cell, idx) => (
+          <button
+            key={`${questionId}-race-choice-${idx}`}
+            type="button"
+            onClick={() => handleBingoCellClick(cell)}
+            disabled={disabled}
+            className={`rounded-lg border px-3 py-2 text-left text-sm ${
+              value === cell
+                ? "border-emerald-500 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-100"
+                : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50"
+            }`}
+          >
+            <MathText inline>{cell}</MathText>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { checkFeatureBurstLimitDistributed } from "@/lib/abuse-guard";
 import { createAsyncGenerationJob } from "@/lib/async-generation-jobs";
 import { dispatchAsyncGenerationJob } from "@/lib/async-job-dispatch";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 const PROVIDER_ISSUE_MESSAGE =
   "Server issue - we're fixing it. Please try again in a few minutes.";
@@ -127,7 +128,7 @@ export async function POST(req: NextRequest) {
     }
 
     const plan = user.subscriptionPlan || "free";
-    const isPremium = plan === "premium";
+    const isPremium = hasPremiumFeaturePlan(plan);
     const isFree = plan === "free" || !plan;
 
     // Policy:

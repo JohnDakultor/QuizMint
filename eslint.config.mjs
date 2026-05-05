@@ -22,8 +22,13 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    "..quiz-forge-hobby-push/**",
+    "..quiz-forge-push/**",
+    "..quiz-forge-upload-push/**",
     "out/**",
     "build/**",
+    ".cache/**",
+    "test-results/**",
     "next-env.d.ts",
     "cypress/**",
     "lib/generated/**",

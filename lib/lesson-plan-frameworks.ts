@@ -1,4 +1,11 @@
-export type LessonPlanFrameworkId = "four_as" | "five_e" | "ubd";
+export type LessonPlanFrameworkId =
+  | "four_as"
+  | "five_e"
+  | "ubd"
+  | "gradual_release"
+  | "project_based"
+  | "blooms"
+  | "direct_instruction";
 
 export type LessonPlanFrameworkPhase = {
   phase: string;
@@ -30,6 +37,10 @@ export type LessonPlanFrameworkConfig = {
   specificActivitiesTitle: string;
   specificActivitiesBadge: string;
   supportsSpecificActivities: boolean;
+  focusInputLabel: string;
+  focusInputPlaceholder: string;
+  objectiveHint: string;
+  constraintHint: string;
   cards: LessonPlanFrameworkCard[];
   phases: LessonPlanFrameworkPhase[];
 };
@@ -45,6 +56,8 @@ const sharedShells = {
     "border-amber-200/80 bg-gradient-to-br from-amber-50 to-white shadow-[0_10px_24px_-18px_rgba(245,158,11,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800",
   rose:
     "border-rose-200/80 bg-gradient-to-br from-rose-50 to-white shadow-[0_10px_24px_-18px_rgba(244,63,94,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800",
+  cyan:
+    "border-cyan-200/80 bg-gradient-to-br from-cyan-50 to-white shadow-[0_10px_24px_-18px_rgba(6,182,212,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800",
 };
 
 export const LESSON_PLAN_FRAMEWORKS: Record<LessonPlanFrameworkId, LessonPlanFrameworkConfig> = {
@@ -59,6 +72,11 @@ export const LESSON_PLAN_FRAMEWORKS: Record<LessonPlanFrameworkId, LessonPlanFra
     specificActivitiesTitle: "Specific Activity Types",
     specificActivitiesBadge: "Linked to 4A's phases",
     supportsSpecificActivities: true,
+    focusInputLabel: "4A's Activity Focus",
+    focusInputPlaceholder:
+      "Optional: describe the opening activity, local context, or practice product you want the 4A's plan to build toward.",
+    objectiveHint: "Use observable objectives that move from activity to analysis, abstraction, and application.",
+    constraintHint: "Mention available materials, class size, time pressure, learner needs, or required activity types.",
     cards: [
       {
         phase: "ACTIVITY",
@@ -147,6 +165,11 @@ export const LESSON_PLAN_FRAMEWORKS: Record<LessonPlanFrameworkId, LessonPlanFra
     specificActivitiesTitle: "Framework Activities",
     specificActivitiesBadge: "Optional framework-linked activities",
     supportsSpecificActivities: false,
+    focusInputLabel: "Inquiry Focus",
+    focusInputPlaceholder:
+      "Optional: describe the phenomenon, investigation, data set, or question students should explore.",
+    objectiveHint: "Use objectives that include inquiry, explanation, transfer, and evidence of understanding.",
+    constraintHint: "Mention lab limits, materials, safety concerns, grouping, or assessment requirements.",
     cards: [
       {
         phase: "ENGAGE",
@@ -253,6 +276,11 @@ export const LESSON_PLAN_FRAMEWORKS: Record<LessonPlanFrameworkId, LessonPlanFra
     specificActivitiesTitle: "Learning Plan Extensions",
     specificActivitiesBadge: "Optional stage-linked activities",
     supportsSpecificActivities: false,
+    focusInputLabel: "Transfer Goal",
+    focusInputPlaceholder:
+      "Optional: describe the enduring understanding, essential question, or performance task students should prepare for.",
+    objectiveHint: "Write objectives as desired results, essential understandings, and evidence of transfer.",
+    constraintHint: "Mention assessment evidence, rubric requirements, standards, or performance-task conditions.",
     cards: [
       {
         phase: "DESIRED_RESULTS",
@@ -312,6 +340,468 @@ export const LESSON_PLAN_FRAMEWORKS: Record<LessonPlanFrameworkId, LessonPlanFra
       },
     ],
   },
+  gradual_release: {
+    id: "gradual_release",
+    label: "Gradual Release of Responsibility",
+    shortLabel: "I Do, We Do, You Do",
+    description:
+      "Generate scaffolded lessons that move from teacher modeling to guided practice, collaborative practice, and independent mastery.",
+    sectionTitle: "Gradual Release Sequence",
+    sectionBadgeText: "4 Phases",
+    specificActivitiesTitle: "Practice Supports",
+    specificActivitiesBadge: "Scaffolded practice",
+    supportsSpecificActivities: false,
+    focusInputLabel: "Skill or Strategy to Release",
+    focusInputPlaceholder:
+      "Optional: name the exact skill, procedure, thinking routine, or worked-example pattern students should master independently.",
+    objectiveHint: "Use objectives that specify what students first observe, practice with support, and then do independently.",
+    constraintHint: "Mention prerequisite gaps, grouping, modeling needs, practice volume, or independent-task expectations.",
+    cards: [
+      {
+        phase: "I_DO",
+        title: "I Do",
+        subtitle: "Model the skill",
+        desc: "Teacher demonstrates expert thinking",
+        shell: sharedShells.blue,
+        badge: "bg-gradient-to-r from-blue-500 to-cyan-500",
+        titleColor: "text-blue-700",
+      },
+      {
+        phase: "WE_DO",
+        title: "We Do",
+        subtitle: "Guided practice",
+        desc: "Class practices with prompts",
+        shell: sharedShells.emerald,
+        badge: "bg-gradient-to-r from-emerald-500 to-teal-500",
+        titleColor: "text-emerald-700",
+      },
+      {
+        phase: "YOU_DO_TOGETHER",
+        title: "You Do Together",
+        subtitle: "Collaborative practice",
+        desc: "Peers apply with support",
+        shell: sharedShells.violet,
+        badge: "bg-gradient-to-r from-violet-500 to-fuchsia-500",
+        titleColor: "text-violet-700",
+      },
+      {
+        phase: "YOU_DO_ALONE",
+        title: "You Do Alone",
+        subtitle: "Independent mastery",
+        desc: "Students demonstrate transfer",
+        shell: sharedShells.amber,
+        badge: "bg-gradient-to-r from-amber-500 to-orange-500",
+        titleColor: "text-amber-700",
+      },
+    ],
+    phases: [
+      {
+        phase: "I_DO",
+        title: "I Do",
+        subtitle: "Teacher modeling",
+        description: "Model the target skill with think-alouds, worked examples, and explicit success criteria.",
+        teacherRole: "Demonstrate expert thinking and name each decision clearly.",
+        studentRole: "Observe, annotate, ask clarifying questions, and notice success criteria.",
+        materialsHint: ["Worked example", "Think-aloud script", "Success criteria"],
+      },
+      {
+        phase: "WE_DO",
+        title: "We Do",
+        subtitle: "Guided practice",
+        description: "Practice the skill together with prompts, checks for understanding, and immediate correction.",
+        teacherRole: "Prompt, question, correct misconceptions, and gradually reduce support.",
+        studentRole: "Respond, try steps with support, explain reasoning, and revise.",
+        materialsHint: ["Guided practice items", "Mini whiteboards", "Prompt cards"],
+      },
+      {
+        phase: "YOU_DO_TOGETHER",
+        title: "You Do Together",
+        subtitle: "Collaborative practice",
+        description: "Let pairs or groups apply the skill while using peer discussion and light teacher coaching.",
+        teacherRole: "Monitor, confer, and target support where needed.",
+        studentRole: "Collaborate, justify choices, compare approaches, and support peers.",
+        materialsHint: ["Partner task", "Checklist", "Discussion stems"],
+      },
+      {
+        phase: "YOU_DO_ALONE",
+        title: "You Do Alone",
+        subtitle: "Independent application",
+        description: "Have each learner demonstrate independent mastery and reflect on next steps.",
+        teacherRole: "Assess mastery, give feedback, and assign next-step support or extension.",
+        studentRole: "Complete the task independently and reflect on confidence and accuracy.",
+        materialsHint: ["Independent task", "Exit ticket", "Rubric"],
+      },
+    ],
+  },
+  project_based: {
+    id: "project_based",
+    label: "Project-Based Learning (PBL)",
+    shortLabel: "PBL",
+    description:
+      "Generate lessons around an authentic driving question, sustained inquiry, creation, critique, and public presentation.",
+    sectionTitle: "PBL Learning Cycle",
+    sectionBadgeText: "5 Phases",
+    specificActivitiesTitle: "Project Milestones",
+    specificActivitiesBadge: "Inquiry and product milestones",
+    supportsSpecificActivities: false,
+    focusInputLabel: "Driving Question or Product",
+    focusInputPlaceholder:
+      "Optional: add the driving question, audience, final product, community problem, or presentation format.",
+    objectiveHint: "Use objectives that combine content mastery, inquiry skills, collaboration, and product quality.",
+    constraintHint: "Mention available tools, product format, audience, group size, deadlines, or presentation limits.",
+    cards: [
+      {
+        phase: "ENTRY_EVENT",
+        title: "Entry Event",
+        subtitle: "Launch the challenge",
+        desc: "Create need-to-know questions",
+        shell: sharedShells.blue,
+        badge: "bg-gradient-to-r from-blue-500 to-cyan-500",
+        titleColor: "text-blue-700",
+      },
+      {
+        phase: "DRIVING_QUESTION",
+        title: "Driving Question",
+        subtitle: "Plan inquiry",
+        desc: "Define goals and roles",
+        shell: sharedShells.emerald,
+        badge: "bg-gradient-to-r from-emerald-500 to-teal-500",
+        titleColor: "text-emerald-700",
+      },
+      {
+        phase: "INQUIRY",
+        title: "Inquiry",
+        subtitle: "Research and learn",
+        desc: "Gather evidence and content",
+        shell: sharedShells.violet,
+        badge: "bg-gradient-to-r from-violet-500 to-fuchsia-500",
+        titleColor: "text-violet-700",
+      },
+      {
+        phase: "CREATE_CRITIQUE",
+        title: "Create and Critique",
+        subtitle: "Build and revise",
+        desc: "Improve products with feedback",
+        shell: sharedShells.amber,
+        badge: "bg-gradient-to-r from-amber-500 to-orange-500",
+        titleColor: "text-amber-700",
+      },
+      {
+        phase: "PRESENT_REFLECT",
+        title: "Present and Reflect",
+        subtitle: "Share learning",
+        desc: "Present, assess, and reflect",
+        shell: sharedShells.rose,
+        badge: "bg-gradient-to-r from-rose-500 to-pink-500",
+        titleColor: "text-rose-700",
+      },
+    ],
+    phases: [
+      {
+        phase: "ENTRY_EVENT",
+        title: "Entry Event",
+        subtitle: "Authentic launch",
+        description: "Introduce an authentic problem or scenario that creates curiosity and a need to learn.",
+        teacherRole: "Launch the scenario and collect student questions.",
+        studentRole: "React, ask questions, identify what they need to know, and connect to purpose.",
+        materialsHint: ["Scenario", "Video/image prompt", "Need-to-know chart"],
+      },
+      {
+        phase: "DRIVING_QUESTION",
+        title: "Driving Question and Plan",
+        subtitle: "Define the project path",
+        description: "Clarify the driving question, success criteria, roles, timeline, and first inquiry steps.",
+        teacherRole: "Facilitate planning and make expectations explicit.",
+        studentRole: "Unpack the question, plan roles, and set product goals.",
+        materialsHint: ["Project brief", "Rubric", "Planning board"],
+      },
+      {
+        phase: "INQUIRY",
+        title: "Sustained Inquiry",
+        subtitle: "Research and skill building",
+        description: "Build content knowledge through research, mini-lessons, interviews, data, or investigation.",
+        teacherRole: "Teach just-in-time skills, curate sources, and coach evidence use.",
+        studentRole: "Research, collect evidence, practice skills, and refine questions.",
+        materialsHint: ["Sources", "Research organizer", "Mini-lesson materials"],
+      },
+      {
+        phase: "CREATE_CRITIQUE",
+        title: "Create and Critique",
+        subtitle: "Prototype and revise",
+        description: "Create the product or solution, receive critique, and revise using criteria.",
+        teacherRole: "Structure feedback cycles and support revision.",
+        studentRole: "Draft, critique, revise, and document decisions.",
+        materialsHint: ["Prototype tools", "Feedback protocol", "Revision checklist"],
+      },
+      {
+        phase: "PRESENT_REFLECT",
+        title: "Present and Reflect",
+        subtitle: "Public product and reflection",
+        description: "Present the product, assess against criteria, and reflect on content and process learning.",
+        teacherRole: "Facilitate presentation, assessment, and reflection.",
+        studentRole: "Present, answer questions, self-assess, and reflect.",
+        materialsHint: ["Presentation format", "Audience questions", "Reflection prompt"],
+      },
+    ],
+  },
+  blooms: {
+    id: "blooms",
+    label: "Bloom's Taxonomy Progression",
+    shortLabel: "Bloom's",
+    description:
+      "Generate lessons that intentionally climb from recall and understanding to application, analysis, evaluation, and creation.",
+    sectionTitle: "Bloom's Cognitive Progression",
+    sectionBadgeText: "6 Levels",
+    specificActivitiesTitle: "Cognitive Tasks",
+    specificActivitiesBadge: "Level-aligned tasks",
+    supportsSpecificActivities: false,
+    focusInputLabel: "Target Thinking Level",
+    focusInputPlaceholder:
+      "Optional: name the highest thinking level, final task, or cognitive verbs students should demonstrate.",
+    objectiveHint: "Use measurable verbs across Bloom's levels, especially the highest level you want assessed.",
+    constraintHint: "Mention required cognitive level, product type, assessment verbs, or support for struggling learners.",
+    cards: [
+      {
+        phase: "REMEMBER",
+        title: "Remember",
+        subtitle: "Recall facts",
+        desc: "Define, list, identify",
+        shell: sharedShells.blue,
+        badge: "bg-gradient-to-r from-blue-500 to-cyan-500",
+        titleColor: "text-blue-700",
+      },
+      {
+        phase: "UNDERSTAND",
+        title: "Understand",
+        subtitle: "Explain meaning",
+        desc: "Summarize and classify",
+        shell: sharedShells.emerald,
+        badge: "bg-gradient-to-r from-emerald-500 to-teal-500",
+        titleColor: "text-emerald-700",
+      },
+      {
+        phase: "APPLY",
+        title: "Apply",
+        subtitle: "Use the idea",
+        desc: "Solve and demonstrate",
+        shell: sharedShells.violet,
+        badge: "bg-gradient-to-r from-violet-500 to-fuchsia-500",
+        titleColor: "text-violet-700",
+      },
+      {
+        phase: "ANALYZE",
+        title: "Analyze",
+        subtitle: "Break apart",
+        desc: "Compare and infer",
+        shell: sharedShells.amber,
+        badge: "bg-gradient-to-r from-amber-500 to-orange-500",
+        titleColor: "text-amber-700",
+      },
+      {
+        phase: "EVALUATE",
+        title: "Evaluate",
+        subtitle: "Judge with criteria",
+        desc: "Defend and critique",
+        shell: sharedShells.rose,
+        badge: "bg-gradient-to-r from-rose-500 to-pink-500",
+        titleColor: "text-rose-700",
+      },
+      {
+        phase: "CREATE",
+        title: "Create",
+        subtitle: "Produce new work",
+        desc: "Design, compose, build",
+        shell: sharedShells.cyan,
+        badge: "bg-gradient-to-r from-cyan-500 to-sky-500",
+        titleColor: "text-cyan-700",
+      },
+    ],
+    phases: [
+      {
+        phase: "REMEMBER",
+        title: "Remember",
+        subtitle: "Retrieve key knowledge",
+        description: "Surface key vocabulary, facts, formulas, steps, or examples needed for the lesson.",
+        teacherRole: "Cue recall and verify prerequisite knowledge.",
+        studentRole: "Identify, list, define, label, or recall essential information.",
+        materialsHint: ["Vocabulary list", "Flash prompts", "Quick check"],
+      },
+      {
+        phase: "UNDERSTAND",
+        title: "Understand",
+        subtitle: "Explain meaning",
+        description: "Help students explain ideas in their own words and connect examples to meaning.",
+        teacherRole: "Clarify relationships and ask students to explain thinking.",
+        studentRole: "Summarize, classify, explain, and give examples.",
+        materialsHint: ["Concept map", "Examples/non-examples", "Sentence frames"],
+      },
+      {
+        phase: "APPLY",
+        title: "Apply",
+        subtitle: "Use knowledge",
+        description: "Have students use the concept, procedure, or rule in a meaningful task.",
+        teacherRole: "Provide practice situations and coach accurate use.",
+        studentRole: "Solve, demonstrate, use, or implement the learning.",
+        materialsHint: ["Practice task", "Problem set", "Scenario"],
+      },
+      {
+        phase: "ANALYZE",
+        title: "Analyze",
+        subtitle: "Examine relationships",
+        description: "Ask students to compare, categorize, infer, or explain how parts relate to the whole.",
+        teacherRole: "Prompt reasoning and make evidence use visible.",
+        studentRole: "Compare, organize, distinguish, and infer from evidence.",
+        materialsHint: ["Comparison chart", "Data set", "Sorting task"],
+      },
+      {
+        phase: "EVALUATE",
+        title: "Evaluate",
+        subtitle: "Judge with criteria",
+        description: "Guide students to critique choices, justify conclusions, and defend judgments with criteria.",
+        teacherRole: "Provide criteria and facilitate evidence-based judgment.",
+        studentRole: "Critique, justify, defend, and recommend.",
+        materialsHint: ["Rubric", "Criteria chart", "Debate prompt"],
+      },
+      {
+        phase: "CREATE",
+        title: "Create",
+        subtitle: "Produce or design",
+        description: "Have students synthesize learning into an original product, explanation, solution, or plan.",
+        teacherRole: "Support synthesis and assess originality, accuracy, and purpose.",
+        studentRole: "Design, build, compose, propose, or present new work.",
+        materialsHint: ["Product template", "Design brief", "Presentation tools"],
+      },
+    ],
+  },
+  direct_instruction: {
+    id: "direct_instruction",
+    label: "Explicit Direct Instruction",
+    shortLabel: "EDI",
+    description:
+      "Generate highly structured lessons with clear objectives, modeling, checks for understanding, guided practice, and independent practice.",
+    sectionTitle: "Explicit Direct Instruction Flow",
+    sectionBadgeText: "6 Steps",
+    specificActivitiesTitle: "Instructional Checks",
+    specificActivitiesBadge: "CFU and practice checkpoints",
+    supportsSpecificActivities: false,
+    focusInputLabel: "Exact Skill and Success Criteria",
+    focusInputPlaceholder:
+      "Optional: state the exact skill, key vocabulary, common misconception, or success criteria students must master.",
+    objectiveHint: "Use precise, measurable objectives with clear success criteria and checks for understanding.",
+    constraintHint: "Mention pacing, prerequisite vocabulary, misconceptions, practice item count, or assessment format.",
+    cards: [
+      {
+        phase: "OBJECTIVE",
+        title: "Objective",
+        subtitle: "Set purpose",
+        desc: "State learning target",
+        shell: sharedShells.blue,
+        badge: "bg-gradient-to-r from-blue-500 to-cyan-500",
+        titleColor: "text-blue-700",
+      },
+      {
+        phase: "INPUT",
+        title: "Input",
+        subtitle: "Teach content",
+        desc: "Explain key knowledge",
+        shell: sharedShells.emerald,
+        badge: "bg-gradient-to-r from-emerald-500 to-teal-500",
+        titleColor: "text-emerald-700",
+      },
+      {
+        phase: "MODEL",
+        title: "Model",
+        subtitle: "Show the process",
+        desc: "Think aloud with examples",
+        shell: sharedShells.violet,
+        badge: "bg-gradient-to-r from-violet-500 to-fuchsia-500",
+        titleColor: "text-violet-700",
+      },
+      {
+        phase: "CHECK_UNDERSTANDING",
+        title: "Check",
+        subtitle: "Verify learning",
+        desc: "Catch misconceptions early",
+        shell: sharedShells.amber,
+        badge: "bg-gradient-to-r from-amber-500 to-orange-500",
+        titleColor: "text-amber-700",
+      },
+      {
+        phase: "GUIDED_PRACTICE",
+        title: "Guided Practice",
+        subtitle: "Practice together",
+        desc: "Coach accurate attempts",
+        shell: sharedShells.rose,
+        badge: "bg-gradient-to-r from-rose-500 to-pink-500",
+        titleColor: "text-rose-700",
+      },
+      {
+        phase: "INDEPENDENT_PRACTICE",
+        title: "Independent Practice",
+        subtitle: "Prove mastery",
+        desc: "Apply without prompts",
+        shell: sharedShells.cyan,
+        badge: "bg-gradient-to-r from-cyan-500 to-sky-500",
+        titleColor: "text-cyan-700",
+      },
+    ],
+    phases: [
+      {
+        phase: "OBJECTIVE",
+        title: "Objective and Purpose",
+        subtitle: "Learning target",
+        description: "State the objective, relevance, vocabulary, and success criteria in student-friendly language.",
+        teacherRole: "Clarify what students will learn, why it matters, and how success will be judged.",
+        studentRole: "Restate the goal, connect to prior learning, and prepare to participate.",
+        materialsHint: ["Learning target", "Vocabulary", "Success criteria"],
+      },
+      {
+        phase: "INPUT",
+        title: "Input",
+        subtitle: "Teach new content",
+        description: "Present the essential facts, concepts, rules, or steps with concise explanations and examples.",
+        teacherRole: "Explain content clearly and highlight key features.",
+        studentRole: "Listen actively, annotate, answer prompts, and track key ideas.",
+        materialsHint: ["Slides", "Anchor chart", "Example set"],
+      },
+      {
+        phase: "MODEL",
+        title: "Model",
+        subtitle: "Demonstrate expert thinking",
+        description: "Model the procedure or reasoning with a think-aloud and at least one worked example.",
+        teacherRole: "Demonstrate each step and verbalize decision-making.",
+        studentRole: "Observe, predict next steps, and identify why each step matters.",
+        materialsHint: ["Worked example", "Think-aloud", "Document camera"],
+      },
+      {
+        phase: "CHECK_UNDERSTANDING",
+        title: "Check for Understanding",
+        subtitle: "Diagnose before practice",
+        description: "Use quick checks to confirm students are ready and address misconceptions immediately.",
+        teacherRole: "Ask targeted questions and respond to data.",
+        studentRole: "Show responses, explain thinking, and correct errors.",
+        materialsHint: ["Mini whiteboards", "Hinge question", "Poll"],
+      },
+      {
+        phase: "GUIDED_PRACTICE",
+        title: "Guided Practice",
+        subtitle: "Practice with feedback",
+        description: "Lead structured practice with feedback until students can work accurately with less support.",
+        teacherRole: "Prompt, coach, release support, and give corrective feedback.",
+        studentRole: "Practice, explain steps, and revise after feedback.",
+        materialsHint: ["Guided practice", "Checklist", "Sample responses"],
+      },
+      {
+        phase: "INDEPENDENT_PRACTICE",
+        title: "Independent Practice and Closure",
+        subtitle: "Demonstrate mastery",
+        description: "Assign independent practice, assess mastery, and close with reflection or exit ticket.",
+        teacherRole: "Assess accuracy and set next steps.",
+        studentRole: "Apply independently, submit evidence, and reflect.",
+        materialsHint: ["Independent task", "Exit ticket", "Rubric"],
+      },
+    ],
+  },
 };
 
 export function normalizeLessonPlanFramework(value: unknown): LessonPlanFrameworkId {
@@ -321,6 +811,10 @@ export function normalizeLessonPlanFramework(value: unknown): LessonPlanFramewor
     .replace(/[^a-z0-9]+/g, "_");
   if (normalized === "5e" || normalized === "five_e") return "five_e";
   if (normalized === "ubd") return "ubd";
+  if (normalized === "gradual_release" || normalized === "i_do_we_do_you_do") return "gradual_release";
+  if (normalized === "project_based" || normalized === "pbl" || normalized === "project_based_learning") return "project_based";
+  if (normalized === "blooms" || normalized === "bloom" || normalized === "bloom_s_taxonomy") return "blooms";
+  if (normalized === "direct_instruction" || normalized === "explicit_direct_instruction" || normalized === "edi") return "direct_instruction";
   return "four_as";
 }
 

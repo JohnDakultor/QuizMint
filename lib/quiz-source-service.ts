@@ -1,7 +1,12 @@
 import fetch from "node-fetch";
 import * as cheerio from "cheerio";
-import { fetchTranscript } from "@/lib/youtube-transcript";
+import { extractYouTubeVideoId, fetchTranscript } from "@/lib/youtube-transcript";
 import { normalizeForEmbedding } from "@/lib/rag/embed";
+import {
+  assertSafeRemoteUrl,
+  logReferenceSecurityEvent,
+  sanitizeUntrustedReferenceText,
+} from "@/lib/rag/rag-guards";
 import { log } from "@/lib/logger";
 import {
   getCachedUrlExtraction,
@@ -66,13 +71,14 @@ export async function extractTextFromURL(
   url: string,
 ): Promise<{ text: string; title: string }> {
   try {
+    const safeUrl = assertSafeRemoteUrl(url);
     const { value, cacheHit } = await getCachedUrlExtraction(url, async () => {
       const googleExtracted = await tryExtractGoogleFileText(url);
       if (googleExtracted) {
         return googleExtracted;
       }
 
-      const res = await fetch(url, {
+      const res = await fetch(safeUrl.toString(), {
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -129,7 +135,19 @@ export async function extractTextFromURL(
           .trim();
       }
 
-      return { text, title };
+      const sanitized = sanitizeUntrustedReferenceText(text);
+      if (sanitized.suspiciousScore > 0) {
+        logReferenceSecurityEvent("rag_url_content_suspicious", {
+          sourceType: "url_fetch",
+          label: title || safeUrl.toString(),
+          hostname: safeUrl.hostname,
+          suspiciousPatterns: sanitized.suspiciousPatterns,
+          suspiciousScore: sanitized.suspiciousScore,
+          action: sanitized.shouldQuarantine ? "quarantine" : "sanitize",
+        });
+      }
+
+      return { text: sanitized.text, title };
     });
 
     if (cacheHit) {
@@ -138,9 +156,19 @@ export async function extractTextFromURL(
 
     return value;
   } catch (err) {
-    log.warn("url_extract_failed", { err });
+    log.warn("url_extract_failed", { err, url });
     return { text: "", title: "" };
   }
+}
+
+export function extractYoutubeVideoIdFromUrl(urlOrId: string) {
+  return extractYouTubeVideoId(urlOrId);
+}
+
+export function hasMeaningfulYouTubeSourceText(text: string) {
+  const cleaned = normalizeForEmbedding(text);
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  return cleaned.length >= 500 || words.length >= 80;
 }
 
 function extractGoogleResourceId(url: string, kind: "document" | "spreadsheets" | "presentation"): string | null {
@@ -178,7 +206,7 @@ async function fetchGoogleExportText(
   if (!rawText?.trim()) return null;
 
   if (contentType.includes("text/plain") || contentType.includes("text/csv")) {
-    return { text: rawText, title };
+    return { text: sanitizeUntrustedReferenceText(rawText).text, title };
   }
 
   // Some Google exports return HTML/login wrappers; strip to visible text.
@@ -190,7 +218,7 @@ async function fetchGoogleExportText(
     .replace(/\s+/g, " ")
     .trim();
   if (!htmlText) return null;
-  return { text: htmlText, title };
+  return { text: sanitizeUntrustedReferenceText(htmlText).text, title };
 }
 
 async function tryExtractGoogleFileText(url: string): Promise<{ text: string; title: string } | null> {
@@ -251,10 +279,11 @@ async function transformYoutubeData(data: Array<{ text?: string }>) {
 
 export async function extractYouTubeTranscript(videoId: string) {
   try {
-    const { value, cacheHit } = await getCachedYouTubeTranscript(videoId, async () => {
+    const cacheKey = `captions:v2:${videoId}`;
+    const { value, cacheHit } = await getCachedYouTubeTranscript(cacheKey, async () => {
       const transcript = await fetchTranscript(videoId);
       const transformData = await transformYoutubeData(transcript);
-      return transformData.text;
+      return sanitizeUntrustedReferenceText(transformData.text).text;
     });
     if (cacheHit) {
       log.debug("youtube_transcript_cache_hit", { videoId });
@@ -285,8 +314,8 @@ export async function fetchYouTubeMetadata(videoId: string) {
     const snippet = data.items?.[0]?.snippet;
 
     return {
-      title: snippet?.title || "",
-      description: snippet?.description || "",
+      title: sanitizeUntrustedReferenceText(snippet?.title || "").text,
+      description: sanitizeUntrustedReferenceText(snippet?.description || "").text,
     };
   });
 

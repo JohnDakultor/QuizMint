@@ -1,17 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-
-async function getCurrentUser() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return null;
-
-  return prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true, email: true },
-  });
-}
+import {
+  buildOwnedOrMemberWhere,
+  buildOwnedOrWritableWhere,
+  getCurrentUserAccessContext,
+} from "@/lib/organization-access";
 
 function toNullableDate(value: unknown) {
   if (!value) return null;
@@ -20,13 +13,13 @@ function toNullableDate(value: unknown) {
 }
 
 export async function GET() {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const assignments = await prisma.assignment.findMany({
-    where: { userId: user.id },
+    where: buildOwnedOrMemberWhere(user),
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     take: 25,
     select: {
@@ -69,7 +62,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -105,8 +98,8 @@ export async function POST(req: Request) {
   }
 
   const classRecord = await prisma.class.findFirst({
-    where: { id: classId, userId: user.id, archived: false },
-    select: { id: true, name: true },
+    where: { id: classId, archived: false, ...buildOwnedOrWritableWhere(user) },
+    select: { id: true, name: true, organizationId: true },
   });
   if (!classRecord) {
     return NextResponse.json({ error: "Class not found" }, { status: 404 });
@@ -114,21 +107,34 @@ export async function POST(req: Request) {
 
   if (quizId) {
     const quiz = await prisma.quiz.findFirst({
-      where: { id: quizId, userId: user.id },
-      select: { id: true },
+      where: { id: quizId, ...buildOwnedOrMemberWhere(user) },
+      select: { id: true, organizationId: true },
     });
     if (!quiz) {
       return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+    }
+    if (classRecord.organizationId && quiz.organizationId && quiz.organizationId !== classRecord.organizationId) {
+      return NextResponse.json({ error: "Quiz belongs to a different organization" }, { status: 400 });
     }
   }
 
   if (lessonPlanId) {
     const lessonPlan = await prisma.lessonPlan.findFirst({
-      where: { id: lessonPlanId, userId: user.id },
-      select: { id: true },
+      where: { id: lessonPlanId, ...buildOwnedOrMemberWhere(user) },
+      select: { id: true, organizationId: true },
     });
     if (!lessonPlan) {
       return NextResponse.json({ error: "Lesson plan not found" }, { status: 404 });
+    }
+    if (
+      classRecord.organizationId &&
+      lessonPlan.organizationId &&
+      lessonPlan.organizationId !== classRecord.organizationId
+    ) {
+      return NextResponse.json(
+        { error: "Lesson plan belongs to a different organization" },
+        { status: 400 },
+      );
     }
   }
 
@@ -138,6 +144,7 @@ export async function POST(req: Request) {
   const assignment = await prisma.assignment.create({
     data: {
       userId: user.id,
+      organizationId: classRecord.organizationId,
       classId,
       quizId,
       lessonPlanId,

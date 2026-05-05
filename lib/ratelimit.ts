@@ -6,8 +6,8 @@ export const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
-export const publicQuizRateLimit = new Ratelimit({
+export const publicFormRateLimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(5, "1 m"), // 5 requests per minute
+  limiter: Ratelimit.slidingWindow(10, "1 m"),
   analytics: true,
 });

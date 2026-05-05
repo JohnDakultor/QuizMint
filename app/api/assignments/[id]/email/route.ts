@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { Resend } from "resend";
 import { randomUUID } from "crypto";
-import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { trackGenerationEvent } from "@/lib/generation-events";
+import {
+  buildOwnedOrWritableWhere,
+  getCurrentUserAccessContext,
+} from "@/lib/organization-access";
 
 const ROSTER_EMAIL_COOLDOWN_MINUTES = 15;
 const REMINDER_EMAIL_COOLDOWN_HOURS = 8;
@@ -48,12 +50,8 @@ export async function POST(
   let assignmentId: string | null = null;
   let mode: "missing_only" | "all" = "all";
   try {
-    const session = await getServerSession(authOptions);
-    const email = session?.user?.email;
-    if (!email) return apiError(401, "Unauthorized", requestId);
-
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return apiError(404, "User not found", requestId);
+    const user = await getCurrentUserAccessContext();
+    if (!user) return apiError(401, "Unauthorized", requestId);
     userId = user.id;
 
     const { id } = await context.params;
@@ -62,7 +60,7 @@ export async function POST(
     mode = body?.mode === "missing_only" ? "missing_only" : "all";
 
     const assignment = await prisma.assignment.findFirst({
-      where: { id, userId: user.id },
+      where: { id, ...buildOwnedOrWritableWhere(user) },
       select: {
         id: true,
         title: true,

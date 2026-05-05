@@ -6,6 +6,7 @@ import { generateSlideImage } from "@/lib/generate-lesson-plan-pptx";
 import type { PptDeck } from "@/lib/lesson-plan-ppt-ai";
 import { resolveModelForFeature } from "@/lib/llm-models";
 import { prisma } from "@/lib/prisma";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 const MODEL = resolveModelForFeature({
   feature: "deck_preview",
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
       select: { subscriptionPlan: true },
     });
 
-    if (!user || user.subscriptionPlan !== "premium") {
+    if (!user || !hasPremiumFeaturePlan(user.subscriptionPlan)) {
       return NextResponse.json({ error: "Premium required" }, { status: 403 });
     }
 

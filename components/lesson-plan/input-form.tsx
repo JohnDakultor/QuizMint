@@ -35,6 +35,7 @@ type LessonTemplateDefaults = {
   grade: string;
   days: string | number;
   minutesPerDay: string | number;
+  frameworkFocus: string;
   objectives: string;
   constraints: string;
 };
@@ -114,6 +115,8 @@ export function LessonPlanInputForm({
   onHandleFileUpload,
   onFrameworkChange,
 }: LessonPlanInputFormProps) {
+  const frameworkConfig = LESSON_PLAN_FRAMEWORKS[selectedFramework];
+
   return (
     <Card className="shadow-[0_20px_55px_-24px_rgba(30,64,175,0.55)] border border-indigo-200/80 overflow-hidden rounded-2xl bg-gradient-to-b from-white to-zinc-50 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
       <div className="bg-gradient-to-r from-slate-950 via-indigo-900 to-cyan-800 p-4">
@@ -190,8 +193,22 @@ export function LessonPlanInputForm({
               ))}
             </select>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {LESSON_PLAN_FRAMEWORKS[selectedFramework].description}
+              {frameworkConfig.description}
             </p>
+          </div>
+
+          <div className="space-y-3">
+            <label className="text-sm font-semibold text-gray-700 dark:text-slate-200 flex items-center gap-2">
+              <Target className="h-4 w-4 text-cyan-600" />
+              {frameworkConfig.focusInputLabel} (optional)
+            </label>
+            <Textarea
+              id="lessonplan-framework-focus"
+              name="frameworkFocus"
+              placeholder={frameworkConfig.focusInputPlaceholder}
+              defaultValue={lessonTemplateDefaults.frameworkFocus}
+              className="min-h-24 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -252,7 +269,7 @@ export function LessonPlanInputForm({
             <Textarea
               id="lessonplan-objectives"
               name="objectives"
-              placeholder="Enter specific learning objectives, one per line..."
+              placeholder={frameworkConfig.objectiveHint}
               defaultValue={lessonTemplateDefaults.objectives}
               className="min-h-30 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
@@ -266,7 +283,7 @@ export function LessonPlanInputForm({
             <Textarea
               id="lessonplan-constraints"
               name="constraints"
-              placeholder="Any specific requirements or constraints..."
+              placeholder={frameworkConfig.constraintHint}
               defaultValue={lessonTemplateDefaults.constraints}
               className="min-h-25 border-zinc-300 bg-white/90 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />

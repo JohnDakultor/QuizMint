@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Loader2,
@@ -21,6 +22,14 @@ type CurrencyData = {
   country: string;
   currency: string;
   prices: { pro: number; premium: number };
+};
+
+type PlanId = "pro" | "premium" | "organization";
+
+type OrganizationOption = {
+  id: string;
+  name: string;
+  canAdminister: boolean;
 };
 
 const SYMBOLS: Record<string, string> = {
@@ -61,6 +70,20 @@ const plans = [
       "Intervention workflow support",
       "Priority queue handling for heavy generation jobs",
       "Richer history and reusable teaching assets",
+    ],
+  },
+  {
+    id: "organization",
+    title: "Organization",
+    description: "For schools and training teams that need centralized billing, admin controls, and a shared workspace.",
+    color: "emerald",
+    features: [
+      "7-day free trial on the organization PayPal plan",
+      "Centralized institutional billing",
+      "Organization workspace settings",
+      "Admin and teacher role management",
+      "Seat-managed invites and operations",
+      "Built for schools, departments, and training centers",
     ],
   },
 ] as const;
@@ -129,13 +152,15 @@ const paymentMethods = [
 }>;
 
 export default function Subscription() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<"pro" | "premium" | null>(
+  const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(
     null
   );
   const [subscription, setSubscription] = useState<{
     isPro: boolean;
     isPremium: boolean;
+    isOrganizationTier: boolean;
     plan: string | null;
     active: boolean;
   } | null>(null);
@@ -146,11 +171,11 @@ export default function Subscription() {
   });
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [planToSubscribe, setPlanToSubscribe] = useState<
-    "pro" | "premium" | null
-  >(null);
+  const [planToSubscribe, setPlanToSubscribe] = useState<PlanId | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
     useState<string>("");
+  const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [noticeTitle, setNoticeTitle] = useState("");
   const [noticeMessage, setNoticeMessage] = useState("");
@@ -206,8 +231,43 @@ export default function Subscription() {
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/organizations", { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) return;
+        const nextOrganizations = Array.isArray(data?.organizations)
+          ? (data.organizations as OrganizationOption[]).filter((organization) => organization.canAdminister)
+          : [];
+        setOrganizations(nextOrganizations);
+        if (!selectedOrganizationId && nextOrganizations[0]?.id) {
+          setSelectedOrganizationId(nextOrganizations[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load organizations", err);
+      }
+    })();
+  }, [selectedOrganizationId]);
+
+  useEffect(() => {
+    const urlOrganizationId = searchParams.get("organizationId");
+    if (urlOrganizationId) {
+      setSelectedOrganizationId(urlOrganizationId);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const requestedPlan = searchParams.get("plan");
+    if (requestedPlan === "organization") {
+      setPlanToSubscribe("organization");
+      setSelectedPaymentMethod("paypal");
+      setShowPaymentModal(true);
+    }
+  }, [searchParams]);
+
   // Stripe checkout redirect (coming soon)
-  const handleStripe = async (plan: "pro" | "premium") => {
+  const handleStripe = async (plan: Exclude<PlanId, "organization">) => {
     trackGaEvent("subscription_click", {
       action: "checkout_start",
       plan,
@@ -237,13 +297,17 @@ export default function Subscription() {
   };
 
   // Handle PayPal subscription
-  const handlePayPalSubscription = async (planType: "pro" | "premium") => {
+  const handlePayPalSubscription = async (planType: PlanId) => {
     trackGaEvent("subscription_click", {
       action: "checkout_start",
       plan: planType,
       method: "paypal",
       location: "subscription_page",
     });
+    if (planType === "organization" && !selectedOrganizationId) {
+      showNotice("Choose Organization", "Select an organization workspace before continuing to PayPal.", "info");
+      return;
+    }
     setLoading(true);
     setSelectedPlan(planType);
 
@@ -253,7 +317,10 @@ export default function Subscription() {
       const res = await fetch("/api/paypal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planType }),
+        body: JSON.stringify({
+          planType,
+          organizationId: planType === "organization" ? selectedOrganizationId : undefined,
+        }),
       });
 
       const data = await res.json();
@@ -292,11 +359,11 @@ export default function Subscription() {
     }
   };
 
-  const handleGooglePay = async (plan: "pro" | "premium") => {
+  const handleGooglePay = async (plan: Exclude<PlanId, "organization">) => {
     await handleStripe(plan);
   };
 
-  const handleApplePay = async (plan: "pro" | "premium") => {
+  const handleApplePay = async (plan: Exclude<PlanId, "organization">) => {
     await handleStripe(plan);
   };
 
@@ -328,15 +395,30 @@ export default function Subscription() {
 
     switch (selectedPaymentMethod) {
       case "stripe":
+        if (planToSubscribe === "organization") {
+          showNotice("Method Unavailable", "Organization checkout is currently available through PayPal only.", "info");
+          setLoading(false);
+          break;
+        }
         handleStripe(planToSubscribe);
         break;
       case "paypal":
         handlePayPalSubscription(planToSubscribe);
         break;
       case "gpay":
+        if (planToSubscribe === "organization") {
+          showNotice("Method Unavailable", "Organization checkout is currently available through PayPal only.", "info");
+          setLoading(false);
+          break;
+        }
         handleGooglePay(planToSubscribe);
         break;
       case "applepay":
+        if (planToSubscribe === "organization") {
+          showNotice("Method Unavailable", "Organization checkout is currently available through PayPal only.", "info");
+          setLoading(false);
+          break;
+        }
         handleApplePay(planToSubscribe);
         break;
       case "gcash":
@@ -370,13 +452,15 @@ export default function Subscription() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {plans.map((plan) => (
             <div
               key={plan.id}
               className={`overflow-hidden border p-8 rounded-[28px] shadow-[0_16px_38px_-24px_rgba(15,23,42,0.55)] hover:-translate-y-1 hover:shadow-[0_24px_55px_-24px_rgba(59,130,246,0.45)] transition-all duration-300 relative bg-white border-zinc-200 dark:border-slate-700 dark:bg-slate-900 ${
                 plan.id === "premium"
                   ? "ring-1 ring-violet-300/70 bg-[radial-gradient(circle_at_top_right,_rgba(244,114,182,0.18),_transparent_38%),linear-gradient(180deg,rgba(139,92,246,0.10),rgba(255,255,255,0.96))] dark:bg-[radial-gradient(circle_at_top_right,_rgba(244,114,182,0.18),_transparent_34%),linear-gradient(180deg,rgba(91,33,182,0.50),rgba(15,23,42,0.96))]"
+                  : plan.id === "organization"
+                  ? "ring-1 ring-emerald-300/70 bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.16),_transparent_38%),linear-gradient(180deg,rgba(16,185,129,0.08),rgba(255,255,255,0.96))] dark:bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.18),_transparent_34%),linear-gradient(180deg,rgba(6,95,70,0.45),rgba(15,23,42,0.96))]"
                   : "bg-linear-to-b from-sky-50/40 to-white dark:from-slate-900 dark:to-slate-800"
               }`}
             >
@@ -384,6 +468,13 @@ export default function Subscription() {
                 <>
                   <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-linear-to-r from-fuchsia-400 via-violet-500 to-cyan-400" />
                   <div className="pointer-events-none absolute -right-12 top-10 h-32 w-32 rounded-full bg-fuchsia-400/20 blur-3xl" />
+                  <div className="pointer-events-none absolute left-0 top-24 h-24 w-24 rounded-full bg-cyan-300/10 blur-2xl" />
+                </>
+              )}
+              {plan.id === "organization" && (
+                <>
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-linear-to-r from-emerald-400 via-teal-500 to-cyan-400" />
+                  <div className="pointer-events-none absolute -right-12 top-10 h-32 w-32 rounded-full bg-emerald-400/20 blur-3xl" />
                   <div className="pointer-events-none absolute left-0 top-24 h-24 w-24 rounded-full bg-cyan-300/10 blur-2xl" />
                 </>
               )}
@@ -403,30 +494,53 @@ export default function Subscription() {
                 <div className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold ${
                   plan.id === "premium"
                     ? "bg-violet-950 text-violet-100 border border-violet-700/70 shadow-[0_10px_30px_-18px_rgba(139,92,246,0.85)]"
+                    : plan.id === "organization"
+                    ? "bg-emerald-950 text-emerald-100 border border-emerald-700/70 shadow-[0_10px_30px_-18px_rgba(16,185,129,0.65)]"
                     : "bg-sky-100 text-sky-700 border border-sky-200"
                 }`}>
                   <Sparkles className="h-3.5 w-3.5" />
-                  {plan.id === "premium" ? "High-Leverage" : "Core Workflow"}
+                  {plan.id === "premium"
+                    ? "High-Leverage"
+                    : plan.id === "organization"
+                    ? "Institution Ready"
+                    : "Core Workflow"}
                 </div>
               </div>
 
               <div className={`mt-5 rounded-2xl border px-4 py-4 text-left ${
                 plan.id === "premium"
                   ? "border-violet-200/80 bg-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-violet-500/30 dark:bg-slate-950/40"
+                  : plan.id === "organization"
+                  ? "border-emerald-200/80 bg-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-emerald-500/30 dark:bg-slate-950/40"
                   : "border-sky-100 bg-white/75 dark:border-slate-700 dark:bg-slate-950/30"
               }`}>
-              <p className="text-3xl font-bold text-zinc-900 dark:text-slate-100">
-                {SYMBOLS[currencyData.currency] || currencyData.currency}
-                {currencyData.prices[plan.id]}.00
-                <span className="text-base font-medium text-zinc-600 dark:text-slate-300">/ month</span>
-              </p>
+              {plan.id === "organization" ? (
+                <>
+                  <p className="text-3xl font-bold text-zinc-900 dark:text-slate-100">
+                    7-day free trial
+                  </p>
+                  <p className="mt-1 text-base font-medium text-zinc-600 dark:text-slate-300">
+                    PayPal-managed organization billing
+                  </p>
+                </>
+              ) : (
+                <p className="text-3xl font-bold text-zinc-900 dark:text-slate-100">
+                  {SYMBOLS[currencyData.currency] || currencyData.currency}
+                  {plan.id === "pro" ? currencyData.prices.pro : currencyData.prices.premium}.00
+                  <span className="text-base font-medium text-zinc-600 dark:text-slate-300">/ month</span>
+                </p>
+              )}
               <p className={`mt-2 text-xs ${
                 plan.id === "premium"
                   ? "text-violet-700 dark:text-violet-200"
+                  : plan.id === "organization"
+                  ? "text-emerald-700 dark:text-emerald-200"
                   : "text-zinc-500 dark:text-slate-400"
               }`}>
                 {plan.id === "premium"
                   ? "Built for analytics, intervention workflows, and premium export needs."
+                  : plan.id === "organization"
+                  ? "Built for institutional rollouts with shared administration and a 7-day trial."
                   : "Built for everyday lesson planning, class setup, and assignment flow."}
               </p>
               </div>
@@ -440,6 +554,8 @@ export default function Subscription() {
                     <span className={`mt-1.5 h-2 w-2 rounded-full ${
                       plan.id === "premium"
                         ? "bg-gradient-to-br from-fuchsia-500 to-violet-500 shadow-[0_0_0_4px_rgba(139,92,246,0.10)]"
+                        : plan.id === "organization"
+                        ? "bg-gradient-to-br from-emerald-500 to-teal-500 shadow-[0_0_0_4px_rgba(16,185,129,0.10)]"
                         : "bg-emerald-500"
                     }`} />
                     <span>{feature}</span>
@@ -451,6 +567,8 @@ export default function Subscription() {
                 className={`mt-6 w-full ${
                   plan.color === "purple"
                     ? "bg-purple-600 hover:bg-purple-700 text-white"
+                    : plan.color === "emerald"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                     : "bg-blue-600 hover:bg-blue-700 text-white"
                 }`}
                 onClick={() => {
@@ -465,12 +583,15 @@ export default function Subscription() {
                 disabled={
                   loading ||
                   (subscription?.isPro && plan.id === "pro") ||
-                  (subscription?.isPremium && plan.id === "premium")
+                  (subscription?.isPremium && plan.id === "premium") ||
+                  (subscription?.isOrganizationTier && plan.id === "organization")
                 }
               >
                 {subscription?.isPro && plan.id === "pro"
                   ? "Subscribed"
                   : subscription?.isPremium && plan.id === "premium"
+                  ? "Subscribed"
+                  : subscription?.isOrganizationTier && plan.id === "organization"
                   ? "Subscribed"
                   : loading && selectedPlan === plan.id
                   ? "Processing..."
@@ -480,6 +601,11 @@ export default function Subscription() {
               {plan.id === "premium" && (
                 <Badge className="absolute top-4 right-4 bg-violet-100 text-violet-800 px-2 py-1 border border-violet-200 shadow-sm">
                   Popular
+                </Badge>
+              )}
+              {plan.id === "organization" && (
+                <Badge className="absolute top-4 right-4 bg-emerald-100 text-emerald-800 px-2 py-1 border border-emerald-200 shadow-sm">
+                  7-Day Trial
                 </Badge>
               )}
             </div>
@@ -502,7 +628,11 @@ export default function Subscription() {
                   <div className="text-right">
                     <div className="text-[10px] text-gray-300">Plan</div>
                     <div className="font-semibold text-xs">
-                      {planToSubscribe === "pro" ? "Teacher Pro" : "Teacher Premium"}
+                      {planToSubscribe === "pro"
+                        ? "Teacher Pro"
+                        : planToSubscribe === "premium"
+                        ? "Teacher Premium"
+                        : "Organization"}
                     </div>
                   </div>
                 </div>
@@ -510,16 +640,61 @@ export default function Subscription() {
                 {/* Amount Display - Ultra Compact */}
                 <div className="bg-black/30 p-2 rounded">
                   <div className="text-[10px] text-gray-300">Total</div>
-                  <div className="text-xl font-bold">
-                    {SYMBOLS[currencyData.currency] || currencyData.currency}
-                    {currencyData.prices[planToSubscribe]}.00
-                    <span className="text-[10px] font-normal ml-0.5">/mo</span>
-                  </div>
+                  {planToSubscribe === "organization" ? (
+                    <>
+                      <div className="text-xl font-bold">7-day free trial</div>
+                      <div className="text-[10px] text-gray-300">Then your PayPal organization plan billing applies</div>
+                    </>
+                  ) : (
+                    <div className="text-xl font-bold">
+                      {SYMBOLS[currencyData.currency] || currencyData.currency}
+                      {planToSubscribe === "pro" ? currencyData.prices.pro : currencyData.prices.premium}.00
+                      <span className="text-[10px] font-normal ml-0.5">/mo</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Payment Methods - Ultra Compact */}
               <div className="p-3 space-y-2 max-h-[50vh] overflow-y-auto bg-linear-to-b from-white to-slate-50/50">
+                {planToSubscribe === "organization" && (
+                  <div className="rounded border border-emerald-200 bg-emerald-50 p-2 text-left">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                      Organization workspace
+                    </div>
+                    {organizations.length > 0 ? (
+                      <select
+                        value={selectedOrganizationId}
+                        onChange={(event) => setSelectedOrganizationId(event.target.value)}
+                        className="mt-2 h-9 w-full rounded-md border border-emerald-200 bg-white px-3 text-xs text-slate-800 outline-none focus:border-emerald-400"
+                      >
+                        {organizations.map((organization) => (
+                          <option key={organization.id} value={organization.id}>
+                            {organization.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        <p className="text-[11px] text-emerald-800">
+                          Create or gain admin access to an organization workspace before starting institution billing.
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                          onClick={() => {
+                            setShowPaymentModal(false);
+                            window.location.href = "/organizations";
+                          }}
+                        >
+                          Go to Organizations
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center justify-between mb-0.5">
                   <div className="flex items-center gap-1">
                     <Zap className="w-3.5 h-3.5 text-yellow-500" />

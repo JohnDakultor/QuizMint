@@ -10,6 +10,7 @@ import {
   buildQuizSuggestionsFromOutcomes,
   extractKeywordTokens,
 } from "@/lib/adaptive-personalization";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 function extractHistoryFromMetadata(metadata: unknown) {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
     });
     if (!user) return apiError(404, "User not found", requestId);
     const isPremiumAdaptiveEnabled =
-      user.subscriptionPlan === "premium" && user.adaptiveLearning === true;
+      hasPremiumFeaturePlan(user.subscriptionPlan) && user.adaptiveLearning === true;
     if (!isPremiumAdaptiveEnabled) {
       return apiError(
         403,

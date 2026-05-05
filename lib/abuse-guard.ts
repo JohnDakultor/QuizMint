@@ -1,4 +1,10 @@
-type PlanType = "free" | "pro" | "premium";
+import {
+  getBurstLimitForPlan,
+  normalizeSubscriptionPlan,
+  type SubscriptionPlan,
+} from "@/lib/plan-entitlements";
+
+type PlanType = SubscriptionPlan;
 
 type GuardInput = {
   userId: string;
@@ -25,15 +31,11 @@ let upstashRedis: { incr: (key: string) => Promise<number>; pexpire: (key: strin
 let upstashInitDone = false;
 
 function normalizePlan(plan: string | null | undefined): PlanType {
-  if (plan === "pro") return "pro";
-  if (plan === "premium") return "premium";
-  return "free";
+  return normalizeSubscriptionPlan(plan);
 }
 
 function limitByPlan(plan: PlanType) {
-  if (plan === "premium") return 24;
-  if (plan === "pro") return 18;
-  return 8;
+  return getBurstLimitForPlan(plan);
 }
 
 function cleanupExpired(now: number) {

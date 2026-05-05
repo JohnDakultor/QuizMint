@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
+import {
+  assertSafeRemoteUrl,
+  logReferenceSecurityEvent,
+  sanitizeUntrustedReferenceText,
+} from "@/lib/rag/rag-guards";
 
 const webSearchCache = new Map<
   string,
@@ -65,6 +70,41 @@ const ALLOWED_DOMAINS = [
   "ck12.org",
   "scholar.google.com",
   "wolframalpha.com",
+  "deped.gov.ph",
+  "ched.gov.ph",
+  "tesda.gov.ph",
+  "dost.gov.ph",
+  "gov.ph",
+  "up.edu.ph",
+  "pnu.edu.ph",
+  "ed.gov",
+  "ies.ed.gov",
+  "nces.ed.gov",
+  "usa.gov",
+  "si.edu",
+  "csiro.au",
+  "education.gov.au",
+  "australiancurriculum.edu.au",
+  "nsw.edu.au",
+  "vic.gov.au",
+  "education.gov.uk",
+  "gov.uk",
+  "nationalarchives.gov.uk",
+  "open.ac.uk",
+  "bbc.co.uk",
+  "bbc.com",
+  "gov.in",
+  "education.gov.in",
+  "ugc.gov.in",
+  "ncert.nic.in",
+  "swayam.gov.in",
+  "iitb.ac.in",
+  "iitd.ac.in",
+  "moe.gov.sa",
+  "saudiacademia.edu.sa",
+  "kau.edu.sa",
+  "ksu.edu.sa",
+  "iau.edu.sa",
 ];
 
 function normalizeSearchQuery(query: string) {
@@ -241,7 +281,39 @@ export async function ingestWebSourcesForQuery(options: {
   for (const item of ordered) {
     if (sources.length >= maxSources) break;
     const url = item.url || "";
-    const text = item.content || "";
+    if (!url) continue;
+    let safeUrl: URL;
+    try {
+      safeUrl = assertSafeRemoteUrl(url);
+    } catch {
+      logReferenceSecurityEvent("rag_web_source_rejected", {
+        sourceType: "web_search",
+        label: item.title || url,
+        hostname: (() => {
+          try {
+            return new URL(url).hostname;
+          } catch {
+            return null;
+          }
+        })(),
+        action: "reject",
+      });
+      continue;
+    }
+
+    const sanitized = sanitizeUntrustedReferenceText(item.content || "");
+    if (sanitized.shouldQuarantine) {
+      logReferenceSecurityEvent("rag_web_source_quarantined", {
+        sourceType: "web_search",
+        label: item.title || safeUrl.toString(),
+        hostname: safeUrl.hostname,
+        suspiciousPatterns: sanitized.suspiciousPatterns,
+        suspiciousScore: sanitized.suspiciousScore,
+        action: "quarantine",
+      });
+      continue;
+    }
+    const text = sanitized.text;
     if (!text) continue;
 
     const chunks = chunkText(text);

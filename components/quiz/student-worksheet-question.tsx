@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { MathText } from "@/components/quiz/math-text";
 
 type Props = {
   structure?:
@@ -39,7 +40,7 @@ export function StudentWorksheetQuestion({ structure, value, disabled, onChange 
     <div className="mx-auto w-full max-w-5xl space-y-4 rounded-xl border bg-amber-50/60 p-4 md:p-5">
       {structure?.instructions && (
         <div className="rounded-xl border bg-white p-3 text-sm text-amber-900 shadow-sm">
-          {structure.instructions}
+          <MathText>{structure.instructions}</MathText>
         </div>
       )}
 
@@ -52,7 +53,7 @@ export function StudentWorksheetQuestion({ structure, value, disabled, onChange 
                   {index + 1}
                 </span>
                 <div className="pt-1 text-sm font-semibold leading-relaxed text-amber-950">
-                  {part.prompt}
+                  <MathText>{part.prompt}</MathText>
                 </div>
               </div>
               <input

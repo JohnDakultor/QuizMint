@@ -17,6 +17,7 @@ import {
   buildStudentsAtRisk,
   buildWeakQuestionTrends,
 } from "@/lib/results-intervention";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -646,7 +647,7 @@ export async function GET(req: NextRequest) {
     lowScoreAlertCount: lowScoreAlerts.length,
     reminderNeededCount: reminderNeededAssignments.length,
   });
-  const premiumInterventionAccess = (user.subscriptionPlan || "free") === "premium";
+  const premiumInterventionAccess = hasPremiumFeaturePlan(user.subscriptionPlan);
 
   const suggestedAction =
     overdueAssignments[0]

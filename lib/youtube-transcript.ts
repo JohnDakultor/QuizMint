@@ -1,16 +1,43 @@
+import { YoutubeTranscript } from "youtube-transcript";
+
 export class YoutubeTranscriptError extends Error {
   constructor(message: string) {
     super(`[YoutubeTranscript] ${message}`);
   }
 }
 
-/**
- * This function DOES NOT fetch real captions.
- * It fetches YouTube title + description using the official API.
- * This is the ONLY stable approach without OAuth.
- */
+export function extractYouTubeVideoId(urlOrId: string): string | null {
+  const input = String(urlOrId || "").trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+
+  try {
+    const url = new URL(input);
+    if (url.hostname.includes("youtu.be")) {
+      return url.pathname.split("/").filter(Boolean)[0] || null;
+    }
+    if (url.pathname.startsWith("/shorts/")) {
+      return url.pathname.split("/").filter(Boolean)[1] || null;
+    }
+    if (url.pathname.startsWith("/embed/")) {
+      return url.pathname.split("/").filter(Boolean)[1] || null;
+    }
+    return url.searchParams.get("v");
+  } catch {
+    return null;
+  }
+}
+
+function cleanTranscriptText(value: string) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, "\"")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function fetchTranscript(
-  videoId: string
+  videoIdOrUrl: string
 ): Promise<
   {
     text: string;
@@ -18,60 +45,28 @@ export async function fetchTranscript(
     duration: number;
   }[]
 > {
+  const videoId = extractYouTubeVideoId(videoIdOrUrl);
+  if (!videoId) {
+    throw new YoutubeTranscriptError("Could not extract YouTube video ID");
+  }
+
   try {
-    console.log("🎬 Fetching YouTube metadata for video:", videoId);
+    const transcript = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
+    const cleaned = transcript
+      .map((item) => ({
+        text: cleanTranscriptText(item.text),
+        offset: item.offset,
+        duration: item.duration,
+      }))
+      .filter((item) => item.text);
 
-    const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${process.env.YT_API_KEY}`
-    );
-
-    if (!res.ok) {
-      throw new YoutubeTranscriptError(
-        `YouTube API error: ${res.status}`
-      );
+    if (!cleaned.length) {
+      throw new YoutubeTranscriptError("No captions found for this video");
     }
 
-    const data = (await res.json()) as {
-      items?: {
-        snippet?: {
-          title?: string;
-          description?: string;
-        };
-      }[];
-    };
-
-    const snippet = data.items?.[0]?.snippet;
-
-    if (!snippet) {
-      throw new YoutubeTranscriptError("No snippet data found");
-    }
-
-    const title = snippet.title ?? "";
-    const description = snippet.description ?? "";
-
-    console.log("✅ YOUTUBE CONTENT FETCHED");
-    console.log("📌 TITLE:", title);
-    console.log("📝 DESCRIPTION:", description);
-
-    const combinedText = `${title}\n\n${description}`.trim();
-
-    if (!combinedText) {
-      throw new YoutubeTranscriptError("Empty YouTube content");
-    }
-
-    /**
-     * Return format matches your old transcript structure
-     * so the rest of your app DOES NOT BREAK
-     */
-    return [
-      {
-        text: combinedText,
-        offset: 0,
-        duration: 0,
-      },
-    ];
-  } catch (err: any) {
-    console.error("❌ YouTube fetch failed:", err);
-    throw new YoutubeTranscriptError(err.message || "Unknown error");
+    return cleaned;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown transcript error";
+    throw new YoutubeTranscriptError(message);
   }
 }

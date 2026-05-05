@@ -1,20 +1,12 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-
-async function getCurrentUser() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return null;
-
-  return prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true, email: true },
-  });
-}
+import {
+  buildOwnedOrWritableWhere,
+  getCurrentUserAccessContext,
+} from "@/lib/organization-access";
 
 export async function POST(_: Request, context: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -23,10 +15,11 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
   const source = await prisma.assignment.findFirst({
     where: {
       id,
-      userId: user.id,
+      ...buildOwnedOrWritableWhere(user),
     },
     select: {
       id: true,
+      organizationId: true,
       classId: true,
       quizId: true,
       lessonPlanId: true,
@@ -42,6 +35,7 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
   const duplicate = await prisma.assignment.create({
     data: {
       userId: user.id,
+      organizationId: source.organizationId,
       classId: source.classId,
       quizId: source.quizId,
       lessonPlanId: source.lessonPlanId,

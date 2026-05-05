@@ -153,6 +153,71 @@ html.theme-switching *::after {
   display: none !important;
 }
 
+.qm-math-inline,
+.qm-math-block {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05em;
+  line-height: 1.55;
+  color: inherit;
+}
+
+.qm-math-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.08em;
+  white-space: nowrap;
+}
+
+.qm-math-block {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.08em;
+  overflow-x: auto;
+  padding: 0.45rem 0.65rem;
+  margin: 0.35rem 0;
+  border-radius: 0.375rem;
+  background: #f8fafc;
+}
+
+.qm-fraction {
+  display: inline-flex;
+  min-width: 1.25em;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  line-height: 1.1;
+}
+
+.qm-fraction-top,
+.qm-fraction-bottom {
+  display: block;
+  padding: 0 0.18em;
+  text-align: center;
+}
+
+.qm-fraction-bottom {
+  border-top: 1px solid currentColor;
+}
+
+.qm-sqrt {
+  display: inline-flex;
+  align-items: stretch;
+  vertical-align: middle;
+}
+
+.qm-sqrt-symbol {
+  font-size: 1.25em;
+  line-height: 1;
+}
+
+.qm-sqrt-radicand {
+  border-top: 1px solid currentColor;
+  padding: 0 0.15em;
+}
+
 /* Driver.js tour styling to match QuizMint UI */
 .quizmint-tour .driver-popover-title {
   font-weight: 700;
@@ -192,6 +257,52 @@ html.theme-switching *::after {
 
 .premium-scrollbar::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #7c3aed 0%, #4338ca 100%);
+}
+
+/* Hidden-but-draggable scrollbar for panels that should stay clean visually */
+.ghost-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.ghost-scrollbar::-webkit-scrollbar,
+.ghost-scrollbar.premium-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.ghost-scrollbar::-webkit-scrollbar-track,
+.ghost-scrollbar.premium-scrollbar::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.ghost-scrollbar::-webkit-scrollbar-thumb,
+.ghost-scrollbar.premium-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 999px;
+  border: 2px solid transparent !important;
+}
+
+.ghost-scrollbar::-webkit-scrollbar-thumb:hover,
+.ghost-scrollbar.premium-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: transparent !important;
+}
+
+.ghost-scrollbar.premium-scrollbar {
+  scrollbar-color: transparent transparent !important;
+}
+
+/* Fully hide scrollbars when visual chrome should disappear */
+.scrollbar-none-visual {
+  -ms-overflow-style: none;
+  scrollbar-width: none !important;
+}
+
+.scrollbar-none-visual::-webkit-scrollbar,
+.scrollbar-none-visual.premium-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* Lite mode: optimized for low bandwidth / weak devices */
@@ -249,4 +360,14 @@ html[data-lite-mode="true"] .premium-scrollbar {
 .dark .app-shell [class*="from-"][class*="to-"][class*="rounded"][class*="border"] {
   background-image: none !important;
   background-color: rgb(15 23 42 / 0.92) !important;
+}
+
+.app-shell .topbar-logo-chip {
+  background-color: rgb(255 255 255) !important;
+  border-color: rgb(226 232 240 / 0.95) !important;
+}
+
+.dark .app-shell .topbar-logo-chip {
+  background-color: rgb(255 255 255) !important;
+  border-color: rgb(226 232 240 / 0.92) !important;
 }

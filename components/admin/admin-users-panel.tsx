@@ -87,6 +87,53 @@ type GenerationCounts = {
   byMonth: GenerationCountRow[];
 };
 
+type AdminOrganizationSubscription = {
+  id: string;
+  provider: string | null;
+  providerSubscriptionId: string | null;
+  plan: string;
+  status: string;
+  seatCount: number | null;
+  billingEmail: string | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  createdAt: string;
+  updatedAt: string;
+  billingUser: {
+    id: string;
+    email: string;
+    name: string | null;
+    username: string | null;
+  } | null;
+};
+
+type AdminOrganization = {
+  id: string;
+  name: string;
+  status: string;
+  tier: string;
+  seatLimit: number | null;
+  billingEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+  activeMemberCount: number;
+  adminMemberCount: number;
+  pendingInviteCount: number;
+  ownerUser: {
+    id: string;
+    email: string;
+    name: string | null;
+    username: string | null;
+  };
+  subscriptions: AdminOrganizationSubscription[];
+  _count: {
+    classes: number;
+    assignments: number;
+    quizzes: number;
+    lessonPlans: number;
+  };
+};
+
 function getGenerationEventCause(event: AdminGenerationEvent): string {
   if (!event.metadata || typeof event.metadata !== "object" || Array.isArray(event.metadata)) {
     return "-";
@@ -176,28 +223,35 @@ export default function AdminUsersPanel() {
   const [unitEconomicsRows, setUnitEconomicsRows] = useState<UnitEconomicsRow[]>([]);
   const [unitEconomicsTotal, setUnitEconomicsTotal] = useState(0);
   const [generationCounts, setGenerationCounts] = useState<GenerationCounts | null>(null);
+  const [organizations, setOrganizations] = useState<AdminOrganization[]>([]);
   const [email, setEmail] = useState("");
   const [plan, setPlan] = useState<"free" | "pro" | "premium">("pro");
   const [updating, setUpdating] = useState(false);
   const [revokingSessions, setRevokingSessions] = useState(false);
+  const [reconcilingOrganizationId, setReconcilingOrganizationId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   async function loadData() {
     setLoading(true);
     setError(null);
     try {
-      const [usersRes, cohortsRes] = await Promise.all([
+      const [usersRes, cohortsRes, organizationsRes] = await Promise.all([
         fetch("/api/admin/users?limit=100", { cache: "no-store" }),
         fetch("/api/admin/cohorts?weeks=12", { cache: "no-store" }),
+        fetch("/api/admin/organizations?limit=50", { cache: "no-store" }),
       ]);
       const data = await usersRes.json();
       const cohortsData = await cohortsRes.json().catch(() => ({ cohorts: [] }));
+      const organizationsData = await organizationsRes.json().catch(() => ({ organizations: [] }));
       if (usersRes.status === 428 || data?.error === "challenge") {
         router.push("/admin");
         setLoading(false);
         return;
       }
       if (!usersRes.ok) throw new Error(data?.error || "Failed to fetch admin data");
+      if (!organizationsRes.ok) {
+        throw new Error(organizationsData?.error || "Failed to fetch organizations");
+      }
       setSummary(data.summary);
       setUsers(data.users || []);
       setLatestQuizUsers(data?.latestActivity?.quiz || []);
@@ -209,6 +263,7 @@ export default function AdminUsersPanel() {
       setUnitEconomicsTotal(Number(data?.unitEconomics?.totalCostUsd || 0));
       setGenerationCounts(data?.generationCounts || null);
       setCohorts(Array.isArray(cohortsData?.cohorts) ? cohortsData.cohorts : []);
+      setOrganizations(Array.isArray(organizationsData?.organizations) ? organizationsData.organizations : []);
     } catch (err: any) {
       setError(err.message || "Failed to load data");
     } finally {
@@ -271,6 +326,29 @@ export default function AdminUsersPanel() {
       setError(err.message || "Failed to revoke sessions");
     } finally {
       setRevokingSessions(false);
+    }
+  }
+
+  async function reconcileOrganizationBilling(organizationId: string) {
+    setReconcilingOrganizationId(organizationId);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/organizations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to re-sync organization billing");
+      setMessage(
+        `${data?.organization?.name || "Organization"} re-synced from PayPal (${data?.paypalStatus || "unknown"}).`
+      );
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || "Failed to re-sync organization billing");
+    } finally {
+      setReconcilingOrganizationId(null);
     }
   }
 
@@ -344,6 +422,97 @@ export default function AdminUsersPanel() {
           >
             {revokingSessions ? "Revoking..." : "Force Sign Out All Devices"}
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Organization Support</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-auto rounded-md border">
+          <table className="w-full min-w-[1180px] text-sm">
+            <thead className="sticky top-0 z-10 bg-white dark:bg-zinc-950">
+              <tr className="border-b">
+                <th className="py-2 px-3 text-left">Organization</th>
+                <th className="py-2 px-3 text-left">Owner</th>
+                <th className="py-2 px-3 text-left">Workspace</th>
+                <th className="py-2 px-3 text-left">Seats</th>
+                <th className="py-2 px-3 text-left">Billing</th>
+                <th className="py-2 px-3 text-left">Provider Sub</th>
+                <th className="py-2 px-3 text-left">Period End</th>
+                <th className="py-2 px-3 text-left">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {organizations.length === 0 ? (
+                <tr>
+                  <td className="py-3 px-3 text-zinc-500" colSpan={8}>
+                    No organization workspaces yet.
+                  </td>
+                </tr>
+              ) : (
+                organizations.map((organization) => {
+                  const latestSubscription = organization.subscriptions[0];
+                  const ownerLabel =
+                    organization.ownerUser.name ||
+                    organization.ownerUser.username ||
+                    organization.ownerUser.email;
+                  return (
+                    <tr key={organization.id} className="border-b align-top">
+                      <td className="py-3 px-3">
+                        <div className="font-medium">{organization.name}</div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          {organization.tier} · {organization.status}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          {organization._count.classes} classes · {organization._count.assignments} assignments · {organization.pendingInviteCount} pending
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div>{ownerLabel}</div>
+                        <div className="mt-1 text-xs text-zinc-500">{organization.ownerUser.email}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div>{organization.activeMemberCount} active members</div>
+                        <div className="mt-1 text-xs text-zinc-500">{organization.adminMemberCount} admins</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        {organization.activeMemberCount}/{organization.seatLimit ?? latestSubscription?.seatCount ?? "unlimited"}
+                      </td>
+                      <td className="py-3 px-3">
+                        <div>{latestSubscription?.status || "not started"}</div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          {latestSubscription?.billingUser?.email || latestSubscription?.billingEmail || "-"}
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="max-w-[220px] truncate" title={latestSubscription?.providerSubscriptionId || "-"}>
+                          {latestSubscription?.providerSubscriptionId || "-"}
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        {latestSubscription?.currentPeriodEnd
+                          ? new Date(latestSubscription.currentPeriodEnd).toLocaleString()
+                          : "-"}
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void reconcileOrganizationBilling(organization.id)}
+                            disabled={reconcilingOrganizationId === organization.id || !latestSubscription?.providerSubscriptionId}
+                          >
+                            {reconcilingOrganizationId === organization.id ? "Re-syncing..." : "Re-sync billing"}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </CardContent>
       </Card>
 

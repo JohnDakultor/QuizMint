@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertAdminSession } from "@/lib/admin-auth";
+import {
+  type IndividualPlan,
+  INDIVIDUAL_SUBSCRIPTION_PLANS,
+} from "@/lib/plan-entitlements";
 
-const VALID_PLANS = new Set(["free", "pro", "premium"]);
+const VALID_PLANS = new Set(INDIVIDUAL_SUBSCRIPTION_PLANS);
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isIndividualPlan(plan: string): plan is IndividualPlan {
+  return VALID_PLANS.has(plan as IndividualPlan);
 }
 
 export async function POST(req: Request) {
@@ -27,7 +35,7 @@ export async function POST(req: Request) {
   if (!isValidEmail(email)) {
     return NextResponse.json({ error: "invalid_email" }, { status: 400 });
   }
-  if (!VALID_PLANS.has(plan)) {
+  if (!isIndividualPlan(plan)) {
     return NextResponse.json({ error: "invalid_plan" }, { status: 400 });
   }
 

@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 import * as XLSX from "xlsx";
+import {
+  buildOwnedOrMemberWhere,
+  buildOwnedOrWritableWhere,
+  getCurrentUserAccessContext,
+} from "@/lib/organization-access";
 
 type StudentDraft = {
   studentName: string;
@@ -10,16 +13,6 @@ type StudentDraft = {
   studentNumber?: string | null;
   notes?: string | null;
 };
-
-async function getCurrentUser() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return null;
-
-  return prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true, email: true },
-  });
-}
 
 function parseBulkStudents(raw: string) {
   return raw
@@ -72,14 +65,14 @@ async function parseRosterFile(file: File) {
 }
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await context.params;
   const classRecord = await prisma.class.findFirst({
-    where: { id, userId: user.id },
+    where: { id, ...buildOwnedOrMemberWhere(user) },
     select: { id: true },
   });
 
@@ -96,14 +89,14 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
 }
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await context.params;
   const classRecord = await prisma.class.findFirst({
-    where: { id, userId: user.id },
+    where: { id, ...buildOwnedOrWritableWhere(user) },
     select: { id: true },
   });
 

@@ -14,8 +14,6 @@ type Props = {
   question: string;
   options: string[];
   difficulty?: "easy" | "medium" | "hard";
-  answerKey?: string;
-  timelineItems?: string[];
   value: string;
   disabled?: boolean;
   onPick: (next: string) => void;
@@ -95,36 +93,7 @@ function extractTimelineItems(question: string) {
   return [];
 }
 
-function resolveTimelineItems(question: string, answerKey?: string, fromStructure?: string[]) {
-  const structureItems = Array.isArray(fromStructure)
-    ? fromStructure
-        .map((item) => cleanTimelineText(String(item || "")))
-        .filter(Boolean)
-        .filter((item) => !isModeIndicator(item))
-    : [];
-  if (structureItems.length >= 3) return structureItems;
-
-  const questionPairs = extractLetteredTimelinePairs(question);
-  if (questionPairs.length >= 3 && answerKey) {
-    const questionMap = new Map(questionPairs.map((item) => [item.key, item.value]));
-    let answerTokens = String(answerKey || "")
-      .split(/\s*;\s*|\s*,\s*/)
-      .map((item) => item.replace(/[^A-Za-z0-9]/g, "").trim().toUpperCase())
-      .filter(Boolean);
-    if (
-      answerTokens.length === 1 &&
-      answerTokens[0].length >= 3 &&
-      answerTokens[0].length <= 5 &&
-      answerTokens[0].split("").every((token) => questionMap.has(token))
-    ) {
-      answerTokens = answerTokens[0].split("");
-    }
-    const mapped = answerTokens
-      .map((token) => questionMap.get(token))
-      .filter((item): item is string => Boolean(item));
-    if (mapped.length >= 3) return mapped;
-  }
-
+function resolveTimelineItems(question: string) {
   return extractTimelineItems(question);
 }
 
@@ -133,9 +102,6 @@ export function StudentSudokuGame({
   question,
   options,
   difficulty = "medium",
-  answerKey,
-  timelineItems,
-  value,
   disabled,
   onPick,
 }: Props) {
@@ -143,16 +109,16 @@ export function StudentSudokuGame({
   const [stageWidth, setStageWidth] = useState(520);
   const shuffled = Array.isArray(options) ? options : [];
   const normalizedTimelineItems = useMemo(() => {
-    const source = resolveTimelineItems(question, answerKey, timelineItems);
+    const source = resolveTimelineItems(question);
     const unique = Array.from(new Set(source.filter(Boolean)));
     return unique.slice(0, difficulty === "hard" ? 5 : 4);
-  }, [timelineItems, question, answerKey, difficulty]);
+  }, [question, difficulty]);
   const timelineCards = useMemo(() => {
     const base = normalizedTimelineItems.length >= 3
       ? normalizedTimelineItems
       : Array.from(
           new Set(
-            [...shuffled.map((item) => cleanTimelineText(String(item || ""))), cleanTimelineText(String(answerKey || ""))]
+            shuffled.map((item) => cleanTimelineText(String(item || "")))
               .filter(Boolean)
               .filter((item) => !isModeIndicator(item))
           )
@@ -162,7 +128,7 @@ export function StudentSudokuGame({
       value: item,
       label: cleanTimelineText(item),
     }));
-  }, [normalizedTimelineItems, shuffled, answerKey, questionId]);
+  }, [normalizedTimelineItems, shuffled, questionId]);
   const timelineSignature = useMemo(
     () => timelineCards.map((card) => card.value).join("||"),
     [timelineCards]
@@ -174,16 +140,6 @@ export function StudentSudokuGame({
   useEffect(() => {
     setCardOrder(buildShuffledTimelineOrder(timelineCards, questionId));
   }, [timelineSignature, questionId]);
-
-  useEffect(() => {
-    if (!cardOrder.length) return;
-    const nextValue = JSON.stringify({
-      kind: "timeline_order",
-      order: cardOrder.map((card) => card.value),
-    });
-    if (value === nextValue) return;
-    onPick(nextValue);
-  }, [cardOrder, onPick, value]);
 
   useEffect(() => {
     const node = containerRef.current;
@@ -213,6 +169,12 @@ export function StudentSudokuGame({
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
+      onPick(
+        JSON.stringify({
+          kind: "timeline_order",
+          order: next.map((card) => card.value),
+        })
+      );
       return next;
     });
   };

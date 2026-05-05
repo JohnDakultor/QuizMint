@@ -12,6 +12,7 @@ interface LessonPlanInput {
   duration: string;
   objectives: string;
   constraints: string;
+  frameworkFocus?: string;
   days: number;
   minutesPerDay: number;
   isProOrPremium: boolean;
@@ -162,6 +163,7 @@ GRADE: ${input.grade}
 DURATION: ${input.days} days, ${input.minutesPerDay} minutes per day
 FRAMEWORK: ${framework.label}
 OBJECTIVES: ${input.objectives || "No specific objectives provided"}
+FRAMEWORK-SPECIFIC FOCUS: ${input.frameworkFocus || "No extra framework-specific focus provided"}
 CONSTRAINTS: ${input.constraints || "No constraints"}
 
 Generate ${input.days} days of content. Make sure each day has:
@@ -171,6 +173,8 @@ Generate ${input.days} days of content. Make sure each day has:
 4. Assessment criteria
 5. Differentiation strategies
 6. Lesson closure
+
+Use the framework-specific focus as the main design constraint for the selected framework. For example, use it as the inquiry focus for 5E, the transfer task for UbD, the release skill for Gradual Release, the driving question/product for PBL, the target cognitive level for Bloom's, or the success criteria for Explicit Direct Instruction.
 
 ${input.ragContext ? `\nRETRIEVED CONTEXT (assistive):\n${input.ragContext}\n\nUse the retrieved context to improve factual accuracy and examples, but do not degrade pedagogical structure, sequencing, or JSON format.` : ""}
 

@@ -15,8 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "QuizMint | Auth",
-  description: "Sign in or create an account for QuizMint AI Quiz Generator",
+  title: "QuizMintAI | Teacher Workspace Access",
+  description:
+    "Sign in or create a QuizMintAI account to plan lessons, generate quizzes, assign work, review results, and follow up with students.",
 };
 
 export default function AuthLayout({
@@ -25,25 +26,29 @@ export default function AuthLayout({
   return (
     <>
       <div
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50 flex flex-col min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-slate-50 text-slate-950 antialiased dark:bg-zinc-950 dark:text-zinc-50`}
       >
-        {/* Minimal Top Branding */}
-        <header className="flex justify-center py-8">
+        <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-5">
           <Link href="/" className="flex items-center gap-2">
-            {/* <Sparkles className="text-blue-500 h-6 w-6" /> */}
             <Image
               src="/icon.png"
-              alt="Logo"
-              className="w-15 h-15"
-              width={60}
-              height={60}
+              alt="QuizMintAI logo"
+              className="h-11 w-11"
+              width={44}
+              height={44}
+              priority
             />
-            <span className="font-bold text-xl">QuizMint</span>
+            <span className="text-xl font-bold">QuizMintAI</span>
+          </Link>
+          <Link
+            href="/"
+            className="hidden text-sm font-medium text-slate-600 transition hover:text-teal-800 sm:inline dark:text-zinc-300 dark:hover:text-teal-300"
+          >
+            Back to site
           </Link>
         </header>
 
-        {/* Centered Auth Content */}
-        <main className="flex flex-1 items-center justify-center w-full px-6">
+        <main className="w-full px-6 pb-12">
           {children}
         </main>
       </div>

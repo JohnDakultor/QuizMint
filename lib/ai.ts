@@ -221,7 +221,7 @@ function delay(ms: number) {
 
 function extractProviderFromPayload(payload: string): string | null {
   try {
-    const parsed = JSON.parse(payload) as any;
+    const parsed: { provider?: string; provider_name?: string; error?: { provider?: string; metadata?: { provider_name?: string } } } = JSON.parse(payload);
     if (typeof parsed?.provider === "string") return parsed.provider;
     if (typeof parsed?.provider_name === "string") return parsed.provider_name;
     if (typeof parsed?.error?.provider === "string") return parsed.error.provider;
@@ -265,12 +265,14 @@ export async function generateQuizAIWithMeta(
     /Context:/i.test(text) ||
     /User request:/i.test(text) ||
     /Use the following context/i.test(text);
+  const hasExplicitSourceMaterial =
+    /<untrusted_reference>|Content to base quiz on:|YouTube transcript|Source URL:/i.test(text);
 
   // Check if the text looks like a prompt/instruction vs actual content
-  const isPromptLike = text.length < 500 && 
-    (text.includes("create") || 
-     text.includes("generate") || 
-     text.includes("make") || 
+  const isPromptLike = !hasExplicitSourceMaterial && text.length < 500 &&
+    (text.includes("create") ||
+     text.includes("generate") ||
+     text.includes("make") ||
      text.includes("quiz about") ||
      text.split(' ').length < 100); // Short text is likely a prompt
   const gamifiedMode = options?.gamifiedMode || "puzzle";
@@ -715,9 +717,63 @@ Return strict JSON with title, instructions, and questions array only.`;
   }
 
   if (!meetsQuestionTypePlan(parsed, typePlan)) {
+    const recoveryInstruction = `FINAL RECOVERY MODE:
+The previous response still missed the exact type mix.
+Generate exactly ${typePlan.totalCount} relevant, answerable questions from the same source/topic.
+Prioritize correctness, relevance, and the exact question count over the type mix.
+Use MCQ questions with exactly 4 options when a requested type is difficult to satisfy.
+Return JSON only with title, instructions, and questions array.`;
+
+    try {
+      fallbackUsed = true;
+      const recoveryCall = await callOpenRouter(fallbackModel, recoveryInstruction);
+      raw = recoveryCall.raw;
+      if (recoveryCall.usage) {
+        promptTokens += recoveryCall.usage.promptTokens;
+        completionTokens += recoveryCall.usage.completionTokens;
+        totalTokens += recoveryCall.usage.totalTokens;
+      }
+      if (recoveryCall.cost) {
+        estimatedCostUsd += recoveryCall.cost.estimatedCostUsd;
+      }
+      const recovered = safeExtractJSON(raw);
+      normalizeGamifiedAnswersInParsed(recovered);
+      if (recovered && Array.isArray(recovered.questions) && recovered.questions.length > 0) {
+        recovered.questions = recovered.questions.slice(0, typePlan.totalCount);
+        parsed = recovered;
+      }
+    } catch {
+      // Keep the earlier parsed response and let the final usable-question guard decide.
+    }
+  }
+
+  if (!Array.isArray(parsed?.questions) || parsed.questions.length === 0) {
     throw new Error(
       `AI returned invalid question set. Expected ${typePlan.totalCount} questions with requested type mix.`
     );
+  }
+
+  if (parsed.questions.length !== typePlan.totalCount) {
+    throw new Error(
+      `AI returned invalid question set. Expected ${typePlan.totalCount} questions but received ${parsed.questions.length}.`
+    );
+  }
+
+  if (!meetsQuestionTypePlan(parsed, typePlan)) {
+    log.warn("quiz_ai_type_mix_relaxed", {
+      expectedQuestions: typePlan.totalCount,
+      actualQuestions: parsed.questions.length,
+      requestedMix: {
+        mcq: typePlan.mcqTarget,
+        trueFalse: typePlan.trueFalseTarget,
+        fillBlank: typePlan.fillBlankTarget,
+        shortAnswer: typePlan.shortAnswerTarget,
+        matching: typePlan.matchingTarget,
+        essayRubric: typePlan.essayRubricTarget,
+        worksheet: typePlan.worksheetTarget,
+        gamified: typePlan.gamifiedTarget,
+      },
+    });
   }
 
   log.info("quiz_ai_parsed_response", {
@@ -1013,6 +1069,8 @@ function buildQuestionTypePlan(
 }
 
 function isTrueFalseQuestion(question: any): boolean {
+  const explicitType = normalizeQuestionType(question?.questionType);
+  if (explicitType && explicitType !== "true_false") return false;
   if (!question || !Array.isArray(question.options)) return false;
   if (question.options.length !== 2) return false;
   const normalized = question.options.map((opt: string) =>
@@ -1025,6 +1083,8 @@ function isTrueFalseQuestion(question: any): boolean {
 }
 
 function isFillBlankQuestion(question: any): boolean {
+  const explicitType = normalizeQuestionType(question?.questionType);
+  if (explicitType && explicitType !== "fill_blank") return false;
   const questionText = String(question?.question || "");
   const hasBlank = questionText.includes("____");
   const options = Array.isArray(question?.options) ? question.options : null;
@@ -1034,6 +1094,8 @@ function isFillBlankQuestion(question: any): boolean {
 }
 
 function isShortAnswerQuestion(question: any): boolean {
+  const explicitType = normalizeQuestionType(question?.questionType);
+  if (explicitType && explicitType !== "short_answer") return false;
   const questionText = String(question?.question || "");
   if (!questionText.trim()) return false;
   const hasBlank = questionText.includes("____");
@@ -1047,6 +1109,7 @@ function isShortAnswerQuestion(question: any): boolean {
 function isMatchingQuestion(question: any): boolean {
   const explicitType = normalizeQuestionType(question?.questionType);
   if (explicitType === "matching") return true;
+  if (explicitType) return false;
   const questionText = String(question?.question || "").toLowerCase();
   const options = Array.isArray(question?.options) ? question.options : [];
   const answer = String(question?.answer || "").trim();
@@ -1063,6 +1126,7 @@ function isMatchingQuestion(question: any): boolean {
 function isEssayRubricQuestion(question: any): boolean {
   const explicitType = normalizeQuestionType(question?.questionType);
   if (explicitType === "essay_rubric") return true;
+  if (explicitType) return false;
   const questionText = String(question?.question || "").toLowerCase();
   const options = Array.isArray(question?.options) ? question.options : [];
   const answer = String(question?.answer || "").trim();
@@ -1077,6 +1141,7 @@ function isEssayRubricQuestion(question: any): boolean {
 function isWorksheetQuestion(question: any): boolean {
   const explicitType = normalizeQuestionType(question?.questionType);
   if (explicitType === "worksheet") return true;
+  if (explicitType) return false;
   const questionText = String(question?.question || "").toLowerCase();
   const options = Array.isArray(question?.options) ? question.options : [];
   const answer = String(question?.answer || "").trim();
@@ -1094,6 +1159,7 @@ function isWorksheetQuestion(question: any): boolean {
 function isGamifiedQuestion(question: any): boolean {
   const explicitType = normalizeQuestionType(question?.questionType);
   if (explicitType === "gamified") return true;
+  if (explicitType) return false;
   const questionText = String(question?.question || "").toLowerCase();
   const options = Array.isArray(question?.options) ? question.options : [];
   const answer = String(question?.answer || "").trim();
@@ -1107,43 +1173,29 @@ function meetsQuestionTypePlan(parsed: any, plan: QuestionTypePlan): boolean {
   const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
   if (questions.length !== plan.totalCount) return false;
 
-  let trueFalseCount = 0;
-  let mcqCount = 0;
-  let fillBlankCount = 0;
-  let shortAnswerCount = 0;
-  let matchingCount = 0;
-  let essayRubricCount = 0;
-  let worksheetCount = 0;
-  let gamifiedCount = 0;
+  const counts: Record<PlanTypeKey, number> = {
+    mcq: 0,
+    true_false: 0,
+    fill_blank: 0,
+    short_answer: 0,
+    matching: 0,
+    essay_rubric: 0,
+    worksheet: 0,
+    gamified: 0,
+  };
   for (const q of questions) {
-    if (isTrueFalseQuestion(q)) {
-      trueFalseCount += 1;
-    } else if (isFillBlankQuestion(q)) {
-      fillBlankCount += 1;
-    } else if (isMatchingQuestion(q)) {
-      matchingCount += 1;
-    } else if (isEssayRubricQuestion(q)) {
-      essayRubricCount += 1;
-    } else if (isWorksheetQuestion(q)) {
-      worksheetCount += 1;
-    } else if (isGamifiedQuestion(q)) {
-      gamifiedCount += 1;
-    } else if (isShortAnswerQuestion(q)) {
-      shortAnswerCount += 1;
-    } else if (Array.isArray(q?.options) && q.options.length === 4) {
-      mcqCount += 1;
-    }
+    counts[detectPlanType(q)] += 1;
   }
 
   return (
-    trueFalseCount === plan.trueFalseTarget &&
-    mcqCount === plan.mcqTarget &&
-    fillBlankCount === plan.fillBlankTarget &&
-    shortAnswerCount === plan.shortAnswerTarget &&
-    matchingCount === plan.matchingTarget &&
-    essayRubricCount === plan.essayRubricTarget &&
-    worksheetCount === plan.worksheetTarget &&
-    gamifiedCount === plan.gamifiedTarget
+    counts.true_false === plan.trueFalseTarget &&
+    counts.mcq === plan.mcqTarget &&
+    counts.fill_blank === plan.fillBlankTarget &&
+    counts.short_answer === plan.shortAnswerTarget &&
+    counts.matching === plan.matchingTarget &&
+    counts.essay_rubric === plan.essayRubricTarget &&
+    counts.worksheet === plan.worksheetTarget &&
+    counts.gamified === plan.gamifiedTarget
   );
 }
 
@@ -1164,12 +1216,14 @@ function normalizeQuestionType(value: unknown): PlanTypeKey | null {
   if (raw === "fillblank" || raw === "fill_blank" || raw === "fill-in-the-blank") return "fill_blank";
   if (raw === "shortanswer" || raw === "short_answer") return "short_answer";
   if (raw === "essayrubric" || raw === "essay_rubric") return "essay_rubric";
-  if (raw === "mcq" || raw === "multiple_choice") return "mcq";
+  if (raw === "mcq" || raw === "multiple_choice" || raw === "multiple choice") return "mcq";
   if (raw === "matching" || raw === "worksheet" || raw === "gamified") return raw;
   return null;
 }
 
 function detectPlanType(question: any): PlanTypeKey {
+  const explicitType = normalizeQuestionType(question?.questionType);
+  if (explicitType) return explicitType;
   if (isTrueFalseQuestion(question)) return "true_false";
   if (isFillBlankQuestion(question)) return "fill_blank";
   if (isMatchingQuestion(question)) return "matching";

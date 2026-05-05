@@ -6,7 +6,7 @@ import { generateQuizAIWithMeta } from "@/lib/ai";
 import { enhancePromptWithRAG } from "@/lib/rag/pipeLine";
 import { semanticCacheStore } from "@/lib/rag/semanticCache";
 import { ingestWebSourcesForQuery } from "@/lib/rag/web";
-import { embed, normalizeForEmbedding } from "@/lib/rag/embed";
+import { embed } from "@/lib/rag/embed";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { buildPromptProfile } from "@/lib/adaptive-personalization";
@@ -14,6 +14,7 @@ import { checkFeatureBurstLimitDistributed } from "@/lib/abuse-guard";
 import { createAsyncGenerationJob } from "@/lib/async-generation-jobs";
 import { dispatchAsyncGenerationJob } from "@/lib/async-job-dispatch";
 import { log } from "@/lib/logger";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 import {
   buildFreeQuizPointsStatusPayload,
   deductFreeQuizPoints,
@@ -25,9 +26,11 @@ import {
 import {
   buildBalancedContentWindow,
   chunkText,
+  extractYoutubeVideoIdFromUrl,
   extractTextFromURL,
   extractYouTubeTranscript,
   fetchYouTubeMetadata,
+  hasMeaningfulYouTubeSourceText,
   isURL,
   normalizeQuestionCountInput,
 } from "@/lib/quiz-source-service";
@@ -41,6 +44,7 @@ import { invalidateDashboardSummarySnapshot } from "@/lib/dashboard-summary-snap
 import { invalidateInterventionSummarySnapshots } from "@/lib/intervention-summary-snapshot";
 import { buildQuizArtifactsFromPersistedQuiz } from "@/lib/quiz-artifacts";
 import { shouldQueueQuizGeneration } from "@/lib/quiz-workload-routing";
+import { sanitizeUntrustedReferenceText } from "@/lib/rag/rag-guards";
 type LocalGamifiedMode = "bingo" | "timeline" | "puzzle";
 
 function hashString(input: string) {
@@ -226,7 +230,7 @@ export async function POST(req: NextRequest) {
     const subscriptionPlan = user.subscriptionPlan || "free";
     const isFree = isFreeQuizPointLimited(subscriptionPlan);
     const isProOrPremium =
-      user.subscriptionPlan === "pro" || user.subscriptionPlan === "premium";
+      user.subscriptionPlan === "pro" || hasPremiumFeaturePlan(user.subscriptionPlan);
     const pointCost = getQuizGenerationPointCost({ hasUploads: false });
 
     const burstCheck = await checkFeatureBurstLimitDistributed({
@@ -438,32 +442,21 @@ export async function POST(req: NextRequest) {
           content = `Source URL: ${text}\nLite mode is enabled, so deep URL extraction was skipped.`;
         }
       } else if (content.includes("youtube.com") || content.includes("youtu.be")) {
-        // Extract video ID correctly
-        let videoId: string | undefined;
-        try {
-          const urlObj = new URL(content);
-          if (urlObj.hostname.includes("youtu.be")) {
-            videoId = urlObj.pathname.split("/").pop()?.split("?")[0];
-          } else {
-            videoId = urlObj.searchParams.get("v") || undefined;
-          }
-        } catch {
-          return apiError(400, "Invalid YouTube URL", requestId);
-        }
+        const videoId = extractYoutubeVideoIdFromUrl(content);
 
         if (!videoId) {
           return apiError(400, "Could not extract video ID", requestId);
         }
 
-        // Try fetching transcript
         let extractedText = await extractYouTubeTranscript(videoId);
+        let usedMetadataFallback = false;
 
-        // Fallback: use video title + description if transcript is empty
         if (!extractedText?.trim()) {
           try {
             const { title, description } = await fetchYouTubeMetadata(videoId);
             sourceTitle = title;
             extractedText = `${title}\n\n${description}`;
+            usedMetadataFallback = true;
           } catch (err) {
             log.warn("youtube_metadata_fallback_failed", { videoId, err });
             extractedText = `⚠️ Limited content: only video ID ${videoId} available.`;
@@ -475,6 +468,17 @@ export async function POST(req: NextRequest) {
           } catch {
             sourceTitle = "";
           }
+        }
+
+        if (!hasMeaningfulYouTubeSourceText(extractedText)) {
+          return apiError(
+            400,
+            usedMetadataFallback
+              ? "Could not access enough YouTube caption text for this video. Please upload/paste the transcript or try a video with captions enabled."
+              : "YouTube captions were unavailable or too short for reliable quiz generation.",
+            requestId,
+            { code: "InsufficientYouTubeTranscript", videoId }
+          );
         }
 
         content = extractedText;
@@ -495,6 +499,7 @@ export async function POST(req: NextRequest) {
 
     if (!content?.trim())
       return apiError(400, "Content Not Available", requestId);
+    content = sanitizeUntrustedReferenceText(content).text;
     content = buildBalancedContentWindow(content, 8000);
     if (isFree) {
       ensureNotAborted();
@@ -537,7 +542,7 @@ export async function POST(req: NextRequest) {
     const safeDifficulty = isFree ? "easy" : chosenDifficulty;
 
     // Validate and set adaptive learning
-    const canUseAdaptive = user.subscriptionPlan === "premium";
+    const canUseAdaptive = hasPremiumFeaturePlan(user.subscriptionPlan);
     const userAdaptive = user.adaptiveLearning ?? false;
     
     // Only use requested adaptive if user is premium
@@ -626,7 +631,7 @@ export async function POST(req: NextRequest) {
 
       if (!hasDocs) {
         const ingestStartedAt = Date.now();
-        const chunks = chunkText(content);
+        const chunks = chunkText(sanitizeUntrustedReferenceText(content).text);
         for (let i = 0; i < chunks.length; i++) {
           ensureNotAborted();
           const chunk = chunks[i];

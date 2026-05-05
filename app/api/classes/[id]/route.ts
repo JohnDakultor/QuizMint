@@ -1,20 +1,13 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-
-async function getCurrentUser() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return null;
-
-  return prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true, email: true },
-  });
-}
+import {
+  buildOwnedOrMemberWhere,
+  buildOwnedOrWritableWhere,
+  getCurrentUserAccessContext,
+} from "@/lib/organization-access";
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -23,7 +16,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
   const classRecord = await prisma.class.findFirst({
     where: {
       id,
-      userId: user.id,
+      ...buildOwnedOrMemberWhere(user),
     },
     select: {
       id: true,
@@ -94,14 +87,14 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
 }
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await context.params;
   const existingClass = await prisma.class.findFirst({
-    where: { id, userId: user.id },
+    where: { id, ...buildOwnedOrWritableWhere(user) },
     select: { id: true },
   });
 

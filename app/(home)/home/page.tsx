@@ -531,8 +531,10 @@ export default function HomeDashboardPage() {
       setError(null);
       try {
         await refreshSummaryData();
-      } catch (err: any) {
-        if (mounted) setError(err.message || "Failed to load dashboard");
+      } catch (err: unknown) {
+        if (mounted) {
+          setError(err instanceof Error ? err.message : "Failed to load dashboard");
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -698,21 +700,30 @@ export default function HomeDashboardPage() {
       />
       <div
         id="dashboard-hero"
-        className="relative overflow-hidden rounded-3xl border border-indigo-200/40 bg-linear-to-r from-slate-950 via-indigo-900 to-cyan-800 text-white p-4 sm:p-6 shadow-[0_20px_55px_-20px_rgba(30,64,175,0.65)]"
+        className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-6"
       >
-        <div className="pointer-events-none absolute -top-14 -right-10 h-36 w-36 rounded-full bg-cyan-300/20 blur-2xl" />
-        <div className="pointer-events-none absolute -bottom-16 left-20 h-44 w-44 rounded-full bg-indigo-400/20 blur-3xl" />
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-xl sm:text-3xl font-bold">Dashboard</h1>
-            <p className="text-sm sm:text-base text-blue-100 mt-1">Manage lesson planning, quiz creation, and classroom workflow from one place.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-300">
+              Command Center
+            </p>
+            <h1 className="mt-2 text-2xl font-bold text-slate-950 dark:text-white sm:text-4xl">
+              Run today&apos;s teaching workflow.
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-zinc-400 sm:text-base">
+              Start new classroom material, resume active assignments, review
+              student results, and decide what needs follow-up next.
+            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge className="bg-white/20 text-white border border-white/20">
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <Badge className="border-teal-200 bg-teal-50 text-teal-800 dark:border-teal-900 dark:bg-teal-950 dark:text-teal-200">
               Plan: {(data?.subscriptionPlan || "free").toUpperCase()}
             </Badge>
-            <Button asChild className="h-9 sm:h-10 bg-white text-indigo-900 hover:bg-blue-50">
-              <Link href="/generate-quiz">Open Quiz Generator</Link>
+            <Button asChild className="h-10 bg-teal-700 text-white hover:bg-teal-800">
+              <Link href="/workspace">Open Workspace</Link>
+            </Button>
+            <Button asChild variant="outline" className="h-10">
+              <Link href="/generate-quiz">Create Quiz</Link>
             </Button>
           </div>
         </div>
@@ -724,60 +735,79 @@ export default function HomeDashboardPage() {
         </Alert>
       )}
 
-      <div id="dashboard-stats" className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        <Card className="border-indigo-200/70 bg-linear-to-br from-indigo-50 to-blue-50 shadow-[0_10px_24px_-18px_rgba(79,70,229,0.7)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+      <div id="dashboard-stats" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 sm:gap-4">
+        <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
-              <Brain className="w-4 h-4 text-indigo-600" /> Quizzes Generated
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-zinc-400">
+              <Brain className="h-4 w-4 text-teal-700 dark:text-teal-300" /> Quizzes
             </CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <SkeletonLoading className="h-9 w-24" />
             ) : (
-              <div className="text-2xl sm:text-3xl font-bold text-zinc-900">{data?.quizCount ?? 0}</div>
+              <div className="text-2xl font-bold text-slate-950 dark:text-white sm:text-3xl">{data?.quizCount ?? 0}</div>
             )}
+            <p className="mt-1 text-xs text-slate-500">Created and saved</p>
           </CardContent>
         </Card>
 
-        <Card className="border-cyan-200/70 bg-linear-to-br from-cyan-50 to-sky-50 shadow-[0_10px_24px_-18px_rgba(6,182,212,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+        <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-indigo-600" /> Lesson Plans Generated
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-zinc-400">
+              <BookOpen className="h-4 w-4 text-teal-700 dark:text-teal-300" /> Lesson Plans
             </CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <SkeletonLoading className="h-9 w-24" />
             ) : (
-              <div className="text-2xl sm:text-3xl font-bold text-zinc-900">{data?.lessonPlanCount ?? 0}</div>
+              <div className="text-2xl font-bold text-slate-950 dark:text-white sm:text-3xl">{data?.lessonPlanCount ?? 0}</div>
             )}
+            <p className="mt-1 text-xs text-slate-500">Ready for instruction</p>
           </CardContent>
         </Card>
 
-        <Card className="border-violet-200/70 bg-linear-to-br from-violet-50 to-fuchsia-50 shadow-[0_10px_24px_-18px_rgba(139,92,246,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+        <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-600 flex items-center gap-2">
-              <Clock3 className="w-4 h-4 text-indigo-600" /> Quiz Points / Recharge
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-zinc-400">
+              <UsersRound className="h-4 w-4 text-teal-700 dark:text-teal-300" /> Classes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <SkeletonLoading className="h-9 w-24" />
+            ) : (
+              <div className="text-2xl font-bold text-slate-950 dark:text-white sm:text-3xl">{data?.classCount ?? 0}</div>
+            )}
+            <p className="mt-1 text-xs text-slate-500">Active classroom spaces</p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-zinc-400">
+              <Clock3 className="h-4 w-4 text-teal-700 dark:text-teal-300" /> Points
             </CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <SkeletonLoading className="h-6 w-40" />
             ) : (
-              <div className="text-base sm:text-lg font-semibold text-zinc-900">{usageStatus}</div>
+              <div className="text-base font-semibold text-slate-950 dark:text-white sm:text-lg">{usageStatus}</div>
             )}
+            <p className="mt-1 text-xs text-slate-500">Generation capacity</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <Card className="border-amber-200/80 bg-linear-to-br from-amber-50 to-yellow-50 shadow-[0_10px_24px_-18px_rgba(245,158,11,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 sm:gap-6">
+        <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <CardHeader>
-            <CardTitle className="text-base">Today Snapshot</CardTitle>
+            <CardTitle className="text-base">Today&apos;s Creation</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p className="text-sm text-zinc-500">Activity today</p>
+            <p className="text-sm text-slate-500">New teaching materials today</p>
             {loading ? (
               <>
                 <SkeletonLoading className="h-6 w-56" />
@@ -785,8 +815,8 @@ export default function HomeDashboardPage() {
               </>
             ) : (
               <>
-                <p className="text-xl font-semibold">{todaySummary}</p>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xl font-semibold text-slate-950 dark:text-white">{todaySummary}</p>
+                <p className="text-xs text-slate-500">
                   Last activity:{" "}
                   {data?.lastActivityAt
                     ? new Date(data.lastActivityAt).toLocaleString()
@@ -797,12 +827,12 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-emerald-200/80 bg-linear-to-br from-emerald-50 to-teal-50 shadow-[0_10px_24px_-18px_rgba(16,185,129,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+        <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <CardHeader>
-            <CardTitle className="text-base">Usage Health</CardTitle>
+            <CardTitle className="text-base">Generation Health</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p className="text-sm text-zinc-500">Quiz points and recharge status</p>
+            <p className="text-sm text-slate-500">Quiz points and recharge status</p>
             {loading ? (
               <>
                 <SkeletonLoading className="h-6 w-28" />
@@ -810,8 +840,8 @@ export default function HomeDashboardPage() {
               </>
             ) : (
               <>
-                <p className="text-xl font-semibold">{usageStatus}</p>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xl font-semibold text-slate-950 dark:text-white">{usageStatus}</p>
+                <p className="text-xs text-slate-500">
                   {(data?.subscriptionPlan || "free") === "free"
                     ? "Free quiz generation now uses points that recharge automatically."
                     : "Pro and Premium do not use free-tier point limits."}
@@ -821,14 +851,14 @@ export default function HomeDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-pink-200/80 bg-linear-to-br from-pink-50 to-rose-50 shadow-[0_10px_24px_-18px_rgba(244,63,94,0.75)] dark:border-slate-700 dark:from-slate-900 dark:to-slate-800">
+        <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <CardHeader>
             <CardTitle className="text-base">Classroom Queue</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p className="text-sm text-zinc-500">Continue where you left off</p>
-            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Latest Assignment</p>
+            <p className="text-sm text-slate-500">Continue where you left off</p>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Latest Assignment</p>
               {loading ? (
                 <>
                   <SkeletonLoading className="mt-1 h-4 w-44" />
@@ -839,7 +869,7 @@ export default function HomeDashboardPage() {
                   <p className="text-sm font-medium truncate">
                     {data?.latestAssignment ? data.latestAssignment.title : "No assignment yet"}
                   </p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-slate-500">
                     {data?.latestAssignment
                       ? `${data.latestAssignment.class.name} / ${data.latestAssignment.status} / ${new Date(
                           data.latestAssignment.updatedAt,
@@ -854,8 +884,8 @@ export default function HomeDashboardPage() {
                 Resume Assignment Workflow
               </Link>
             </Button>
-            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Latest Class</p>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Latest Class</p>
               {loading ? (
                 <>
                   <SkeletonLoading className="mt-1 h-4 w-44" />
@@ -866,7 +896,7 @@ export default function HomeDashboardPage() {
                   <p className="text-sm font-medium truncate">
                     {data?.latestClass ? data.latestClass.name : "No class yet"}
                   </p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-slate-500">
                     {data?.latestClass
                       ? `${[data.latestClass.subject, data.latestClass.gradeLevel, data.latestClass.section]
                           .filter(Boolean)
@@ -881,8 +911,8 @@ export default function HomeDashboardPage() {
                 Resume Latest Class
               </Link>
             </Button>
-            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Last Quiz</p>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last Quiz</p>
               {loading ? (
                 <>
                   <SkeletonLoading className="mt-1 h-4 w-44" />
@@ -893,7 +923,7 @@ export default function HomeDashboardPage() {
                   <p className="text-sm font-medium truncate">
                     {lastQuiz ? lastQuiz.title : "No quiz yet"}
                   </p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-slate-500">
                     {lastQuiz
                       ? `${lastQuiz.questionCount} questions - ${new Date(lastQuiz.createdAt).toLocaleString()}`
                       : "Generate your first quiz"}
@@ -904,8 +934,8 @@ export default function HomeDashboardPage() {
             <Button asChild variant="outline" className="w-full">
               <Link href="/generate-quiz">Resume Quiz Workflow</Link>
             </Button>
-            <div className="rounded-lg border border-pink-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Last Lesson Plan</p>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last Lesson Plan</p>
               {loading ? (
                 <>
                   <SkeletonLoading className="mt-1 h-4 w-44" />
@@ -916,7 +946,7 @@ export default function HomeDashboardPage() {
                   <p className="text-sm font-medium truncate">
                     {lastPlan ? lastPlan.title : "No lesson plan yet"}
                   </p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-slate-500">
                     {lastPlan
                       ? `${lastPlan.subject} - ${new Date(lastPlan.createdAt).toLocaleString()}`
                       : "Generate your first lesson plan"}
@@ -1513,48 +1543,48 @@ export default function HomeDashboardPage() {
 
       <Card
         id="dashboard-quick-actions"
-        className="border-indigo-200/80 bg-linear-to-r from-indigo-50 to-cyan-50 shadow-[0_12px_28px_-20px_rgba(79,70,229,0.8)]"
+        className="rounded-lg border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
       >
         <CardHeader>
-          <CardTitle className="text-base">Dashboard Quick Actions</CardTitle>
+          <CardTitle className="text-base">Start the Next Step</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <Button asChild variant="outline">
             <Link href="/classes">Manage Classes</Link>
           </Button>
           <Button asChild variant="outline">
             <Link href="/workspace">Open Workspace</Link>
           </Button>
-          <Button asChild className="bg-indigo-600 hover:bg-indigo-700 text-white">
-            <Link href="/generate-quiz">Generate Quiz</Link>
+          <Button asChild className="bg-teal-700 text-white hover:bg-teal-800">
+            <Link href="/generate-quiz">Create Quiz</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/lessonPlan">Generate Lesson Plan</Link>
+            <Link href="/lessonPlan">Plan Lesson</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/account">Manage Account</Link>
+            <Link href="/analytics">Review Results</Link>
           </Button>
         </CardContent>
       </Card>
 
       <Card
         id="dashboard-templates"
-        className="border-fuchsia-200/80 bg-linear-to-r from-fuchsia-50 to-pink-50 shadow-[0_12px_28px_-20px_rgba(192,38,211,0.7)]"
+        className="rounded-lg border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
       >
         <CardHeader>
-          <CardTitle className="text-base">Quick Templates</CardTitle>
+          <CardTitle className="text-base">Prompt Starters</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div className="space-y-3">
-            <p className="text-sm font-semibold text-fuchsia-700">Quiz Generator Samples (10)</p>
+            <p className="text-sm font-semibold text-teal-700 dark:text-teal-300">Quiz starters</p>
             <div className="max-h-105 overflow-auto premium-scrollbar space-y-2 pr-1">
               {QUIZ_TEMPLATES.map((template, idx) => (
                 <div
                   key={template}
-                  className="border border-fuchsia-200 rounded-xl p-3 bg-white/95 hover:bg-white transition space-y-2 shadow-[0_6px_16px_-12px_rgba(192,38,211,0.45)]"
+                  className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 transition hover:bg-white dark:border-zinc-800 dark:bg-zinc-950"
                 >
-                  <p className="text-xs font-medium text-fuchsia-700">Quiz #{idx + 1}</p>
-                  <p className="text-sm text-zinc-700">{template}</p>
+                  <p className="text-xs font-medium text-teal-700 dark:text-teal-300">Quiz #{idx + 1}</p>
+                  <p className="text-sm text-slate-700 dark:text-zinc-300">{template}</p>
                   <Button size="sm" variant="outline" onClick={() => copyTemplate(template)}>
                     {copiedTemplate === template ? "Copied" : "Copy Quiz Prompt"}
                   </Button>
@@ -1564,19 +1594,19 @@ export default function HomeDashboardPage() {
           </div>
 
           <div className="space-y-3">
-            <p className="text-sm font-semibold text-fuchsia-700">Lesson Plan Samples (10)</p>
+            <p className="text-sm font-semibold text-teal-700 dark:text-teal-300">Lesson plan starters</p>
             <div className="max-h-105 overflow-auto premium-scrollbar space-y-2 pr-1">
               {LESSON_TEMPLATES.map((template, idx) => {
                 const full = `Topic: ${template.topic}\nSubject: ${template.subject}\nGrade: ${template.grade}\nDays: ${template.days}\nMinutes per day: ${template.minutesPerDay}\nObjectives: ${template.objectives}\nConstraints: ${template.constraints}`;
                 return (
                   <div
                     key={full}
-                    className="border border-fuchsia-200 rounded-xl p-3 bg-white/95 hover:bg-white transition space-y-2 shadow-[0_6px_16px_-12px_rgba(192,38,211,0.45)]"
+                    className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 transition hover:bg-white dark:border-zinc-800 dark:bg-zinc-950"
                   >
-                    <p className="text-xs font-medium text-fuchsia-700">Lesson #{idx + 1}</p>
-                    <p className="text-sm text-zinc-700"><span className="font-medium">Topic:</span> {template.topic}</p>
-                    <p className="text-sm text-zinc-700"><span className="font-medium">Subject:</span> {template.subject}</p>
-                    <p className="text-sm text-zinc-700"><span className="font-medium">Grade:</span> {template.grade}</p>
+                    <p className="text-xs font-medium text-teal-700 dark:text-teal-300">Lesson #{idx + 1}</p>
+                    <p className="text-sm text-slate-700 dark:text-zinc-300"><span className="font-medium">Topic:</span> {template.topic}</p>
+                    <p className="text-sm text-slate-700 dark:text-zinc-300"><span className="font-medium">Subject:</span> {template.subject}</p>
+                    <p className="text-sm text-slate-700 dark:text-zinc-300"><span className="font-medium">Grade:</span> {template.grade}</p>
                     <div className="flex flex-wrap gap-2">
                       <Button size="sm" variant="outline" onClick={() => copyTemplate(template.topic)}>
                         {copiedTemplate === template.topic ? "Copied" : "Copy Topic"}

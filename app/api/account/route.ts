@@ -122,46 +122,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { cancelPayPalSubscription } from "@/lib/paypal-subscriptions";
 import { authOptions } from "@/lib/auth-option";
 import { getServerSession } from "next-auth";
-
-// Helper function for PayPal cancellation
-async function cancelPayPalSubscription(subscriptionId: string) {
-  const base = process.env.NEXT_PUBLIC_PAYPAL_ENVIRONMENT === 'production' 
-    ? "https://api-m.paypal.com" 
-    : "https://api-m.sandbox.paypal.com";
-
-  const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID!;
-  const secret = process.env.PAYPAL_SECRET_ID!;
-  const auth = Buffer.from(`${clientId}:${secret}`).toString("base64");
-
-  // Get access token
-  const tokenRes = await fetch(`${base}/v1/oauth2/token`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-  
-  const tokenData = await tokenRes.json();
-  const accessToken = tokenData.access_token;
-
-  // Cancel the subscription
-  const cancelRes = await fetch(`${base}/v1/billing/subscriptions/${subscriptionId}/cancel`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      reason: "Cancelled by user via account page"
-    }),
-  });
-
-  return cancelRes.ok;
-}
 
 // GET: Fetch current user's subscription
 export async function GET(req: NextRequest) {
@@ -197,9 +160,35 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' }
     });
 
+    const organizationSubscriptions = await prisma.organizationSubscription.findMany({
+      where: { billingUserId: user.id },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        provider: true,
+        providerSubscriptionId: true,
+        plan: true,
+        status: true,
+        seatCount: true,
+        billingEmail: true,
+        currentPeriodStart: true,
+        currentPeriodEnd: true,
+        updatedAt: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            tier: true,
+          },
+        },
+      },
+    });
+
     return NextResponse.json({ 
       user,
       paypalSubscriptions,
+      organizationSubscriptions,
       subscriptionType: paypalSubscriptions.length > 0 ? 'paypal' : 
                        user.stripeCustomerId ? 'stripe' : 'none'
     });
@@ -243,7 +232,7 @@ export async function POST(req: NextRequest) {
     if (paypalSubscriptions.length > 0) {
       // Cancel PayPal subscription
       const subscriptionId = paypalSubscriptions[0].subscriptionId;
-      const cancelled = await cancelPayPalSubscription(subscriptionId);
+      const cancelled = await cancelPayPalSubscription(subscriptionId, "Cancelled by user via account page");
       
       if (cancelled) {
         // Update PayPal subscription record
@@ -255,12 +244,31 @@ export async function POST(req: NextRequest) {
           }
         });
 
+        const organizationSubscription = await prisma.organizationSubscription.findUnique({
+          where: { providerSubscriptionId: subscriptionId },
+          select: { organizationId: true },
+        });
+
+        if (organizationSubscription) {
+          await prisma.organizationSubscription.update({
+            where: { providerSubscriptionId: subscriptionId },
+            data: {
+              status: "cancelled",
+              currentPeriodEnd: new Date(),
+            },
+          });
+          await prisma.organization.update({
+            where: { id: organizationSubscription.organizationId },
+            data: { status: "inactive" },
+          });
+        }
+
         // Update user
         await prisma.user.update({
           where: { email },
           data: { 
             subscriptionStatus: "cancelled", 
-            subscriptionEnd: null, //new Date()
+            subscriptionEnd: new Date(),
             subscriptionPlan: "free",
             adaptiveLearning: false,
             aiDifficulty: "easy",
@@ -273,7 +281,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ 
           message: "PayPal subscription cancelled successfully",
-          note: "You will retain access until the end of your current billing period"
+          note: "Your paid access has been cancelled."
         });
       } else {
         return NextResponse.json({ 

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 import { resolveModelForFeature } from "@/lib/llm-models";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 type SimpleQuiz = {
   id: number;
@@ -140,7 +141,7 @@ export async function GET(req: Request) {
     if (!user)
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    if (user.subscriptionPlan !== "premium") {
+    if (!hasPremiumFeaturePlan(user.subscriptionPlan)) {
       return NextResponse.json(
         { error: "Premium required for analytics" },
         { status: 403 }

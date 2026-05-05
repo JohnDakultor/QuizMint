@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import PptxGenJS from "pptxgenjs";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 export async function POST(req: Request) {
   try {
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
 
     // ------------------- Premium check for Word/PPT -------------------
     if (format === "word" || format === "ppt") {
-      if (user.subscriptionPlan !== "premium")
+      if (!hasPremiumFeaturePlan(user.subscriptionPlan))
         return NextResponse.json(
           { error: "You must subscribe to download Word/PPT files." },
           { status: 403 }

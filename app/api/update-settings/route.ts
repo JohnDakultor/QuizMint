@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const premiumInterventionAccess = (user.subscriptionPlan || "free") === "premium";
+  const premiumInterventionAccess = hasPremiumFeaturePlan(user.subscriptionPlan);
 
   await prisma.user.update({
     where: { email: session.user.email },

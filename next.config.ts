@@ -90,6 +90,8 @@ function buildCsp() {
   const connectSrc = [
     "'self'",
     "https://accounts.google.com",
+    "https://docs.google.com",
+    "https://drive.google.com",
     "https://www.googleapis.com",
     "https://www.paypal.com",
     "https://www.sandbox.paypal.com",
@@ -108,6 +110,8 @@ function buildCsp() {
   const frameSrc = [
     "'self'",
     "https://accounts.google.com",
+    "https://docs.google.com",
+    "https://drive.google.com",
     "https://www.paypal.com",
     "https://www.sandbox.paypal.com",
     "https://checkout-v2.paymongo.com",

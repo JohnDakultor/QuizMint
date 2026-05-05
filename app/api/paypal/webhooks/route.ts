@@ -1,33 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+
+import {
+  getPayPalAccessToken,
+  normalizePayPalSubscriptionStatus,
+  reconcileOrganizationPayPalSubscription,
+  resolvePayPalPlanType,
+} from "@/lib/paypal-subscriptions";
 import { prisma } from "@/lib/prisma";
 
 const base =
   process.env.NEXT_PUBLIC_PAYPAL_ENVIRONMENT === "production"
     ? "https://api-m.paypal.com"
     : "https://api-m.sandbox.paypal.com";
-
-const PRO_PLAN_ID = process.env.PAYPAL_PRO_PLAN_ID || "";
-const PREMIUM_PLAN_ID = process.env.PAYPAL_PREMIUM_PLAN_ID || "";
-const PREMIUM_FALLBACK_PRICE_USD = 39;
-
-async function getAccessToken() {
-  const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
-  const secret = process.env.PAYPAL_SECRET_ID;
-  if (!clientId || !secret) throw new Error("PayPal credentials missing");
-
-  const auth = Buffer.from(`${clientId}:${secret}`).toString("base64");
-  const res = await fetch(`${base}/v1/oauth2/token`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-  if (!res.ok) throw new Error(`PayPal token error (${res.status})`);
-  const data = await res.json();
-  return data.access_token as string;
-}
 
 async function verifyWebhook(headers: Headers, rawBody: string) {
   const webhookId = process.env.PAYPAL_WEBHOOK_ID;
@@ -43,7 +27,7 @@ async function verifyWebhook(headers: Headers, rawBody: string) {
     return false;
   }
 
-  const accessToken = await getAccessToken();
+  const accessToken = await getPayPalAccessToken();
   const res = await fetch(`${base}/v1/notifications/verify-webhook-signature`, {
     method: "POST",
     headers: {
@@ -66,22 +50,6 @@ async function verifyWebhook(headers: Headers, rawBody: string) {
   return data.verification_status === "SUCCESS";
 }
 
-async function resolvePlanTypeFromSubscription(accessToken: string, planId: string) {
-  if (planId && PRO_PLAN_ID && planId === PRO_PLAN_ID) return "pro";
-  if (planId && PREMIUM_PLAN_ID && planId === PREMIUM_PLAN_ID) return "premium";
-
-  const planRes = await fetch(`${base}/v1/billing/plans/${planId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!planRes.ok) return "pro";
-  const plan = await planRes.json();
-  const planLabel = `${String(plan?.name || "")} ${String(plan?.description || "")}`.toLowerCase();
-  if (planLabel.includes("premium")) return "premium";
-  if (planLabel.includes("pro")) return "pro";
-  const amount = Number(plan?.billing_cycles?.[0]?.pricing_scheme?.fixed_price?.value ?? "0");
-  return amount >= PREMIUM_FALLBACK_PRICE_USD ? "premium" : "pro";
-}
-
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
@@ -92,49 +60,99 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 });
     }
 
-    const eventType = body.event_type as string;
-    const resource = body.resource as any;
+    const eventType = String(body.event_type || "");
+    const resource = body.resource as Record<string, any> | undefined;
 
-    if (!eventType?.startsWith("BILLING.SUBSCRIPTION")) {
+    if (!eventType.startsWith("BILLING.SUBSCRIPTION")) {
       return NextResponse.json({ success: true, ignored: true });
     }
 
-    const subscriptionId = resource?.id as string;
+    const subscriptionId = String(resource?.id || "").trim();
     if (!subscriptionId) {
       return NextResponse.json({ error: "Missing subscription ID" }, { status: 400 });
     }
+    if (!resource) {
+      return NextResponse.json({ error: "Missing subscription resource" }, { status: 400 });
+    }
+
+    const linkedOrganizationSubscription = await prisma.organizationSubscription.findFirst({
+      where: { providerSubscriptionId: subscriptionId },
+      select: { organizationId: true },
+    });
 
     if (eventType === "BILLING.SUBSCRIPTION.ACTIVATED") {
-      const payerEmail = String(resource?.subscriber?.email_address || "").toLowerCase();
-      if (!payerEmail) return NextResponse.json({ success: true, ignored: "missing payer email" });
+      const payerEmail = String(resource?.subscriber?.email_address || "").trim().toLowerCase();
+      if (!payerEmail) {
+        return NextResponse.json({ success: true, ignored: "missing payer email" });
+      }
 
       const user = await prisma.user.findUnique({ where: { email: payerEmail } });
-      if (!user) return NextResponse.json({ success: true, ignored: "user not found" });
+      if (!user) {
+        return NextResponse.json({ success: true, ignored: "user not found" });
+      }
 
-      const accessToken = await getAccessToken();
-      const planType = await resolvePlanTypeFromSubscription(accessToken, resource.plan_id);
+      const accessToken = await getPayPalAccessToken();
+      const planType = await resolvePayPalPlanType(accessToken, String(resource?.plan_id || ""));
+      const nextBillingTime = resource?.billing_info?.next_billing_time
+        ? new Date(resource.billing_info.next_billing_time)
+        : null;
+      const customOrganizationId = String(resource?.custom_id || "").startsWith("organization:")
+        ? String(resource.custom_id).slice("organization:".length)
+        : null;
+      const resolvedOrganizationId =
+        linkedOrganizationSubscription?.organizationId || customOrganizationId;
+
+      let organization: { id: string; seatLimit: number | null; billingEmail: string | null } | null =
+        null;
+      if (planType === "organization") {
+        if (!resolvedOrganizationId) {
+          return NextResponse.json({ success: true, ignored: "missing organization link" });
+        }
+
+        organization = await prisma.organization.findFirst({
+          where: {
+            id: resolvedOrganizationId,
+            OR: [
+              { ownerUserId: user.id },
+              {
+                members: {
+                  some: {
+                    userId: user.id,
+                    status: "active",
+                    role: { in: ["owner", "admin"] },
+                  },
+                },
+              },
+            ],
+          },
+          select: { id: true, seatLimit: true, billingEmail: true },
+        });
+
+        if (!organization) {
+          return NextResponse.json({
+            success: true,
+            ignored: "organization not found or not administrable",
+          });
+        }
+      }
 
       await prisma.payPalSubscription.upsert({
         where: { subscriptionId },
         update: {
           status: "ACTIVE",
           planType,
-          planId: resource.plan_id,
-          nextBillingTime: resource.billing_info?.next_billing_time
-            ? new Date(resource.billing_info.next_billing_time)
-            : null,
+          planId: String(resource?.plan_id || ""),
+          nextBillingTime,
           updatedAt: new Date(),
         },
         create: {
           subscriptionId,
-          planId: resource.plan_id,
+          planId: String(resource?.plan_id || ""),
           planType,
           status: "ACTIVE",
           userId: user.id,
-          startTime: new Date(resource.start_time || new Date()),
-          nextBillingTime: resource.billing_info?.next_billing_time
-            ? new Date(resource.billing_info.next_billing_time)
-            : null,
+          startTime: new Date(resource?.start_time || new Date()),
+          nextBillingTime,
         },
       });
 
@@ -143,13 +161,44 @@ export async function POST(req: NextRequest) {
         data: {
           subscriptionPlan: planType,
           subscriptionStatus: "active",
-          subscriptionStart: new Date(resource.start_time || new Date()),
-          subscriptionEnd: resource.billing_info?.next_billing_time
-            ? new Date(resource.billing_info.next_billing_time)
-            : null,
-          paypalCustomerId: resource?.subscriber?.payer_id || null,
+          subscriptionStart: new Date(resource?.start_time || new Date()),
+          subscriptionEnd: nextBillingTime,
+          paypalCustomerId: String(resource?.subscriber?.payer_id || "").trim() || null,
         },
       });
+
+      if (planType === "organization" || linkedOrganizationSubscription?.organizationId) {
+        if (organization) {
+          await prisma.organizationSubscription.upsert({
+            where: { providerSubscriptionId: subscriptionId },
+            update: {
+              organizationId: organization.id,
+              billingUserId: user.id,
+              provider: "paypal",
+              plan: "organization",
+              status: "active",
+              seatCount: organization.seatLimit,
+              billingEmail: organization.billingEmail || payerEmail || user.email,
+              currentPeriodStart: new Date(resource?.start_time || new Date()),
+              currentPeriodEnd: nextBillingTime,
+              updatedAt: new Date(),
+            },
+            create: {
+              organizationId: organization.id,
+              billingUserId: user.id,
+              provider: "paypal",
+              providerSubscriptionId: subscriptionId,
+              plan: "organization",
+              status: "active",
+              seatCount: organization.seatLimit,
+              billingEmail: organization.billingEmail || payerEmail || user.email,
+              currentPeriodStart: new Date(resource?.start_time || new Date()),
+              currentPeriodEnd: nextBillingTime,
+            },
+          });
+        }
+        await reconcileOrganizationPayPalSubscription(subscriptionId);
+      }
     }
 
     if (
@@ -157,46 +206,64 @@ export async function POST(req: NextRequest) {
       eventType === "BILLING.SUBSCRIPTION.SUSPENDED" ||
       eventType === "BILLING.SUBSCRIPTION.EXPIRED"
     ) {
-      const status =
+      const normalizedStatus = normalizePayPalSubscriptionStatus(
         eventType === "BILLING.SUBSCRIPTION.CANCELLED"
           ? "CANCELLED"
           : eventType === "BILLING.SUBSCRIPTION.SUSPENDED"
           ? "SUSPENDED"
-          : "EXPIRED";
+          : "EXPIRED"
+      );
 
-      const sub = await prisma.payPalSubscription.update({
-        where: { subscriptionId },
-        data: { status, updatedAt: new Date() },
-        select: { userId: true },
-      }).catch(() => null);
+      const nextBillingTime = resource?.billing_info?.next_billing_time
+        ? new Date(resource.billing_info.next_billing_time)
+        : new Date();
+
+      const sub = await prisma.payPalSubscription
+        .update({
+          where: { subscriptionId },
+          data: { status: normalizedStatus.toUpperCase(), nextBillingTime, updatedAt: new Date() },
+          select: { userId: true },
+        })
+        .catch(() => null);
 
       if (sub?.userId) {
         await prisma.user.update({
           where: { id: sub.userId },
           data: {
-            subscriptionStatus: status.toLowerCase(),
-            subscriptionPlan: status === "EXPIRED" ? "free" : undefined,
-            subscriptionEnd: new Date(),
+            subscriptionStatus: normalizedStatus,
+            subscriptionPlan: normalizedStatus === "expired" ? "free" : undefined,
+            subscriptionEnd: nextBillingTime,
           },
         });
+      }
+
+      if (linkedOrganizationSubscription?.organizationId) {
+        await reconcileOrganizationPayPalSubscription(subscriptionId);
       }
     }
 
     if (eventType === "BILLING.SUBSCRIPTION.PAYMENT.COMPLETED") {
-      const next = resource?.billing_info?.next_billing_time
+      const nextBillingTime = resource?.billing_info?.next_billing_time
         ? new Date(resource.billing_info.next_billing_time)
         : null;
-      if (next) {
-        const sub = await prisma.payPalSubscription.update({
-          where: { subscriptionId },
-          data: { nextBillingTime: next, status: "ACTIVE", updatedAt: new Date() },
-          select: { userId: true },
-        }).catch(() => null);
+      if (nextBillingTime) {
+        const sub = await prisma.payPalSubscription
+          .update({
+            where: { subscriptionId },
+            data: { nextBillingTime, status: "ACTIVE", updatedAt: new Date() },
+            select: { userId: true },
+          })
+          .catch(() => null);
+
         if (sub?.userId) {
           await prisma.user.update({
             where: { id: sub.userId },
-            data: { subscriptionEnd: next, subscriptionStatus: "active" },
+            data: { subscriptionEnd: nextBillingTime, subscriptionStatus: "active" },
           });
+        }
+
+        if (linkedOrganizationSubscription?.organizationId) {
+          await reconcileOrganizationPayPalSubscription(subscriptionId);
         }
       }
     }

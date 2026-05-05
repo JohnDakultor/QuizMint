@@ -16,12 +16,19 @@ export async function GET() {
     process.env.GOOGLE_PICKER_API_KEY ||
     process.env.NEXT_PUBLIC_GOOGLE_PICKER_API_KEY ||
     "";
+  const rawAppId =
+    process.env.GOOGLE_PICKER_APP_ID ||
+    process.env.NEXT_PUBLIC_GOOGLE_PICKER_APP_ID ||
+    "";
+  const derivedAppId = clientId.split("-")[0] || "";
+  const appId = (rawAppId || derivedAppId).trim();
 
   return NextResponse.json(
     {
       enabled: Boolean(clientId && apiKey),
       clientId,
       apiKey,
+      appId,
       scope: "https://www.googleapis.com/auth/drive.file",
     },
     { headers: { "Cache-Control": "no-store" } }

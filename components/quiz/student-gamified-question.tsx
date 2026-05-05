@@ -6,6 +6,7 @@ import { inferGamifiedMode } from "@/lib/quiz-question-types";
 import { StudentPuzzleGame } from "@/components/quiz/student-puzzle-game";
 import { StudentBingoGame } from "@/components/quiz/student-bingo-game";
 import { StudentSudokuGame } from "@/components/quiz/student-sudoku-game";
+import { MathText } from "@/components/quiz/math-text";
 
 type Props = {
   questionId: number;
@@ -13,9 +14,6 @@ type Props = {
   options: string[];
   difficulty?: "easy" | "medium" | "hard";
   mode?: "bingo" | "timeline" | "puzzle";
-  answerKey?: string;
-  puzzleKey?: string;
-  timelineItems?: string[];
   value: string;
   disabled?: boolean;
   onChange: (next: string) => void;
@@ -75,15 +73,12 @@ export function StudentGamifiedQuestion(props: Props) {
     options,
     difficulty = "medium",
     mode,
-    answerKey,
-    puzzleKey,
-    timelineItems,
     value,
     disabled,
     onChange,
   } = props;
   const resolvedMode = mode || inferGamifiedMode(question);
-  const safeOptions = Array.isArray(options) ? options.filter(Boolean) : [];
+  const safeOptions = useMemo(() => (Array.isArray(options) ? options.filter(Boolean) : []), [options]);
   const shuffled = useMemo(() => stableShuffle(safeOptions, questionId), [safeOptions, questionId]);
   const [elapsed, setElapsed] = useState(0);
 
@@ -119,7 +114,6 @@ export function StudentGamifiedQuestion(props: Props) {
           question={question}
           options={shuffled}
           difficulty={difficulty}
-          answerKey={answerKey}
           value={value}
           disabled={Boolean(disabled)}
           onPick={handlePick}
@@ -138,8 +132,6 @@ export function StudentGamifiedQuestion(props: Props) {
           question={question}
           options={shuffled}
           difficulty={difficulty}
-          answerKey={answerKey}
-          timelineItems={timelineItems}
           value={value}
           disabled={Boolean(disabled)}
           onPick={handlePick}
@@ -162,7 +154,6 @@ export function StudentGamifiedQuestion(props: Props) {
           question={question}
           options={shuffled}
           difficulty={difficulty}
-          puzzleKey={puzzleKey}
           value={value}
           disabled={Boolean(disabled)}
           onChange={handlePick}
@@ -195,7 +186,9 @@ export function StudentGamifiedQuestion(props: Props) {
               </div>
               <div className="flex items-center gap-2 text-sm font-medium text-zinc-800">
                 <Puzzle className="h-4 w-4 text-amber-500" />
-                <span>{opt}</span>
+                <span>
+                  <MathText inline>{opt}</MathText>
+                </span>
               </div>
             </button>
           ))}

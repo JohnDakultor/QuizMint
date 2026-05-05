@@ -8,6 +8,7 @@ import {
   buildLessonPlanExportStatusSnapshot,
   getLessonPlanExportHash,
 } from "@/lib/lesson-plan-export";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 export const runtime = "nodejs";
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     if (!allowedFormats.has(format)) {
       return NextResponse.json({ error: "Invalid format" }, { status: 400 });
     }
-    if (format === "pptx" && user.subscriptionPlan !== "premium") {
+    if (format === "pptx" && !hasPremiumFeaturePlan(user.subscriptionPlan)) {
       return NextResponse.json(
         { error: "Premium required for PPTX exports" },
         { status: 403 }

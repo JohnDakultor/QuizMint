@@ -7,6 +7,7 @@ type PickerConfig = {
   enabled: boolean;
   clientId: string;
   apiKey: string;
+  appId?: string;
   scope: string;
 };
 
@@ -14,6 +15,7 @@ type PickerDoc = {
   id: string;
   name?: string;
   mimeType?: string;
+  resourceKey?: string;
 };
 
 type GooglePickerSdk = {
@@ -29,16 +31,20 @@ type GooglePickerSdk = {
   };
   picker?: {
     Action: { PICKED: string };
+    Feature: { SUPPORT_DRIVES: string };
     Response: { ACTION: string; DOCUMENTS: string };
     ViewId: { DOCS: string };
     DocsView: new (viewId: string) => {
+      setMimeTypes: (mimeTypes: string) => unknown;
       setIncludeFolders: (value: boolean) => unknown;
       setSelectFolderEnabled: (value: boolean) => unknown;
     };
     PickerBuilder: new () => {
+      setAppId: (appId: string) => unknown;
       setDeveloperKey: (key: string) => unknown;
       setOAuthToken: (token: string) => unknown;
       addView: (view: unknown) => unknown;
+      enableFeature: (feature: string) => unknown;
       setTitle: (title: string) => unknown;
       setCallback: (cb: (data: Record<string, unknown>) => void) => unknown;
       build: () => { setVisible: (value: boolean) => void };
@@ -61,6 +67,18 @@ declare global {
 
 const GAPI_SCRIPT = "https://apis.google.com/js/api.js";
 const GIS_SCRIPT = "https://accounts.google.com/gsi/client";
+const PICKER_IMPORT_MIME_TYPES = [
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "text/markdown",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.google-apps.document",
+  "application/vnd.google-apps.presentation",
+  "application/vnd.google-apps.spreadsheet",
+].join(",");
 
 function loadScriptOnce(src: string) {
   return new Promise<void>((resolve, reject) => {
@@ -117,6 +135,7 @@ function extensionForExportMime(mimeType: string) {
 async function fetchDriveFileAsBlob(doc: PickerDoc, accessToken: string) {
   const fileId = doc.id;
   const mimeType = String(doc.mimeType || "");
+  const resourceKey = String(doc.resourceKey || "").trim();
   const googleMimeToExport: Record<string, string> = {
     "application/vnd.google-apps.document": "text/plain",
     "application/vnd.google-apps.spreadsheet": "text/csv",
@@ -125,18 +144,30 @@ async function fetchDriveFileAsBlob(doc: PickerDoc, accessToken: string) {
   };
 
   const exportMime = googleMimeToExport[mimeType];
+  const params = new URLSearchParams();
+  params.set("supportsAllDrives", "true");
+  if (resourceKey) {
+    params.set("resourceKey", resourceKey);
+  }
   const endpoint = exportMime
     ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
         fileId
-      )}/export?mimeType=${encodeURIComponent(exportMime)}`
+      )}/export?mimeType=${encodeURIComponent(exportMime)}&${params.toString()}`
     : `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
         fileId
-      )}?alt=media`;
+      )}?alt=media&${params.toString()}`;
 
   const res = await fetch(endpoint, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error("Failed to download selected Google Drive file.");
+  if (!res.ok) {
+    const details = await res.text().catch(() => "");
+    throw new Error(
+      `Failed to download selected Google Drive file (${res.status}). ${
+        details || res.statusText || "Unknown Google Drive error."
+      }`
+    );
+  }
 
   const blob = await res.blob();
   const baseName = String(doc.name || "google-drive-file").trim() || "google-drive-file";
@@ -186,13 +217,15 @@ export function GoogleDrivePickerButton(props: {
           }
 
           const view = new googleSdk.picker.DocsView(googleSdk.picker.ViewId.DOCS)
-            .setIncludeFolders(true)
+            .setMimeTypes(PICKER_IMPORT_MIME_TYPES)
+            .setIncludeFolders(false)
             .setSelectFolderEnabled(false);
 
-          const picker = new googleSdk.picker.PickerBuilder()
+          const pickerBuilder = new googleSdk.picker.PickerBuilder()
             .setDeveloperKey(String(configData.apiKey))
             .setOAuthToken(accessToken)
             .addView(view)
+            .enableFeature(googleSdk.picker.Feature.SUPPORT_DRIVES)
             .setTitle("Select a Google Drive file")
             .setCallback(async (data: Record<string, unknown>) => {
               try {
@@ -211,8 +244,11 @@ export function GoogleDrivePickerButton(props: {
               } finally {
                 setLoading(false);
               }
-            })
-            .build();
+            });
+          if (configData.appId) {
+            pickerBuilder.setAppId(String(configData.appId));
+          }
+          const picker = pickerBuilder.build();
           picker.setVisible(true);
         },
         error_callback: () => setLoading(false),

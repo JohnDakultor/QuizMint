@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { resolveModelForFeature } from "@/lib/llm-models";
 import { prisma } from "@/lib/prisma";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 const MODEL = resolveModelForFeature({
   feature: "slide_preview",
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
       select: { subscriptionPlan: true },
     });
 
-    if (!user || user.subscriptionPlan !== "premium") {
+    if (!user || !hasPremiumFeaturePlan(user.subscriptionPlan)) {
       return NextResponse.json({ error: "Premium required" }, { status: 403 });
     }
 

@@ -9,6 +9,7 @@ export default function PayPalSuccess() {
   const PLAN_PRICES: Record<string, string> = {
     pro: "15.00",
     premium: "39.00",
+    organization: "7-day free trial",
   };
 
   const searchParams = useSearchParams();
@@ -38,7 +39,8 @@ export default function PayPalSuccess() {
         // Always pass the planType to verification
         const payload = { 
           subscriptionId,
-          planType: urlPlanType // THIS IS CRITICAL!
+          planType: urlPlanType, // THIS IS CRITICAL!
+          organizationId: searchParams.get('organizationId'),
         };
         
         console.log('📤 Sending to verification API:', payload);
@@ -63,7 +65,7 @@ export default function PayPalSuccess() {
           
           // Redirect to account page after 3 seconds
           setTimeout(() => {
-            router.push('/account');
+            router.push(confirmedPlanType === "organization" ? "/organizations" : "/account");
           }, 3000);
         } else {
           setStatus('error');
@@ -96,13 +98,15 @@ export default function PayPalSuccess() {
             <h1 className="text-2xl font-bold mb-2">Payment Successful! 🎉</h1>
             <p className="text-gray-600 mb-2">{message}</p>
             <p className="text-lg font-semibold text-blue-600 mb-6">
-              ${PLAN_PRICES[planType] || PLAN_PRICES.premium}/month
+              {planType === "organization"
+                ? PLAN_PRICES.organization
+                : `$${PLAN_PRICES[planType] || PLAN_PRICES.premium}/month`}
             </p>
             <p className="text-sm text-gray-500 mb-6">
-              Redirecting to your account page...
+              Redirecting to your {planType === "organization" ? "organizations" : "account"} page...
             </p>
-            <Button onClick={() => router.push('/account')}>
-              Go to Account
+            <Button onClick={() => router.push(planType === "organization" ? "/organizations" : "/account")}>
+              Go to {planType === "organization" ? "Organizations" : "Account"}
             </Button>
           </>
         )}

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { randomUUID } from "crypto";
-import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
 import { trackGenerationEvent } from "@/lib/generation-events";
+import {
+  buildOwnedOrWritableWhere,
+  getCurrentUserAccessContext,
+} from "@/lib/organization-access";
 
 export async function POST(
   req: NextRequest,
@@ -14,18 +16,14 @@ export async function POST(
   let userId: string | null = null;
   let assignmentId: string | null = null;
   try {
-    const session = await getServerSession(authOptions);
-    const email = session?.user?.email;
-    if (!email) return apiError(401, "Unauthorized", requestId);
-
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return apiError(404, "User not found", requestId);
+    const user = await getCurrentUserAccessContext();
+    if (!user) return apiError(401, "Unauthorized", requestId);
     userId = user.id;
 
     const { id } = await context.params;
     assignmentId = id;
     const assignment = await prisma.assignment.findFirst({
-      where: { id, userId: user.id },
+      where: { id, ...buildOwnedOrWritableWhere(user) },
       select: {
         id: true,
         quizId: true,

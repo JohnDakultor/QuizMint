@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 import {
   buildAdaptiveAssignmentSummary,
@@ -14,6 +12,11 @@ import {
   getInterventionSummarySnapshot,
   setInterventionSummarySnapshot,
 } from "@/lib/intervention-summary-snapshot";
+import {
+  buildOwnedOrMemberWhere,
+  getCurrentUserAccessContext,
+} from "@/lib/organization-access";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 type AttemptDetail = {
   questionId?: number;
@@ -23,16 +26,6 @@ type AttemptDetail = {
   correctAnswer?: string;
   correct?: boolean;
 };
-
-async function getCurrentUser() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return null;
-
-  return prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true, email: true, subscriptionPlan: true },
-  });
-}
 
 function normalizeEmail(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
@@ -66,11 +59,11 @@ function parseInterventionEventMetadata(value: unknown) {
 }
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const premiumInterventionAccess = (user.subscriptionPlan || "free") === "premium";
+  const premiumInterventionAccess = hasPremiumFeaturePlan(user.subscriptionPlan);
 
   const { id } = await context.params;
   const cachedPayload = getInterventionSummarySnapshot({
@@ -89,7 +82,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
   const assignment = await prisma.assignment.findFirst({
     where: {
       id,
-      userId: user.id,
+      ...buildOwnedOrMemberWhere(user),
     },
     select: {
       id: true,

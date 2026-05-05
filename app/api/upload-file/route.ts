@@ -78,12 +78,6 @@
 // }
 
 import { NextResponse } from "next/server";
-import mammoth from "mammoth";
-import * as XLSX from "xlsx";
-import fs from "fs/promises";
-import os from "os";
-import path from "path";
-import pptxTextParser from "pptx-text-parser";
 import crypto from "crypto";
 import { generateQuizAI } from "@/lib/ai";
 import { prisma } from "@/lib/prisma";
@@ -107,12 +101,19 @@ import { buildQuizArtifactsFromPersistedQuiz } from "@/lib/quiz-artifacts";
 import { extractImageContent } from "@/lib/extract-image-content";
 import { generateQuizFromImageAI } from "@/lib/quiz-image-ai";
 import { buildReferenceOnlyContext, validateUploadedFiles } from "@/lib/upload-guards";
+import { sanitizeUntrustedReferenceText } from "@/lib/rag/rag-guards";
+import {
+  extractTextFromURL,
+  extractYouTubeTranscript,
+  extractYoutubeVideoIdFromUrl,
+  fetchYouTubeMetadata,
+  hasMeaningfulYouTubeSourceText,
+  isURL,
+} from "@/lib/quiz-source-service";
 import { createAsyncGenerationJob } from "@/lib/async-generation-jobs";
 import { dispatchAsyncGenerationJob } from "@/lib/async-job-dispatch";
-import {
-  buildFileExtractionCacheKey,
-  getCachedFileExtraction,
-} from "@/lib/source-extraction-cache";
+import { extractUploadedFileText } from "@/lib/file-text-extraction";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 export const runtime = "nodejs";
 
@@ -279,45 +280,10 @@ async function extractCachedUploadText(input: {
   arrayBuffer: ArrayBuffer;
   requestId: string;
 }) {
-  const key = buildFileExtractionCacheKey({
+  const result = await extractUploadedFileText({
     fileName: input.fileName,
     ext: input.ext,
-    bytes: input.arrayBuffer,
-  });
-
-  const result = await getCachedFileExtraction(key, async () => {
-    if (input.ext === "txt") {
-      return new TextDecoder().decode(input.arrayBuffer);
-    }
-    if (input.ext === "docx") {
-      return (
-        await mammoth.extractRawText({ buffer: Buffer.from(input.arrayBuffer) })
-      ).value;
-    }
-    if (input.ext === "xlsx") {
-      let content = "";
-      const workbook = XLSX.read(Buffer.from(input.arrayBuffer), {
-        type: "buffer",
-      });
-      workbook.SheetNames.forEach((sheetName) => {
-        const sheet = workbook.Sheets[sheetName];
-        content += XLSX.utils.sheet_to_csv(sheet) + "\n";
-      });
-      return content;
-    }
-    if (input.ext === "pptx" || input.ext === "ppt") {
-      const tempFilePath = path.join(
-        os.tmpdir(),
-        `${Date.now()}-${input.fileName}`,
-      );
-      try {
-        await fs.writeFile(tempFilePath, Buffer.from(input.arrayBuffer));
-        return await pptxTextParser(tempFilePath, "text");
-      } finally {
-        await fs.unlink(tempFilePath).catch(() => {});
-      }
-    }
-    throw new Error("Unsupported cached upload text extraction type");
+    arrayBuffer: input.arrayBuffer,
   });
 
   if (result.cacheHit) {
@@ -328,7 +294,7 @@ async function extractCachedUploadText(input: {
     });
   }
 
-  return result.value;
+  return result.text;
 }
 
 function normalizeMixCountInput(value: unknown): number {
@@ -399,7 +365,7 @@ export async function POST(req: Request) {
     }
     const normalizedPlan = String(user?.subscriptionPlan || "free").toLowerCase();
     const isProOrPremium =
-      normalizedPlan === "pro" || normalizedPlan === "premium";
+      normalizedPlan === "pro" || hasPremiumFeaturePlan(normalizedPlan);
     if (!user || !isProOrPremium)
       return apiError(
         403,
@@ -553,7 +519,7 @@ export async function POST(req: Request) {
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
       const arrayBuffer = await file.arrayBuffer();
 
-      if (ext === "txt") {
+      if (ext === "txt" || ext === "csv" || ext === "md" || ext === "pdf") {
         content = await extractCachedUploadText({
           fileName: file.name,
           ext,
@@ -571,7 +537,7 @@ export async function POST(req: Request) {
         });
 
         const namespace = `quiz:${user.id}`;
-        const imageContent = extracted.text.trim();
+        const imageContent = sanitizeUntrustedReferenceText(extracted.text.trim()).text;
         const basePrompt = enforceDefaultQuestionCount(
           prompt || "",
           requestedItemCount ?? (questionMixTotal > 0 ? questionMixTotal : 10)
@@ -873,15 +839,15 @@ content = meaningfulText;  // override to pass to AI
         const ext = currentFile.name.split(".").pop()?.toLowerCase() || "";
         const arrayBuffer = await currentFile.arrayBuffer();
 
-        if (ext === "txt") {
-          const text = (
+        if (ext === "txt" || ext === "csv" || ext === "md" || ext === "pdf") {
+          const text = sanitizeUntrustedReferenceText((
             await extractCachedUploadText({
               fileName: currentFile.name,
               ext,
               arrayBuffer,
               requestId,
             })
-          ).trim();
+          ).trim()).text;
           if (text) {
             extractedParts.push(`File: ${currentFile.name}\n${text}`);
           }
@@ -893,28 +859,30 @@ content = meaningfulText;  // override to pass to AI
             requestId,
             plan: user.subscriptionPlan,
           });
-          extractedParts.push(`Image: ${currentFile.name}\n${extracted.text}`);
+          extractedParts.push(
+            `Image: ${currentFile.name}\n${sanitizeUntrustedReferenceText(extracted.text).text}`
+          );
         } else if (ext === "docx") {
-          const text = (
+          const text = sanitizeUntrustedReferenceText((
             await extractCachedUploadText({
               fileName: currentFile.name,
               ext,
               arrayBuffer,
               requestId,
             })
-          ).trim();
+          ).trim()).text;
           if (text) {
             extractedParts.push(`File: ${currentFile.name}\n${text}`);
           }
         } else if (ext === "xlsx") {
-          const sheetContent = (
+          const sheetContent = sanitizeUntrustedReferenceText((
             await extractCachedUploadText({
               fileName: currentFile.name,
               ext,
               arrayBuffer,
               requestId,
             })
-          ).trim();
+          ).trim()).text;
           if (sheetContent.trim()) {
             extractedParts.push(`File: ${currentFile.name}\n${sheetContent.trim()}`);
           }
@@ -926,12 +894,14 @@ content = meaningfulText;  // override to pass to AI
               arrayBuffer,
               requestId,
             });
-            const meaningfulText = pptText
+            const meaningfulText = sanitizeUntrustedReferenceText(
+              pptText
               .split("\n")
               .map((line) => line.trim())
               .filter((line) => line && !line.startsWith("---"))
               .join("\n")
-              .trim();
+              .trim()
+            ).text;
             if (meaningfulText) {
               extractedParts.push(`File: ${currentFile.name}\n${meaningfulText}`);
             }
@@ -950,6 +920,47 @@ content = meaningfulText;  // override to pass to AI
       }
 
       content = extractedParts.join("\n\n---\n\n").trim();
+    }
+
+    content = sanitizeUntrustedReferenceText(content).text;
+
+    const uploadedTextAsUrl = content.trim();
+    if (isURL(uploadedTextAsUrl)) {
+      if (uploadedTextAsUrl.includes("youtube.com") || uploadedTextAsUrl.includes("youtu.be")) {
+        const videoId = extractYoutubeVideoIdFromUrl(uploadedTextAsUrl);
+        if (!videoId) {
+          return apiError(400, "Could not extract video ID from the uploaded YouTube link.", requestId);
+        }
+
+        let extractedText = await extractYouTubeTranscript(videoId);
+        let usedMetadataFallback = false;
+        if (!extractedText.trim()) {
+          try {
+            const { title: videoTitle, description } = await fetchYouTubeMetadata(videoId);
+            extractedText = `${videoTitle}\n\n${description}`.trim();
+            usedMetadataFallback = true;
+          } catch (err) {
+            logWarn("youtube_metadata_fallback_failed", { requestId, videoId, err });
+            extractedText = "";
+          }
+        }
+
+        if (!hasMeaningfulYouTubeSourceText(extractedText)) {
+          return apiError(
+            400,
+            usedMetadataFallback
+              ? "Could not access enough YouTube caption text for this video. Please upload/paste the transcript or try a video with captions enabled."
+              : "YouTube captions were unavailable or too short for reliable quiz generation.",
+            requestId,
+            { code: "InsufficientYouTubeTranscript", videoId }
+          );
+        }
+
+        content = `YouTube transcript for ${uploadedTextAsUrl}\n\n${extractedText}`;
+      } else {
+        const extracted = await extractTextFromURL(uploadedTextAsUrl);
+        content = extracted.text;
+      }
     }
 
     if (!content.trim()) {

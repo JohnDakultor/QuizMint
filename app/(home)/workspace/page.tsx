@@ -24,6 +24,7 @@ import Tour from "@/components/ui/tour";
 import SkeletonLoading from "@/components/ui/skeleton-loading";
 import { workspaceTourSteps } from "../teacher-workflow-tour-steps";
 import { printElementContent } from "@/lib/print-element";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 type WorkspaceData = {
   premiumInterventionAccess: boolean;
@@ -346,7 +347,7 @@ export default function WorkspacePage() {
         if (!res.ok || !mounted) return;
         setAdaptiveEnabled(
           Boolean(
-            json?.user?.subscriptionPlan === "premium" && json?.user?.adaptiveLearning,
+            hasPremiumFeaturePlan(json?.user?.subscriptionPlan) && json?.user?.adaptiveLearning,
           ),
         );
       } catch {

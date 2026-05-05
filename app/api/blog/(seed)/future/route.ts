@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/prisma";
+import { assertAdminSession } from "@/lib/admin-auth";
 import { NextResponse } from "next/server";
 
 export async function GET() {
+  const admin = await assertAdminSession();
+  if (!admin.ok) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   // Prevent duplicate seeds
   const existing = await prisma.blogPost.findUnique({
     where: { slug: "the-future-of-quizmintai-beyond-quizzes" },

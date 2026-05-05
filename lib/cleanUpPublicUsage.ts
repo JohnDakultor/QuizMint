@@ -11,5 +11,6 @@ export async function cleanupOldPublicUsage() {
       },
     },
   });
-  console.log(`Deleted old public usage records`);
+  console.log(`Deleted ${deleted.count} old public usage records`);
+  return { deleted: deleted.count };
 }

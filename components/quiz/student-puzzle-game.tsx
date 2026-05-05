@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Puzzle, Sparkles } from "lucide-react";
 import { buildSolvablePuzzle, canMoveTile, isSolvedPuzzle } from "@/lib/puzzle-game";
+import { MathText } from "@/components/quiz/math-text";
 
 const StudentPuzzleStage = dynamic(
   () => import("@/components/quiz/student-puzzle-stage"),
@@ -15,7 +16,6 @@ type Props = {
   question: string;
   options: string[];
   difficulty?: "easy" | "medium" | "hard";
-  puzzleKey?: string;
   value: string;
   disabled?: boolean;
   onChange: (next: string) => void;
@@ -164,7 +164,6 @@ export function StudentPuzzleGame({
   question,
   options,
   difficulty = "medium",
-  puzzleKey,
   value,
   disabled,
   onChange,
@@ -176,11 +175,8 @@ export function StudentPuzzleGame({
     [options, questionId]
   );
   const puzzleWord = useMemo(
-    () =>
-      String(puzzleKey || "").trim()
-        ? String(puzzleKey).replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 24)
-        : pickPuzzleKeyword(question, shuffled),
-    [question, shuffled, puzzleKey]
+    () => pickPuzzleKeyword(question, shuffled),
+    [question, shuffled]
   );
   const boardSize = useMemo(() => getPuzzleBoardSize(puzzleWord.length), [puzzleWord.length]);
   const tileCount = boardSize * boardSize - 1;
@@ -228,12 +224,6 @@ export function StudentPuzzleGame({
     setBoard(initial);
     setSolved(isSolvedPuzzle(initial));
   }, [questionId, shuffled.length, boardSize, difficulty]);
-
-  useEffect(() => {
-    if (!solved) return;
-    if (value === puzzleWord) return;
-    onChange(puzzleWord);
-  }, [solved, value, puzzleWord, onChange]);
 
   const moveTile = (idx: number) => {
     if (disabled || solved || !canMoveTile(board, idx)) return;
@@ -331,7 +321,7 @@ export function StudentPuzzleGame({
         {solved ? (
           <span className="inline-flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
-            Puzzle solved. Your answer is recorded automatically as <strong>{puzzleWord}</strong>.
+            Puzzle solved. Choose or type your answer below.
           </span>
         ) : (
           <span className="inline-flex items-center gap-2">
@@ -340,6 +330,37 @@ export function StudentPuzzleGame({
           </span>
         )}
       </div>
+
+      {solved ? (
+        shuffled.length >= 2 ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {shuffled.map((opt, idx) => (
+              <button
+                key={`${questionId}-puzzle-answer-${idx}`}
+                type="button"
+                onClick={() => !disabled && onChange(opt)}
+                disabled={Boolean(disabled)}
+                className={`rounded-xl border p-3 text-left text-sm transition ${
+                  value === opt
+                    ? "border-amber-500 bg-amber-50 ring-2 ring-amber-200"
+                    : "border-zinc-300 bg-white hover:bg-zinc-50"
+                }`}
+              >
+                <MathText inline>{opt}</MathText>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <input
+            type="text"
+            placeholder="Type your answer"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={Boolean(disabled)}
+            className="w-full rounded border px-3 py-2 text-sm"
+          />
+        )
+      ) : null}
     </div>
   );
 }

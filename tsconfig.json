@@ -30,5 +30,11 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
 , "scripts/seedBlog.js"  ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "app/(home)/audio-materials/**",
+    "app/api/upload-to-audio/**",
+    "lib/audio-*.ts",
+    "lib/upload-audio.ts"
+  ]
 }

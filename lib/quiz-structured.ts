@@ -13,9 +13,6 @@ export type WorksheetPublicStructure = {
 export type GamifiedPublicStructure = {
   type: "gamified";
   mode?: "bingo" | "timeline" | "puzzle";
-  puzzleKey?: string;
-  answerKey?: string;
-  timelineItems?: string[];
 };
 
 type MatchingStoredStructure = MatchingPublicStructure & {
@@ -26,7 +23,11 @@ type WorksheetStoredStructure = WorksheetPublicStructure & {
   parts: Array<{ id: string; prompt: string; answer?: string }>;
 };
 
-type GamifiedStoredStructure = GamifiedPublicStructure;
+type GamifiedStoredStructure = GamifiedPublicStructure & {
+  puzzleKey?: string;
+  answerKey?: string;
+  timelineItems?: string[];
+};
 
 export type StoredQuestionStructure =
   | MatchingStoredStructure
@@ -291,9 +292,6 @@ export function toPublicStructure(structure: StoredQuestionStructure | null):
     return {
       type: "gamified",
       mode: structure.mode,
-      puzzleKey: structure.puzzleKey,
-      answerKey: structure.answerKey,
-      timelineItems: structure.timelineItems,
     };
   }
   return {

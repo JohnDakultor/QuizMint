@@ -17,6 +17,7 @@ import {
   Settings2,
   Zap,
 } from "lucide-react";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 type UserSubscription = {
   subscriptionPlan: string | null;
@@ -66,7 +67,7 @@ export default function Account() {
   }, []);
 
   const isPro = user?.subscriptionPlan === "pro";
-  const isPremium = user?.subscriptionPlan === "premium";
+  const isPremium = hasPremiumFeaturePlan(user?.subscriptionPlan);
   const isActive = user?.subscriptionStatus === "active";
 
   const saveSettings = async (e?: React.FormEvent) => {

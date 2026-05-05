@@ -23,31 +23,24 @@ import {
   restoreFreeLessonPlanPoints,
   type DeductFreeLessonPlanPointsResult,
 } from "@/lib/free-tier-points";
-import mammoth from "mammoth";
-import * as XLSX from "xlsx";
-import fs from "fs/promises";
-import os from "os";
-import path from "path";
-import pptxTextParser from "pptx-text-parser";
 import {
-  buildFileExtractionCacheKey as buildExtractionCacheKey,
-  getCachedFileExtraction,
-} from "@/lib/source-extraction-cache";
+  deriveTopicFromFilename,
+  extractUploadedFileText,
+  normalizeExtractedText,
+  splitTextIntoParagraphChunks,
+  SUPPORTED_TEXT_EXTRACTION_EXTENSIONS,
+} from "@/lib/file-text-extraction";
+import {
+  buildFrameworkPhaseModel,
+  getLessonPlanFramework,
+  normalizeLessonPlanFramework,
+} from "@/lib/lesson-plan-frameworks";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 export const runtime = "nodejs";
 
 const MIN_CONTENT_CHARS = 120;
 const MAX_QUEUED_UPLOAD_BYTES = 2 * 1024 * 1024;
-const SUPPORTED_EXTENSIONS = new Set([
-  "txt",
-  "docx",
-  "pdf",
-  "ppt",
-  "pptx",
-  "xlsx",
-  "csv",
-  "md",
-]);
 const PROVIDER_ISSUE_MESSAGE =
   "Server issue - we're fixing it. Please try again in a few minutes.";
 
@@ -63,48 +56,6 @@ function isProviderIssueError(err: unknown): boolean {
   );
 }
 
-function normalizeExtractedText(text: string): string {
-  return String(text || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\u0000/g, "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-function splitIntoChunks(text: string, maxChunkChars = 1100): string[] {
-  const clean = normalizeExtractedText(text);
-  if (!clean) return [];
-  const paragraphs = clean
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-  if (paragraphs.length === 0) return [clean.slice(0, maxChunkChars)];
-
-  const chunks: string[] = [];
-  let current = "";
-  for (const paragraph of paragraphs) {
-    if ((current + "\n\n" + paragraph).length > maxChunkChars) {
-      if (current) chunks.push(current.trim());
-      current = paragraph;
-      continue;
-    }
-    current = current ? `${current}\n\n${paragraph}` : paragraph;
-  }
-  if (current) chunks.push(current.trim());
-  return chunks;
-}
-
-function deriveTopicFromFilename(filename: string): string {
-  return filename
-    .replace(/\.[^/.]+$/, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
-}
-
 function buildPseudoLessonPlan(input: {
   text: string;
   topic: string;
@@ -112,11 +63,13 @@ function buildPseudoLessonPlan(input: {
   grade: string;
   duration: string;
   framework: string;
+  frameworkFocus?: string;
   days: number;
   minutesPerDay: number;
 }) {
+  const framework = getLessonPlanFramework(input.framework);
   const chunkCount = Math.min(Math.max(input.days, 1), 7);
-  const chunks = splitIntoChunks(input.text).slice(0, chunkCount);
+  const chunks = splitTextIntoParagraphChunks(input.text).slice(0, chunkCount);
   const days = (chunks.length ? chunks : [input.text.slice(0, 900)]).map(
     (chunk, index) => {
       const compact = chunk.replace(/\s+/g, " ").trim();
@@ -124,7 +77,15 @@ function buildPseudoLessonPlan(input: {
       return {
         day: index + 1,
         topic: `${input.topic} - Part ${index + 1}`,
-        specificActivities: {
+        "4asModel": buildFrameworkPhaseModel(framework.id, {
+          topic: input.frameworkFocus
+            ? `${input.topic} (${input.frameworkFocus})`
+            : input.topic,
+          subject: input.subject,
+          grade: input.grade,
+          minutesPerDay: input.minutesPerDay,
+        }),
+        specificActivities: framework.supportsSpecificActivities ? {
           ACTIVITY: {
             readingPassage: chunk,
             questions: [
@@ -151,7 +112,7 @@ function buildPseudoLessonPlan(input: {
               },
             ],
           },
-        },
+        } : {},
         assessment: [
           {
             criteria: `Understanding of ${input.topic} part ${index + 1}`,
@@ -174,7 +135,9 @@ function buildPseudoLessonPlan(input: {
     subject: input.subject,
     grade: input.grade,
     duration: input.duration,
-    framework: input.framework,
+    framework: framework.id,
+    frameworkLabel: framework.label,
+    frameworkFocus: input.frameworkFocus || "",
     minutesPerDay: input.minutesPerDay,
     days,
     objectives: [
@@ -182,101 +145,6 @@ function buildPseudoLessonPlan(input: {
       `Apply concepts from the uploaded lesson content.`,
     ],
   };
-}
-
-function extractTextFromPdfBytesFallback(arrayBuffer: ArrayBuffer): string {
-  // Fallback parser: extracts printable text runs from raw PDF bytes.
-  // Not perfect, but avoids runtime worker failures in dev/prod server bundles.
-  const buffer = Buffer.from(arrayBuffer);
-  const raw = buffer.toString("latin1");
-  const matches = raw.match(/[A-Za-z0-9][A-Za-z0-9\s,.;:()'"%\-_/]{6,}/g) || [];
-  const cleaned = matches
-    .map((m) => m.replace(/\s+/g, " ").trim())
-    .filter((m) => m.length > 8);
-  return cleaned.join("\n");
-}
-
-async function extractTextFromPdf(arrayBuffer: ArrayBuffer): Promise<string> {
-  try {
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-    const typedArray = new Uint8Array(arrayBuffer);
-    const loadingTask = pdfjs.getDocument({
-      data: typedArray,
-      disableWorker: true,
-      useWorkerFetch: false,
-      isEvalSupported: false,
-    } as any);
-    const pdf = await loadingTask.promise;
-    const pages: string[] = [];
-
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
-      const page = await pdf.getPage(pageNum);
-      const text = await page.getTextContent();
-      const pageText = text.items
-        .map((item: any) => String(item?.str || ""))
-        .join(" ")
-        .trim();
-      if (pageText) pages.push(pageText);
-    }
-
-    const extracted = pages.join("\n\n").trim();
-    if (extracted.length >= MIN_CONTENT_CHARS) return extracted;
-  } catch (err) {
-    const message = String((err as Error)?.message || err || "");
-    const isWorkerIssue =
-      message.includes("Setting up fake worker failed") ||
-      message.includes("pdf.worker.mjs");
-    if (isWorkerIssue) {
-      log.info("lesson_material_pdf_worker_unavailable", {
-        message: "pdfjs worker unavailable in server bundle; using fallback parser",
-      });
-    } else {
-      log.warn("lesson_material_pdf_parse_failed", {
-        message: "pdfjs parse failed; using fallback parser",
-        err: message,
-      });
-    }
-  }
-
-  return extractTextFromPdfBytesFallback(arrayBuffer);
-}
-
-async function extractFileTextFromArrayBuffer(arrayBuffer: ArrayBuffer, ext: string, fileName: string): Promise<string> {
-  if (ext === "txt" || ext === "md" || ext === "csv") {
-    return new TextDecoder().decode(arrayBuffer);
-  }
-
-  if (ext === "docx") {
-    const result = await mammoth.extractRawText({ buffer: Buffer.from(arrayBuffer) });
-    return result.value;
-  }
-
-  if (ext === "xlsx") {
-    const workbook = XLSX.read(Buffer.from(arrayBuffer), { type: "buffer" });
-    const rows: string[] = [];
-    workbook.SheetNames.forEach((sheetName) => {
-      const sheet = workbook.Sheets[sheetName];
-      rows.push(XLSX.utils.sheet_to_csv(sheet));
-    });
-    return rows.join("\n");
-  }
-
-  if (ext === "pptx" || ext === "ppt") {
-    const tempFilePath = path.join(os.tmpdir(), `${Date.now()}-${fileName}`);
-    try {
-      await fs.writeFile(tempFilePath, Buffer.from(arrayBuffer));
-      const text = await pptxTextParser(tempFilePath, "text");
-      return text;
-    } finally {
-      await fs.unlink(tempFilePath).catch(() => {});
-    }
-  }
-
-  if (ext === "pdf") {
-    return extractTextFromPdf(arrayBuffer);
-  }
-
-  throw new Error("Unsupported file type");
 }
 
 export async function POST(req: NextRequest) {
@@ -346,7 +214,7 @@ export async function POST(req: NextRequest) {
     const normalizedPlan = String(user.subscriptionPlan || "free").toLowerCase();
     const isFree = isFreeLessonPlanPointLimited(normalizedPlan);
     const isProOrPremium =
-      normalizedPlan === "pro" || normalizedPlan === "premium";
+      normalizedPlan === "pro" || hasPremiumFeaturePlan(normalizedPlan);
     const pointCost = getLessonPlanGenerationPointCost({ hasUpload: true });
     if (isFree) {
       const pointStatus = buildFreeLessonPlanPointsStatusPayload(
@@ -385,7 +253,7 @@ export async function POST(req: NextRequest) {
 
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
     extForEvent = ext || "unknown";
-    if (!SUPPORTED_EXTENSIONS.has(ext)) {
+    if (!SUPPORTED_TEXT_EXTRACTION_EXTENSIONS.has(ext)) {
       return apiError(
         400,
         "Unsupported file type. Supported: txt, docx, pdf, pptx, xlsx, csv, md",
@@ -417,6 +285,7 @@ export async function POST(req: NextRequest) {
             grade: String(formData.get("grade") || ""),
             days: String(formData.get("days") || ""),
             minutesPerDay: String(formData.get("minutesPerDay") || ""),
+            frameworkFocus: String(formData.get("frameworkFocus") || ""),
             duration: String(formData.get("duration") || ""),
           },
           file: {
@@ -448,21 +317,18 @@ export async function POST(req: NextRequest) {
     }
 
     const fileBytes = await file.arrayBuffer();
-    const extractionCacheKey = buildExtractionCacheKey({
+    const extractionResult = await extractUploadedFileText({
       fileName: file.name,
       ext,
-      bytes: fileBytes,
+      arrayBuffer: fileBytes,
     });
-    const extractionResult = await getCachedFileExtraction(extractionCacheKey, async () =>
-      extractFileTextFromArrayBuffer(fileBytes, ext, file.name)
-    );
     if (extractionResult.cacheHit) {
       log.debug("lesson_material_file_extract_cache_hit", {
         fileName: file.name,
         ext,
       });
     }
-    const extracted = extractionResult.value;
+    const extracted = extractionResult.text;
     const cleanText = normalizeExtractedText(extracted);
     extractedTextLength = cleanText.length;
     if (cleanText.length < MIN_CONTENT_CHARS) {
@@ -473,7 +339,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const framework = String(formData.get("framework") || "").trim() || "4a";
+    const framework = normalizeLessonPlanFramework(String(formData.get("framework") || "").trim());
+    const frameworkFocus = String(formData.get("frameworkFocus") || "").trim();
     const topic = String(formData.get("topic") || "").trim() || deriveTopicFromFilename(file.name) || "Uploaded Lesson Plan";
     const subject = String(formData.get("subject") || "").trim() || "General";
     const grade = String(formData.get("grade") || "").trim() || "General";
@@ -494,6 +361,7 @@ export async function POST(req: NextRequest) {
       grade,
       duration,
       framework,
+      frameworkFocus,
       days: daysCount,
       minutesPerDay,
     });

@@ -17,6 +17,10 @@ const youtubeMetadataCache = new Map<
   CacheRecord<{ title: string; description: string }>
 >();
 const fileExtractionCache = new Map<string, CacheRecord<string>>();
+const pdfDetailedExtractionCache = new Map<
+  string,
+  CacheRecord<{ text: string; method: string }>
+>();
 
 const URL_TTL_MS = 6 * 60 * 60 * 1000;
 const YOUTUBE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -92,7 +96,10 @@ export function buildFileExtractionCacheKey(input: {
   bytes: ArrayBuffer;
 }) {
   const hash = createHash("sha256").update(Buffer.from(input.bytes)).digest("hex");
-  return `${input.ext.toLowerCase()}:${input.fileName.toLowerCase()}:${hash}`;
+  const normalizedExt = input.ext.toLowerCase();
+  const extractorVersion =
+    normalizedExt === "pdf" ? "pdf-v3-force-reextract" : "v1";
+  return `${extractorVersion}:${normalizedExt}:${input.fileName.toLowerCase()}:${hash}`;
 }
 
 export async function getCachedFileExtraction(
@@ -100,4 +107,19 @@ export async function getCachedFileExtraction(
   loader: () => Promise<string>
 ) {
   return getOrLoad(fileExtractionCache, key, FILE_TTL_MS, loader);
+}
+
+export function deleteCachedFileExtraction(key: string) {
+  fileExtractionCache.delete(key);
+}
+
+export async function getCachedPdfDetailedExtraction(
+  key: string,
+  loader: () => Promise<{ text: string; method: string }>
+) {
+  return getOrLoad(pdfDetailedExtractionCache, key, FILE_TTL_MS, loader);
+}
+
+export function deleteCachedPdfDetailedExtraction(key: string) {
+  pdfDetailedExtractionCache.delete(key);
 }

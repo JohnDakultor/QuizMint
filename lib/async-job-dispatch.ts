@@ -33,7 +33,10 @@ export async function dispatchAsyncGenerationJob(
   const normalizedPlan = String(options?.subscriptionPlan || "free")
     .trim()
     .toLowerCase();
-  const priorityDispatch = normalizedPlan === "premium";
+  const priorityDispatch =
+    normalizedPlan === "premium" ||
+    normalizedPlan === "organization" ||
+    normalizedPlan === "enterprise";
   const eagerDispatchSetting = String(
     process.env.GENERATION_JOB_EAGER_DISPATCH || "true"
   )

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
 import { generateLessonPlanPptAI } from "@/lib/lesson-plan-ppt-ai";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 const PROVIDER_ISSUE_MESSAGE =
   "Server issue - we're fixing it. Please try again in a few minutes.";
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (user.subscriptionPlan !== "premium") {
+    if (!hasPremiumFeaturePlan(user.subscriptionPlan)) {
       return NextResponse.json(
         { error: "Premium required" },
         { status: 403 }

@@ -41,6 +41,7 @@ import {
   LESSON_PLAN_UPLOAD_SLIDES_PROGRESS,
 } from "@/lib/loading-stage-labels";
 import { shouldQueueLessonPlanGeneration } from "@/lib/lesson-plan-workload-routing";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 import type { PptDeck } from "@/lib/lesson-plan-ppt-ai";
 import type { LessonPlanData, LessonPlanDay } from "@/lib/lessonPlan-gen-pdf-dl";
 
@@ -89,6 +90,7 @@ type AdaptiveWorkspaceSummary = {
 type LessonPlanState = LessonPlanData & {
   subject?: string;
   minutesPerDay?: number;
+  frameworkFocus?: string;
   __sources?: SourceIcon[];
   __sourceTrace?: {
     mode?: "none" | "documents" | "semantic_cache";
@@ -105,6 +107,7 @@ type LessonPlanFormData = {
   grade: string;
   days: number;
   minutesPerDay: number;
+  frameworkFocus?: string;
   [key: string]: unknown;
 };
 
@@ -141,6 +144,7 @@ type LessonMaterialUploadConfig = {
   grade: string;
   days: number;
   minutesPerDay: number;
+  frameworkFocus: string;
 };
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -275,6 +279,7 @@ export default function LessonPlanPage() {
   const [lessonUploadTopic, setLessonUploadTopic] = useState("");
   const [lessonUploadSubject, setLessonUploadSubject] = useState("");
   const [lessonUploadGrade, setLessonUploadGrade] = useState("");
+  const [lessonUploadFrameworkFocus, setLessonUploadFrameworkFocus] = useState("");
   const lessonPlanRef = useRef<HTMLDivElement | null>(null);
   const uploadLessonPlanInputRef = useRef<HTMLInputElement | null>(null);
   const lessonFormRef = useRef<HTMLFormElement | null>(null);
@@ -294,10 +299,10 @@ export default function LessonPlanPage() {
       return fallback;
     }
   };
-  const isPremium = subscriptionPlan === "premium";
+  const isPremium = hasPremiumFeaturePlan(subscriptionPlan);
   const isFree = subscriptionPlan === "free" || !subscriptionPlan;
   const adaptiveWorkflowEnabled =
-    subscriptionPlan === "premium" && !liteMode && adaptiveLearningEnabled;
+    hasPremiumFeaturePlan(subscriptionPlan) && !liteMode && adaptiveLearningEnabled;
 
   const persistPendingLessonGenerationJob = (job: PendingLessonGenerationJob | null) => {
     if (typeof window === "undefined") return;
@@ -362,23 +367,41 @@ export default function LessonPlanPage() {
             sourceCount?: unknown;
           })
         : null;
+    const requestMeta =
+      data.request && typeof data.request === "object"
+        ? (data.request as Partial<LessonPlanFormData>)
+        : null;
     const nextFramework = normalizeLessonPlanFramework(
-      String(nextLessonPlan?.framework || fallbackForm?.framework || selectedFramework)
+      String(requestMeta?.framework || nextLessonPlan?.framework || fallbackForm?.framework || selectedFramework)
     );
     if (!nextLessonPlan) {
       throw new Error("No lesson plan data received from server");
     }
+    const normalizedForm = requestMeta
+      ? {
+          ...(fallbackForm || {}),
+          ...requestMeta,
+          framework: normalizeLessonPlanFramework(requestMeta.framework || fallbackForm?.framework || nextFramework),
+          topic: String(requestMeta.topic || fallbackForm?.topic || nextLessonPlan.topic || nextLessonPlan.title || "").trim(),
+          subject: String(requestMeta.subject || fallbackForm?.subject || nextLessonPlan.subject || "").trim(),
+          grade: String(requestMeta.grade || fallbackForm?.grade || nextLessonPlan.grade || "").trim(),
+          days: Number(requestMeta.days || fallbackForm?.days || 1),
+          minutesPerDay: Number(requestMeta.minutesPerDay || fallbackForm?.minutesPerDay || nextLessonPlan.minutesPerDay || 40),
+          frameworkFocus: String(requestMeta.frameworkFocus || fallbackForm?.frameworkFocus || nextLessonPlan.frameworkFocus || "").trim(),
+        }
+      : fallbackForm;
     setLessonPlan(nextLessonPlan);
     setCurrentLessonPlanId(typeof savedLessonPlan?.id === "string" ? savedLessonPlan.id : null);
     setSelectedFramework(nextFramework);
     setFormDataObject(
-      fallbackForm || {
+      normalizedForm || {
         framework: nextFramework,
-        topic: String(nextLessonPlan.topic || nextLessonPlan.title || "").trim(),
-        subject: String(nextLessonPlan.subject || "").trim(),
-        grade: String(nextLessonPlan.grade || "").trim(),
-        days: Number(nextLessonPlan.days || 1),
-        minutesPerDay: Number(nextLessonPlan.minutesPerDay || 40),
+        topic: String(requestMeta?.topic || nextLessonPlan.topic || nextLessonPlan.title || "").trim(),
+        subject: String(requestMeta?.subject || nextLessonPlan.subject || "").trim(),
+        grade: String(requestMeta?.grade || nextLessonPlan.grade || "").trim(),
+        days: Number(requestMeta?.days || 1),
+        minutesPerDay: Number(requestMeta?.minutesPerDay || nextLessonPlan.minutesPerDay || 40),
+        frameworkFocus: String(requestMeta?.frameworkFocus || nextLessonPlan.frameworkFocus || "").trim(),
       }
     );
     setUsageInfo((data.usage as LessonPlanUsageInfo | null) ?? null);
@@ -435,6 +458,7 @@ export default function LessonPlanPage() {
       grade: searchParams.get("grade") || "",
       days: searchParams.get("days") || "",
       minutesPerDay: searchParams.get("minutesPerDay") || "40",
+      frameworkFocus: searchParams.get("frameworkFocus") || "",
       objectives: searchParams.get("objectives") || "",
       constraints: searchParams.get("constraints") || "",
     }),
@@ -802,6 +826,7 @@ export default function LessonPlanPage() {
       grade: String(merged.grade || "").trim(),
       days: String(merged.days || "").trim(),
       minutesPerDay: String(merged.minutesPerDay || "").trim(),
+      frameworkFocus: String(merged.frameworkFocus || "").trim(),
       objectives: String(merged.objectives || "").trim(),
       constraints: String(merged.constraints || "").trim(),
     };
@@ -980,6 +1005,7 @@ export default function LessonPlanPage() {
       grade: String(rawForm.grade || "").trim(),
       days: Number(rawForm.days || 0),
       minutesPerDay: Number(rawForm.minutesPerDay || 0),
+      frameworkFocus: String(rawForm.frameworkFocus || "").trim(),
       objectives: String(rawForm.objectives || "").trim(),
       constraints: String(rawForm.constraints || "").trim(),
     };
@@ -1007,7 +1033,9 @@ export default function LessonPlanPage() {
       topic: formObj.topic,
       subject: formObj.subject,
       grade: formObj.grade,
-      objectives: String(formObj.objectives || ""),
+      objectives: [String(formObj.frameworkFocus || ""), String(formObj.objectives || "")]
+        .filter(Boolean)
+        .join("\n"),
       constraints: String(formObj.constraints || ""),
       days: Number(formObj.days || 0),
       minutesPerDay: Number(formObj.minutesPerDay || 0),
@@ -1523,6 +1551,7 @@ export default function LessonPlanPage() {
     setLessonUploadTopic(formSnapshot.topic);
     setLessonUploadSubject(formSnapshot.subject);
     setLessonUploadGrade(formSnapshot.grade);
+    setLessonUploadFrameworkFocus(formSnapshot.frameworkFocus);
     setShowLessonUploadConfigModal(true);
   }
 
@@ -1540,6 +1569,9 @@ export default function LessonPlanPage() {
       topic: String(rawForm.topic || formDataObject?.topic || lessonTemplateDefaults.topic || "").trim(),
       subject: String(rawForm.subject || formDataObject?.subject || lessonTemplateDefaults.subject || "").trim(),
       grade: String(rawForm.grade || formDataObject?.grade || lessonTemplateDefaults.grade || "").trim(),
+      frameworkFocus: String(
+        rawForm.frameworkFocus || formDataObject?.frameworkFocus || lessonTemplateDefaults.frameworkFocus || ""
+      ).trim(),
       days: Number.isFinite(rawDays) ? Math.min(Math.max(Math.trunc(rawDays), 1), 7) : 1,
       minutesPerDay: Number.isFinite(rawMinutes) ? Math.min(Math.max(Math.trunc(rawMinutes), 10), 120) : 40,
     };
@@ -1564,6 +1596,9 @@ export default function LessonPlanPage() {
       formData.append("framework", effectiveUploadConfig.framework);
       formData.append("days", String(effectiveUploadConfig.days));
       formData.append("minutesPerDay", String(effectiveUploadConfig.minutesPerDay));
+      if (effectiveUploadConfig.frameworkFocus) {
+        formData.append("frameworkFocus", effectiveUploadConfig.frameworkFocus);
+      }
       formData.append(
         "duration",
         `${effectiveUploadConfig.days} day(s), ${effectiveUploadConfig.minutesPerDay} minutes per day`
@@ -2078,6 +2113,7 @@ export default function LessonPlanPage() {
             topic: lessonUploadTopic,
             subject: lessonUploadSubject,
             grade: lessonUploadGrade,
+            frameworkFocus: lessonUploadFrameworkFocus,
             days: Math.min(Math.max(Number(lessonUploadDays) || 1, 1), 7),
             minutesPerDay: Math.min(Math.max(Number(lessonUploadMinutesPerDay) || 40, 10), 120),
           });
@@ -2119,6 +2155,17 @@ export default function LessonPlanPage() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                {LESSON_PLAN_FRAMEWORKS[lessonUploadFramework].focusInputLabel}
+              </label>
+              <textarea
+                value={lessonUploadFrameworkFocus}
+                onChange={(event) => setLessonUploadFrameworkFocus(event.target.value)}
+                placeholder={LESSON_PLAN_FRAMEWORKS[lessonUploadFramework].focusInputPlaceholder}
+                className="min-h-20 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -2317,6 +2364,7 @@ export default function LessonPlanPage() {
                   grade: plan.grade,
                   days: plan.days,
                   minutesPerDay: plan.minutesPerDay,
+                  frameworkFocus: String(plan?.data?.frameworkFocus || "").trim(),
                 });
                 const historySources = Array.isArray(plan?.data?.__sources)
                   ? plan.data.__sources

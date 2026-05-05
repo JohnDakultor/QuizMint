@@ -1,23 +1,15 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-
-async function getCurrentUser() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return null;
-
-  return prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true, email: true },
-  });
-}
+import {
+  buildOwnedOrWritableWhere,
+  getCurrentUserAccessContext,
+} from "@/lib/organization-access";
 
 export async function DELETE(
   _: Request,
   context: { params: Promise<{ id: string; studentId: string }> },
 ) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -27,9 +19,7 @@ export async function DELETE(
     where: {
       id: studentId,
       classId: id,
-      class: {
-        userId: user.id,
-      },
+      class: buildOwnedOrWritableWhere(user),
     },
     select: { id: true },
   });

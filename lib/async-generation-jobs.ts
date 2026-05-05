@@ -138,7 +138,7 @@ export async function listQueuedAsyncGenerationJobs(limit = 10) {
     WHERE job."status" = 'queued'
     ORDER BY
       CASE
-        WHEN LOWER(COALESCE(usr."subscriptionPlan", 'free')) = 'premium' THEN 0
+        WHEN LOWER(COALESCE(usr."subscriptionPlan", 'free')) IN ('premium', 'organization', 'enterprise') THEN 0
         WHEN LOWER(COALESCE(usr."subscriptionPlan", 'free')) = 'pro' THEN 1
         ELSE 2
       END ASC,

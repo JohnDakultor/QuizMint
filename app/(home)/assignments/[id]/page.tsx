@@ -30,6 +30,7 @@ import SkeletonLoading from "@/components/ui/skeleton-loading";
 import Tour from "@/components/ui/tour";
 import { assignmentTourSteps } from "../../teacher-workflow-tour-steps";
 import { printElementContent } from "@/lib/print-element";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 type AttemptDetail = {
   questionId?: number;
@@ -329,7 +330,7 @@ export default function AssignmentResultsPage() {
         if (!res.ok || !mounted) return;
         setAdaptiveEnabled(
           Boolean(
-            json?.user?.subscriptionPlan === "premium" && json?.user?.adaptiveLearning,
+            hasPremiumFeaturePlan(json?.user?.subscriptionPlan) && json?.user?.adaptiveLearning,
           ),
         );
       } catch {

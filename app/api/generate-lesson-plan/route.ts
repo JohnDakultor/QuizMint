@@ -38,6 +38,7 @@ import {
 import { invalidateDashboardSummarySnapshot } from "@/lib/dashboard-summary-snapshot";
 import { invalidateInterventionSummarySnapshots } from "@/lib/intervention-summary-snapshot";
 import { shouldQueueLessonPlanGeneration } from "@/lib/lesson-plan-workload-routing";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 const PROVIDER_ISSUE_MESSAGE =
   "Server issue - we're fixing it. Please try again in a few minutes.";
@@ -49,6 +50,120 @@ function hashString(value: string) {
   return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
+function normalizeBoundedInt(value: unknown, min: number, max: number, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
+function splitNonEmptyLines(value: unknown) {
+  return String(value || "")
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildFourAsSpecificActivities(input: {
+  topic: string;
+  subject: string;
+  grade: string;
+  dayIndex: number;
+}) {
+  const dayLabel = `Day ${input.dayIndex + 1}`;
+  return {
+    ACTIVITY: {
+      type: "Reading Comprehension",
+      readingPassage: `${dayLabel} introduces ${input.topic} through a short ${input.subject} scenario for ${input.grade} learners. Students identify what they already know, notice important vocabulary, and connect the lesson to a classroom or real-world situation.`,
+      questions: [
+        {
+          question: `What prior knowledge helps students begin learning ${input.topic}?`,
+          answer: `Students can connect earlier ${input.subject} ideas, vocabulary, and examples to the new focus on ${input.topic}.`,
+        },
+        {
+          question: `Which detail from the opening situation is most important for understanding ${input.topic}?`,
+          answer: `The most important detail is the one that shows how ${input.topic} appears or is used in a meaningful ${input.subject} context.`,
+        },
+        {
+          question: `How does this opening activity prepare students for the rest of the lesson?`,
+          answer: `It gives students a shared context, surfaces misconceptions, and prepares them to analyze the main concept.`,
+        },
+      ],
+    },
+    ANALYSIS: {
+      type: "True/False + Checklist",
+      trueFalse: [
+        {
+          statement: `${input.topic} should be understood through examples, explanations, and application.`,
+          answer: "True",
+          explanation: `A strong ${input.subject} lesson moves students from initial examples to usable understanding.`,
+        },
+        {
+          statement: `Students can master ${input.topic} by memorizing isolated facts only.`,
+          answer: "False",
+          explanation: `Students also need to analyze relationships and apply ideas in context.`,
+        },
+        {
+          statement: `Discussion can help reveal misconceptions about ${input.topic}.`,
+          answer: "True",
+          explanation: `Teacher questioning and student explanations make misconceptions visible.`,
+        },
+      ],
+      checklist: [
+        `I can identify key ideas about ${input.topic}.`,
+        `I can explain how examples connect to the main ${input.subject} concept.`,
+        `I can ask or answer questions that clarify misconceptions.`,
+      ],
+    },
+    ABSTRACTION: {
+      type: "Concept Matching",
+      pairs: [
+        { left: "Key Concept", right: `The central idea students must understand about ${input.topic}` },
+        { left: "Example", right: `A concrete case that makes ${input.topic} easier to see` },
+        { left: "Misconception", right: `A likely misunderstanding students may have about ${input.topic}` },
+        { left: "Evidence", right: `A reason or detail that supports an explanation in ${input.subject}` },
+        { left: "Application", right: `A task where students use ${input.topic} independently` },
+      ],
+      explanation: `This phase formalizes the meaning of ${input.topic}, connects vocabulary to examples, and prepares students to use the concept accurately.`,
+    },
+    APPLICATION: {
+      type: "Practice + Identification",
+      multipleChoice: [
+        {
+          question: `Which student action best shows understanding of ${input.topic}?`,
+          options: [
+            "A. Repeating a definition without an example",
+            "B. Applying the idea correctly in a new situation",
+            "C. Guessing based on keywords only",
+            "D. Avoiding explanation of reasoning",
+          ],
+          answer: "B",
+          explanation: `Using ${input.topic} accurately in a new situation shows transfer, not just recall.`,
+        },
+        {
+          question: `What should the teacher check during application of ${input.topic}?`,
+          options: [
+            "A. Whether students can explain their reasoning",
+            "B. Whether students finish without feedback",
+            "C. Whether all answers look identical",
+            "D. Whether students avoid challenging items",
+          ],
+          answer: "A",
+          explanation: "Reasoning reveals whether students understand the concept and can correct mistakes.",
+        },
+      ],
+      identification: {
+        clues: [
+          `The main idea students need to explain about ${input.topic}`,
+          `A concrete situation where ${input.topic} is used`,
+          `A common error students should avoid`,
+        ],
+        wordBank: ["Key Concept", "Application", "Misconception", "Evidence"],
+        answers: ["Key Concept", "Application", "Misconception"],
+      },
+    },
+  };
+}
+
 function buildLessonPrompt(input: {
   framework: string;
   topic: string;
@@ -58,14 +173,81 @@ function buildLessonPrompt(input: {
   minutesPerDay: number;
   objectives?: string;
   constraints?: string;
+  frameworkFocus?: string;
 }) {
   const framework = getLessonPlanFramework(input.framework);
   return [
     `Create a ${input.days}-day lesson plan using the ${framework.label} for ${input.topic} in ${input.subject} for ${input.grade} students.`,
     `Each day should be ${input.minutesPerDay} minutes.`,
     `Objectives: ${input.objectives?.trim() || "None specified"}`,
+    `Framework-specific focus: ${input.frameworkFocus?.trim() || "None specified"}`,
     `Constraints: ${input.constraints?.trim() || "None specified"}`,
   ].join("\n");
+}
+
+function normalizeFrameworkPhaseSequence(input: {
+  phases: unknown;
+  framework: string;
+  topic: string;
+  subject: string;
+  grade: string;
+  minutesPerDay: number;
+}) {
+  const frameworkConfig = getLessonPlanFramework(input.framework);
+  const expectedPhases = frameworkConfig.phases.map((phase) => phase.phase);
+  const generated = Array.isArray(input.phases) ? input.phases : [];
+  const generatedByPhase = new Map(
+    generated
+      .filter((phase) => phase && typeof phase === "object")
+      .map((phase) => [
+        String((phase as Record<string, unknown>).phase || "").trim().toUpperCase(),
+        phase as Record<string, unknown>,
+      ])
+  );
+
+  const hasExactSequence =
+    generated.length === expectedPhases.length &&
+    generated.every(
+      (phase, index) =>
+        String((phase as Record<string, unknown>)?.phase || "").trim().toUpperCase() ===
+        expectedPhases[index]
+    );
+  const basePhases = buildFrameworkPhaseModel(input.framework, {
+    topic: input.topic,
+    subject: input.subject,
+    grade: input.grade,
+    minutesPerDay: input.minutesPerDay,
+  });
+
+  if (!hasExactSequence) {
+    return basePhases.map((base) => {
+      const existing = generatedByPhase.get(base.phase);
+      if (!existing) return base;
+      return {
+        ...base,
+        title: String(existing.title || base.title),
+        description: String(existing.description || base.description),
+        teacherRole: String(existing.teacherRole || base.teacherRole),
+        studentRole: String(existing.studentRole || base.studentRole),
+        materials: Array.isArray(existing.materials) && existing.materials.length
+          ? existing.materials
+          : base.materials,
+      };
+    });
+  }
+
+  const totalMinutes = generated.reduce(
+    (sum, phase) => sum + Number((phase as Record<string, unknown>)?.timeMinutes || 0),
+    0
+  );
+  if (totalMinutes !== input.minutesPerDay) {
+    return generated.map((phase, index) => ({
+      ...(phase as Record<string, unknown>),
+      timeMinutes: basePhases[index]?.timeMinutes || 1,
+    }));
+  }
+
+  return generated;
 }
 
 function isProviderIssueError(err: unknown): boolean {
@@ -174,7 +356,7 @@ export async function POST(req: NextRequest) {
         }
       );
     }
-    const isPremium = plan === "premium";
+    const isPremium = hasPremiumFeaturePlan(plan);
     const liteMode = Boolean((user as any).liteMode);
     const debugCounters = process.env.DEBUG_LESSON_COUNTERS === "1";
 
@@ -183,13 +365,14 @@ export async function POST(req: NextRequest) {
     const queueRequested =
       body?.async === true || body?.async === "true" || body?.queue === true;
     const providedLessonPlan = body.lessonPlan;
-    const topic = body.topic?.trim();
-    const subject = body.subject?.trim();
-    const grade = body.grade?.trim();
-    const days = Number(body.days);
-    const minutesPerDay = Number(body.minutesPerDay);
+    const topic = String(body.topic || "").trim();
+    const subject = String(body.subject || "").trim();
+    const grade = String(body.grade || "").trim();
+    const days = normalizeBoundedInt(body.days, 1, 7);
+    const minutesPerDay = normalizeBoundedInt(body.minutesPerDay, 10, 120);
     const objectives = body.objectives || "";
     const constraints = body.constraints || "";
+    const frameworkFocus = String(body.frameworkFocus || "").trim();
     const framework = normalizeLessonPlanFramework(body.framework);
     const launchContext = parseLaunchContext(body.launchContext);
     const format = typeof body.format === "string" ? body.format.toLowerCase().trim() : "json";
@@ -201,7 +384,7 @@ export async function POST(req: NextRequest) {
         subject,
         grade,
         framework,
-        objectives,
+        objectives: [frameworkFocus, objectives].filter(Boolean).join("\n"),
         constraints,
         days,
         minutesPerDay,
@@ -261,7 +444,20 @@ export async function POST(req: NextRequest) {
     const duration = `${days} day(s), ${minutesPerDay} minutes per day`;
 
     // Create a cache key
-    const cacheKey = `${user.id}:${framework}:${topic}:${subject}:${grade}:${days}`;
+    const cacheFingerprint = hashString(
+      JSON.stringify({
+        framework,
+        topic,
+        subject,
+        grade,
+        days,
+        minutesPerDay,
+        objectives,
+        constraints,
+        frameworkFocus,
+      })
+    );
+    const cacheKey = `${user.id}:${cacheFingerprint}`;
     const basePrompt = buildLessonPrompt({
       framework,
       topic,
@@ -271,10 +467,13 @@ export async function POST(req: NextRequest) {
       minutesPerDay,
       objectives,
       constraints,
+      frameworkFocus,
     });
     const namespaceSeed =
-      normalizeForEmbedding(`${framework}|${topic}|${subject}|${grade}`) ||
-      `${framework}|${topic}|${subject}|${grade}`;
+      normalizeForEmbedding(
+        `${framework}|${frameworkFocus}|${topic}|${subject}|${grade}|${days}|${minutesPerDay}|${objectives}|${constraints}`
+      ) ||
+      `${framework}|${frameworkFocus}|${topic}|${subject}|${grade}|${days}|${minutesPerDay}`;
     const namespace = `lesson:${user.id}:${hashString(namespaceSeed)}`;
 
     let lessonPlan: any;
@@ -393,6 +592,7 @@ export async function POST(req: NextRequest) {
             duration,
             objectives,
             constraints,
+            frameworkFocus,
             days,
             minutesPerDay,
             isProOrPremium: !isFree,
@@ -441,8 +641,8 @@ export async function POST(req: NextRequest) {
           frameworkLabel: frameworkConfig.label,
           grade: grade,
           duration: duration,
-          objectives: objectives 
-            ? objectives.split('\n').filter((obj: string) => obj.trim())
+          objectives: objectives
+            ? splitNonEmptyLines(objectives)
             : [
                 `Understand key concepts of ${topic} in ${subject}`,
                 `Apply ${topic} knowledge to real-world situations`,
@@ -458,110 +658,9 @@ export async function POST(req: NextRequest) {
               grade,
               minutesPerDay,
             }),
-            specificActivities: frameworkConfig.supportsSpecificActivities ? {
-              ACTIVITY: {
-                type: "Reading Comprehension",
-                readingPassage: `Understanding ${topic} is essential in the study of ${subject}. For ${grade} students, this involves examining how ${topic} functions in various contexts and its real-world applications. Mastering ${topic} concepts provides a foundation for more advanced learning in ${subject} and develops critical thinking skills that transfer to other areas. Students who deeply engage with ${topic} demonstrate improved analytical abilities and practical application skills.`,
-                questions: [
-                  {
-                    question: `What are the key components of ${topic} in ${subject}?`,
-                    answer: `The key components include the fundamental principles, applications, relationships with other concepts, and practical implications within the broader context of ${subject}.`
-                  },
-                  {
-                    question: `Why is understanding ${topic} particularly important for ${grade} students?`,
-                    answer: `Understanding ${topic} is crucial for ${grade} students because it provides essential foundational knowledge, develops critical cognitive skills, and prepares them for more complex ${subject} concepts they will encounter.`
-                  },
-                  {
-                    question: `How might you connect your learning about ${topic} to real-world situations?`,
-                    answer: `I could connect ${topic} learning by identifying examples in daily life, applying principles to solve practical problems, and explaining how ${topic} concepts influence decisions and outcomes in ${subject}-related contexts.`
-                  }
-                ]
-              },
-              ANALYSIS: {
-                type: "True/False + Checklist",
-                trueFalse: [
-                  {
-                    statement: `${topic} knowledge is only useful for academic purposes and has no real-world value.`,
-                    answer: "False",
-                    explanation: `${topic} has significant real-world applications in ${subject} and provides practical skills that are valuable beyond academic settings.`
-                  },
-                  {
-                    statement: `Mastering ${topic} requires both factual knowledge and critical thinking skills.`,
-                    answer: "True",
-                    explanation: `True mastery involves understanding facts while also developing the ability to analyze, evaluate, and apply ${topic} concepts in various contexts.`
-                  },
-                  {
-                    statement: `${grade} students are too young to understand complex ${topic} concepts.`,
-                    answer: "False",
-                    explanation: `${grade} students are capable of understanding appropriately scaffolded ${topic} concepts that build foundational knowledge for future learning in ${subject}.`
-                  }
-                ],
-                checklist: [
-                  `I can accurately explain the main concepts of ${topic}`,
-                  `I can identify real-world examples of ${topic} principles in ${subject}`,
-                  `I can apply ${topic} knowledge to solve basic problems`,
-                  `I can analyze how ${topic} concepts connect to broader ${subject} themes`
-                ]
-              },
-              ABSTRACTION: {
-                type: "Matching Type",
-                pairs: [
-                  { left: "Core Principle", right: `The fundamental rule or idea that defines ${topic}` },
-                  { left: "Application", right: `How ${topic} concepts are used in practical ${subject} situations` },
-                  { left: "Analysis", right: `The process of breaking down ${topic} to understand its components` },
-                  { left: "Synthesis", right: `Combining ${topic} knowledge with other ideas to form new understanding` },
-                  { left: "Evaluation", right: `Assessing the effectiveness or validity of ${topic} applications` }
-                ],
-                explanation: `These matching terms represent the different cognitive levels involved in mastering ${topic}. Understanding these connections helps ${grade} students develop comprehensive knowledge that can be applied flexibly across various ${subject} contexts, moving from basic comprehension to higher-order thinking skills.`
-              },
-              APPLICATION: {
-                type: "Multiple Choice + Identification",
-                multipleChoice: [
-                  {
-                    question: `A ${grade} student needs to solve a ${subject} problem using ${topic} concepts. Which strategy demonstrates deep understanding?`,
-                    options: [
-                      "A. Memorizing formulas without understanding their meaning",
-                      "B. Applying concepts flexibly based on the specific problem context",
-                      "C. Guessing based on similar-looking previous problems",
-                      "D. Avoiding complex problems and focusing only on simple ones"
-                    ],
-                    answer: "B",
-                    explanation: `Applying concepts flexibly shows true understanding and the ability to adapt knowledge to new situations, which is the hallmark of deep learning in ${subject}.`
-                  },
-                  {
-                    question: `When evaluating different approaches to ${topic} in ${subject}, what should students prioritize?`,
-                    options: [
-                      "A. Speed of completion above all else",
-                      "B. Following procedures exactly as taught",
-                      "C. Understanding the underlying principles and reasoning",
-                      "D. Getting the same answer as classmates"
-                    ],
-                    answer: "C",
-                    explanation: `Understanding principles and reasoning leads to true mastery that can be applied to new situations, rather than just procedural compliance or speed.`
-                  },
-                  {
-                    question: `How does learning about ${topic} help students in other areas of ${subject}?`,
-                    options: [
-                      "A. It provides isolated facts that only apply to specific tests",
-                      "B. It develops thinking skills that transfer to many topics",
-                      "C. It complicates learning by adding unnecessary details",
-                      "D. It has no connection to other subject areas"
-                    ],
-                    answer: "B",
-                    explanation: `${topic} develops foundational thinking skills like analysis, problem-solving, and critical evaluation that transfer to and enhance learning in many other areas of ${subject}.`
-                  }
-                ],
-                identification: {
-                  clues: [
-                    `The fundamental idea that governs how ${topic} works`,
-                    `A practical situation where ${topic} principles would be useful`,
-                    `The process of examining how different aspects of ${topic} relate to each other`
-                  ],
-                  wordBank: ["Core Principle", "Application", "Analysis", "Synthesis", "Evaluation", "Theory", "Practice"],
-                  answers: ["Core Principle", "Application", "Analysis"]
-                }
-              }
-            } : {},
+            specificActivities: frameworkConfig.supportsSpecificActivities
+              ? buildFourAsSpecificActivities({ topic, subject, grade, dayIndex: i })
+              : {},
             assessment: [
               {
                 criteria: `Understanding of ${topic} Concepts`,
@@ -629,122 +728,29 @@ export async function POST(req: NextRequest) {
       lessonPlan.days.forEach((day: any, index: number) => {
         day.framework = framework;
         day.frameworkLabel = frameworkConfig.label;
-        // Ensure framework phase model exists
-        if (!day["4asModel"] || !Array.isArray(day["4asModel"])) {
-          day["4asModel"] = buildFrameworkPhaseModel(framework, {
-            topic,
-            subject,
-            grade,
-            minutesPerDay,
-          });
-        }
+        day["4asModel"] = normalizeFrameworkPhaseSequence({
+          phases: day["4asModel"],
+          framework,
+          topic,
+          subject,
+          grade,
+          minutesPerDay,
+        });
 
         // Ensure specific activities exist and are properly linked for 4A's only
         if (frameworkConfig.supportsSpecificActivities && (!day.specificActivities || typeof day.specificActivities !== "object")) {
-          day.specificActivities = {
-            ACTIVITY: {
-              type: "Reading Comprehension",
-              readingPassage: `Passage about ${topic} for Day ${index + 1} in ${subject}`,
-              questions: [
-                { question: "What is the main idea?", answer: "Main idea..." },
-                { question: "What are the key points?", answer: "Key points..." },
-                { question: "How does this relate to...?", answer: "Relation..." }
-              ]
-            },
-            ANALYSIS: {
-              type: "True/False + Checklist",
-              trueFalse: [
-                { statement: "Statement 1...", answer: "True" },
-                { statement: "Statement 2...", answer: "False" },
-                { statement: "Statement 3...", answer: "True" }
-              ],
-              checklist: ["I understand...", "I can explain...", "I can apply..."]
-            },
-            ABSTRACTION: {
-              type: "Matching Type",
-              pairs: [
-                { left: "Term 1", right: "Definition 1" },
-                { left: "Term 2", right: "Definition 2" },
-                { left: "Term 3", right: "Definition 3" },
-                { left: "Term 4", right: "Definition 4" },
-                { left: "Term 5", right: "Definition 5" }
-              ],
-              explanation: "These connections help understand the relationships between concepts..."
-            },
-            APPLICATION: {
-              type: "Multiple Choice + Identification",
-              multipleChoice: [
-                {
-                  question: "Multiple choice question 1?",
-                  options: ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
-                  answer: "A"
-                },
-                {
-                  question: "Multiple choice question 2?",
-                  options: ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
-                  answer: "B"
-                },
-                {
-                  question: "Multiple choice question 3?",
-                  options: ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
-                  answer: "C"
-                }
-              ],
-              identification: {
-                clues: ["Clue 1...", "Clue 2...", "Clue 3..."],
-                wordBank: ["Term1", "Term2", "Term3"],
-                answers: ["Term1", "Term2", "Term3"]
-              }
-            }
-          };
+          day.specificActivities = buildFourAsSpecificActivities({ topic, subject, grade, dayIndex: index });
         }
 
         if (!frameworkConfig.supportsSpecificActivities) {
           day.specificActivities = {};
         } else {
           // Ensure all 4A phases have corresponding activities
+          const defaults = buildFourAsSpecificActivities({ topic, subject, grade, dayIndex: index });
           const phases = ["ACTIVITY", "ANALYSIS", "ABSTRACTION", "APPLICATION"];
           phases.forEach(phase => {
             if (!day.specificActivities[phase]) {
-            // Create default activity for missing phase
-            switch (phase) {
-              case "ACTIVITY":
-                day.specificActivities[phase] = {
-                  type: "Reading Comprehension",
-                  readingPassage: `Default passage about ${topic}...`,
-                  questions: Array(3).fill({ question: "...", answer: "..." })
-                };
-                break;
-              case "ANALYSIS":
-                day.specificActivities[phase] = {
-                  type: "True/False + Checklist",
-                  trueFalse: Array(3).fill({ statement: "...", answer: "True" }),
-                  checklist: Array(3).fill("Checklist item")
-                };
-                break;
-              case "ABSTRACTION":
-                day.specificActivities[phase] = {
-                  type: "Matching Type",
-                  pairs: Array(5).fill({ left: "...", right: "..." }),
-                  explanation: "Default explanation..."
-                };
-                break;
-              case "APPLICATION":
-                day.specificActivities[phase] = {
-                  type: "Multiple Choice + Identification",
-                  multipleChoice: Array(3).fill({
-                    question: "...",
-                    options: ["A. ...", "B. ...", "C. ...", "D. ..."],
-                    answer: "A"
-                  }),
-                  identification: {
-                    clues: Array(3).fill("Clue..."),
-                    wordBank: ["Term1", "Term2", "Term3"],
-                    answers: ["Term1", "Term2", "Term3"]
-                  }
-                };
-                break;
-            }
+              day.specificActivities[phase] = defaults[phase as keyof typeof defaults];
             }
           });
         }
@@ -755,11 +761,12 @@ export async function POST(req: NextRequest) {
     if (!lessonPlan.title) lessonPlan.title = `${topic} - ${subject}`;
     lessonPlan.framework = framework;
     lessonPlan.frameworkLabel = frameworkConfig.label;
+    lessonPlan.frameworkFocus = frameworkFocus;
     if (!lessonPlan.grade) lessonPlan.grade = grade;
     if (!lessonPlan.duration) lessonPlan.duration = duration;
     if (!lessonPlan.objectives || !Array.isArray(lessonPlan.objectives)) {
-      lessonPlan.objectives = objectives 
-        ? objectives.split('\n').filter((obj: string) => obj.trim())
+      lessonPlan.objectives = objectives
+        ? splitNonEmptyLines(objectives)
         : [
             `Understand ${topic} in ${subject} through the ${frameworkConfig.label}`,
             `Apply ${topic} concepts to real-world situations`,
@@ -969,6 +976,18 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ 
       lessonPlan,
       savedLessonPlan: savedLessonPlanRecord,
+      request: {
+        framework,
+        topic,
+        subject,
+        grade,
+        days,
+        minutesPerDay,
+        duration,
+        frameworkFocus,
+        objectives,
+        constraints,
+      },
       ...(liteMode
         ? {}
         : {

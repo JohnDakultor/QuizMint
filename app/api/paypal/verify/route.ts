@@ -2,68 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-option";
-
-const base =
-  process.env.NEXT_PUBLIC_PAYPAL_ENVIRONMENT === "production"
-    ? "https://api-m.paypal.com"
-    : "https://api-m.sandbox.paypal.com";
-
-const PRO_PLAN_ID = process.env.PAYPAL_PRO_PLAN_ID || "";
-const PREMIUM_PLAN_ID = process.env.PAYPAL_PREMIUM_PLAN_ID || "";
-const PREMIUM_FALLBACK_PRICE_USD = 39;
-
-async function getAccessToken() {
-  const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
-  const secret = process.env.PAYPAL_SECRET_ID;
-
-  if (!clientId || !secret) {
-    throw new Error("PayPal credentials not configured");
-  }
-
-  const auth = Buffer.from(`${clientId}:${secret}`).toString("base64");
-  const res = await fetch(`${base}/v1/oauth2/token`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-
-  if (!res.ok) {
-    throw new Error(`PayPal auth failed (${res.status})`);
-  }
-
-  const data = await res.json();
-  return data.access_token as string;
-}
-
-async function resolvePlanType(accessToken: string, planId: string): Promise<"pro" | "premium"> {
-  if (planId && PRO_PLAN_ID && planId === PRO_PLAN_ID) return "pro";
-  if (planId && PREMIUM_PLAN_ID && planId === PREMIUM_PLAN_ID) return "premium";
-
-  const res = await fetch(`${base}/v1/billing/plans/${planId}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!res.ok) return "pro";
-
-  const plan = await res.json();
-  const planLabel = `${String(plan?.name || "")} ${String(plan?.description || "")}`.toLowerCase();
-  if (planLabel.includes("premium")) return "premium";
-  if (planLabel.includes("pro")) return "pro";
-  const value = Number(
-    plan?.billing_cycles?.[0]?.pricing_scheme?.fixed_price?.value ?? "0"
-  );
-  return value >= PREMIUM_FALLBACK_PRICE_USD ? "premium" : "pro";
-}
+import {
+  fetchPayPalSubscriptionDetails,
+  normalizePayPalSubscriptionStatus,
+  reconcileOrganizationPayPalSubscription,
+  resolvePayPalPlanType,
+} from "@/lib/paypal-subscriptions";
 
 export async function POST(req: NextRequest) {
   try {
-    const { subscriptionId } = await req.json();
+    const { subscriptionId, organizationId } = await req.json();
     if (!subscriptionId) {
       return NextResponse.json({ error: "subscriptionId required" }, { status: 400 });
     }
@@ -81,23 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const accessToken = await getAccessToken();
-    const subRes = await fetch(`${base}/v1/billing/subscriptions/${subscriptionId}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!subRes.ok) {
-      const txt = await subRes.text();
-      return NextResponse.json(
-        { error: "Failed to verify subscription", details: txt.slice(0, 500) },
-        { status: 400 }
-      );
-    }
-
-    const subscription = await subRes.json();
+    const { accessToken, subscription } = await fetchPayPalSubscriptionDetails(subscriptionId);
     const payerEmail = String(subscription?.subscriber?.email_address || "").toLowerCase();
     const payerId = String(subscription?.subscriber?.payer_id || "");
 
@@ -117,7 +49,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const planType = await resolvePlanType(accessToken, subscription.plan_id);
+    const planType = await resolvePayPalPlanType(accessToken, subscription.plan_id);
     const subscriptionEnd = subscription.billing_info?.next_billing_time
       ? new Date(subscription.billing_info.next_billing_time)
       : (() => {
@@ -125,6 +57,54 @@ export async function POST(req: NextRequest) {
           d.setMonth(d.getMonth() + 1);
           return d;
         })();
+
+    let organization: { id: string; seatLimit: number | null; billingEmail: string | null } | null =
+      null;
+    let organizationSubscription = null;
+    if (planType === "organization") {
+      const explicitOrganizationId = String(organizationId || "").trim() || null;
+      const customOrganizationId = String(subscription?.custom_id || "").startsWith("organization:")
+        ? String(subscription.custom_id).slice("organization:".length)
+        : null;
+      const resolvedOrganizationId = explicitOrganizationId || customOrganizationId;
+
+      if (!resolvedOrganizationId) {
+        return NextResponse.json(
+          { error: "organizationId required to verify organization subscription" },
+          { status: 400 }
+        );
+      }
+
+      organization = await prisma.organization.findFirst({
+        where: {
+          id: resolvedOrganizationId,
+          OR: [
+            { ownerUserId: user.id },
+            {
+              members: {
+                some: {
+                  userId: user.id,
+                  status: "active",
+                  role: { in: ["owner", "admin"] },
+                },
+              },
+            },
+          ],
+        },
+        select: {
+          id: true,
+          seatLimit: true,
+          billingEmail: true,
+        },
+      });
+
+      if (!organization) {
+        return NextResponse.json(
+          { error: "Organization not found or not administrable" },
+          { status: 404 }
+        );
+      }
+    }
 
     const paypalSubscription = await prisma.payPalSubscription.upsert({
       where: { subscriptionId },
@@ -169,6 +149,47 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    if (planType === "organization" && organization) {
+      organizationSubscription = await prisma.organizationSubscription.upsert({
+        where: { providerSubscriptionId: subscriptionId },
+        update: {
+          organizationId: organization.id,
+          billingUserId: user.id,
+          provider: "paypal",
+          plan: "organization",
+          status: normalizePayPalSubscriptionStatus(subscription.status),
+          seatCount: organization.seatLimit,
+          billingEmail: organization.billingEmail || payerEmail || user.email,
+          currentPeriodStart: new Date(subscription.start_time || new Date()),
+          currentPeriodEnd: subscriptionEnd,
+          updatedAt: new Date(),
+        },
+        create: {
+          organizationId: organization.id,
+          billingUserId: user.id,
+          provider: "paypal",
+          providerSubscriptionId: subscriptionId,
+          plan: "organization",
+          status: normalizePayPalSubscriptionStatus(subscription.status),
+          seatCount: organization.seatLimit,
+          billingEmail: organization.billingEmail || payerEmail || user.email,
+          currentPeriodStart: new Date(subscription.start_time || new Date()),
+          currentPeriodEnd: subscriptionEnd,
+        },
+      });
+
+      await prisma.organization.update({
+        where: { id: organization.id },
+        data: {
+          tier: "organization",
+          status: "active",
+          billingEmail: organization.billingEmail || payerEmail || user.email,
+        },
+      });
+
+      organizationSubscription = (await reconcileOrganizationPayPalSubscription(subscriptionId)).subscription;
+    }
+
     return NextResponse.json({
       success: true,
       message: `Subscription verified and upgraded to ${planType}`,
@@ -179,6 +200,7 @@ export async function POST(req: NextRequest) {
         status: paypalSubscription.status,
         planId: paypalSubscription.planId,
       },
+      organizationSubscription,
     });
   } catch (err: any) {
     return NextResponse.json(

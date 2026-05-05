@@ -20,6 +20,14 @@ export function LessonPlanDaySections({
   renderSpecificActivityCard,
 }: LessonPlanDaySectionsProps) {
   const framework = getLessonPlanFramework(lessonPlan?.framework);
+  const phaseGridClass =
+    framework.phases.length >= 6
+      ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6"
+      : framework.phases.length === 5
+        ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-5"
+      : framework.phases.length === 3
+        ? "grid-cols-1 md:grid-cols-3"
+        : "grid-cols-1 md:grid-cols-2 lg:grid-cols-4";
   return (
     <>
       {lessonPlan.days?.map((day: any, dayIndex: number) => {
@@ -74,7 +82,7 @@ export function LessonPlanDaySections({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className={`grid ${phaseGridClass} gap-6`}>
               {day["4asModel"] &&
                 Array.isArray(day["4asModel"]) &&
                 day["4asModel"].map((phase: any, idx: number) => renderFourAsPhaseCard(phase, idx))}

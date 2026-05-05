@@ -1,5 +1,6 @@
 import { authOptions } from "@/lib/auth-option";
 import { assertAdminSession } from "@/lib/admin-auth";
+import { buildOrganizationAdminWhere, getCurrentUserAccessContext } from "@/lib/organization-access";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
@@ -9,11 +10,13 @@ const base =
     ? "https://api-m.paypal.com"
     : "https://api-m.sandbox.paypal.com";
 
-function getConfiguredPlanId(planType: "pro" | "premium") {
+function getConfiguredPlanId(planType: "pro" | "premium" | "organization") {
   const id =
     planType === "pro"
       ? process.env.PAYPAL_PRO_PLAN_ID
-      : process.env.PAYPAL_PREMIUM_PLAN_ID;
+      : planType === "premium"
+      ? process.env.PAYPAL_PREMIUM_PLAN_ID
+      : process.env.PAYPAL_ORGANIZATION_PLAN_ID;
 
   if (!id) {
     throw new Error(`Missing PayPal plan ID for ${planType}`);
@@ -65,12 +68,56 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const { planType } = await req.json();
-    if (planType !== "pro" && planType !== "premium") {
+    const { planType, organizationId } = await req.json();
+    if (planType !== "pro" && planType !== "premium" && planType !== "organization") {
       return NextResponse.json(
-        { error: "Valid planType required", validValues: ["pro", "premium"] },
+        { error: "Valid planType required", validValues: ["pro", "premium", "organization"] },
         { status: 400 }
       );
+    }
+
+    let organization:
+      | {
+          id: string;
+          name: string;
+          billingEmail: string | null;
+          seatLimit: number | null;
+        }
+      | null = null;
+
+    if (planType === "organization") {
+      const access = await getCurrentUserAccessContext();
+      if (!access) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      const nextOrganizationId = String(organizationId || "").trim();
+      if (!nextOrganizationId) {
+        return NextResponse.json(
+          { error: "organizationId is required for the organization plan" },
+          { status: 400 }
+        );
+      }
+
+      organization = await prisma.organization.findFirst({
+        where: {
+          id: nextOrganizationId,
+          ...buildOrganizationAdminWhere(access),
+        },
+        select: {
+          id: true,
+          name: true,
+          billingEmail: true,
+          seatLimit: true,
+        },
+      });
+
+      if (!organization) {
+        return NextResponse.json(
+          { error: "Organization not found or not administrable" },
+          { status: 404 }
+        );
+      }
     }
 
     const planId = getConfiguredPlanId(planType);
@@ -86,12 +133,20 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         plan_id: planId,
+        custom_id:
+          planType === "organization" && organization
+            ? `organization:${organization.id}`
+            : undefined,
         application_context: {
           brand_name: "QuizMintAI",
           locale: "en-US",
           shipping_preference: "NO_SHIPPING",
           user_action: "SUBSCRIBE_NOW",
-          return_url: `${baseUrl}/success/paypal?planType=${planType}`,
+          return_url: `${baseUrl}/success/paypal?planType=${planType}${
+            planType === "organization" && organization
+              ? `&organizationId=${encodeURIComponent(organization.id)}`
+              : ""
+          }`,
           cancel_url: `${baseUrl}/cancel`,
         },
       }),
@@ -133,12 +188,38 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    if (planType === "organization" && organization) {
+      await prisma.organizationSubscription.upsert({
+        where: { providerSubscriptionId: subscriptionId },
+        update: {
+          provider: "paypal",
+          billingUserId: user.id,
+          plan: "organization",
+          status: String(result.status || "APPROVAL_PENDING").toLowerCase(),
+          seatCount: organization.seatLimit,
+          billingEmail: organization.billingEmail || user.email,
+          updatedAt: new Date(),
+        },
+        create: {
+          organizationId: organization.id,
+          billingUserId: user.id,
+          provider: "paypal",
+          providerSubscriptionId: subscriptionId,
+          plan: "organization",
+          status: String(result.status || "APPROVAL_PENDING").toLowerCase(),
+          seatCount: organization.seatLimit,
+          billingEmail: organization.billingEmail || user.email,
+        },
+      });
+    }
+
     return NextResponse.json({
       subscriptionId,
       approvalLink: approvalLink || null,
       status: result.status || "APPROVAL_PENDING",
       planId,
       planType,
+      organizationId: organization?.id || null,
     });
   } catch (err: any) {
     return NextResponse.json(

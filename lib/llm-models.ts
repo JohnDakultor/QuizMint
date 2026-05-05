@@ -18,7 +18,7 @@ const DEFAULT_ANALYTICS_MODEL = "gpt-4o-mini";
 function normalizePlanTier(plan: string | null | undefined): LlmPlanTier {
   const normalized = String(plan || "free").trim().toLowerCase();
   if (normalized === "public") return "public";
-  if (normalized === "premium") return "premium";
+  if (normalized === "premium" || normalized === "organization" || normalized === "enterprise") return "premium";
   if (normalized === "pro") return "pro";
   return "free";
 }
@@ -133,4 +133,3 @@ export function resolveFallbackModelForFeature(input: {
 export function resolvePaidPlanTier(isProOrPremium: boolean) {
   return isProOrPremium ? "premium" : "free";
 }
-

@@ -16,6 +16,7 @@ import { QuizSubscribeModal } from "@/components/quiz/subscribe-modal";
 import { trackGaEvent } from "@/lib/ga-client";
 import type { GamifiedMode } from "@/lib/quiz-question-types";
 import { shouldQueueQuizGeneration } from "@/lib/quiz-workload-routing";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 import { BrainCircuit } from "lucide-react";
 
 function cleanAnswerMeta(value: unknown) {
@@ -44,9 +45,12 @@ type AdaptiveWorkspaceSummary = {
 };
 
 type QuizQuestion = {
+  id?: number;
   question: string;
   options?: string[];
   answer: string;
+  explanation?: string | null;
+  hint?: string | null;
   [key: string]: unknown;
 };
 
@@ -157,7 +161,7 @@ export default function Dashboard() {
   const isFreePlan = !user?.subscriptionPlan || user.subscriptionPlan === "free";
   const activeQuizPointCost = uploadedFiles.length > 0 ? 40 : 25;
   const isPremiumAdaptiveEnabled =
-    user?.subscriptionPlan === "premium" && user?.adaptiveLearning === true;
+    hasPremiumFeaturePlan(user?.subscriptionPlan) && user?.adaptiveLearning === true;
   const hasAdaptiveClassContext = Boolean(adaptiveWorkspaceSummary?.summary);
   const generationAbortRef = useRef<AbortController | null>(null);
   const forcedGamifiedTourRef = useRef(false);
@@ -769,6 +773,59 @@ export default function Dashboard() {
     setInfoMessage("Copied formatted quiz to clipboard.");
   };
 
+  const saveEditedQuiz = async (nextQuiz: QuizData) => {
+    if (!quiz?.id) {
+      throw new Error("Generate a quiz first before saving edits.");
+    }
+
+    setError("");
+    setInfoMessage("");
+
+    const payload = {
+      title: String(nextQuiz.title || "").trim(),
+      instructions: String(nextQuiz.instructions || "").trim(),
+      questions: (Array.isArray(nextQuiz.questions) ? nextQuiz.questions : []).map((question) => ({
+        id:
+          typeof question.id === "number" && Number.isInteger(question.id)
+            ? question.id
+            : undefined,
+        question: String(question.question || "").trim(),
+        options: Array.isArray(question.options)
+          ? question.options.map((option) => String(option || "").trim()).filter(Boolean)
+          : [],
+        answer: cleanAnswerMeta(question.answer),
+        explanation:
+          isPremiumAdaptiveEnabled && typeof question.explanation === "string"
+            ? question.explanation.trim()
+            : "",
+        hint:
+          typeof question.hint === "string"
+            ? question.hint.trim()
+            : "",
+      })),
+    };
+
+    const res = await fetch(`/api/quizzes/${quiz.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const message =
+        (typeof data?.error === "string" && data.error) ||
+        "Failed to save quiz edits.";
+      setError(message);
+      throw new Error(message);
+    }
+
+    if (data?.quiz) {
+      setQuiz(data.quiz as QuizData);
+      setLastLoaded(false);
+      setInfoMessage("Quiz edits saved. Student-facing actions now use this updated version.");
+    }
+  };
+
   const buildQuizPdfBlob = (): Blob | null => {
     if (!quiz) return null;
     const pdf = new jsPDF({ unit: "pt", format: "a4" });
@@ -830,7 +887,7 @@ export default function Dashboard() {
 
   const handleDownloadWord = async () => {
     if (!quiz) return;
-    if (!user || user.subscriptionPlan !== "premium")
+    if (!user || !hasPremiumFeaturePlan(user.subscriptionPlan))
       return setShowSubscribeModal(true);
 
     try {
@@ -870,7 +927,7 @@ export default function Dashboard() {
 
   const handleDownloadPPT = async () => {
     if (!quiz) return;
-    if (!user || user.subscriptionPlan !== "premium")
+    if (!user || !hasPremiumFeaturePlan(user.subscriptionPlan))
       return setShowSubscribeModal(true);
 
     try {
@@ -1422,6 +1479,8 @@ export default function Dashboard() {
           onDownloadPDF={handleDownloadPDF}
           onDownloadWord={handleDownloadWord}
           onDownloadPPT={handleDownloadPPT}
+          onSaveEdits={saveEditedQuiz}
+          canEditExplanations={isPremiumAdaptiveEnabled}
         />
       </section>
 

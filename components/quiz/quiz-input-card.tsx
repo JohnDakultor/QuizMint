@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import FileUpload from "@/components/ui/file-upload";
 import LoadingProgress from "@/components/ui/loading-progress";
 import { QUIZ_GENERATION_PROGRESS } from "@/lib/loading-stage-labels";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 import { ArrowRight, ChevronDown, Copy, FileText, PauseCircle, Share2, Sparkles, X } from "lucide-react";
 
 type FreeQuizPointsInfo = {
@@ -258,7 +259,7 @@ export function QuizInputCard(props: QuizInputCardProps) {
                     ).toLowerCase();
                     if (
                       !user ||
-                      (normalizedPlan !== "pro" && normalizedPlan !== "premium")
+                      (normalizedPlan !== "pro" && !hasPremiumFeaturePlan(normalizedPlan))
                     ) {
                       onShowSubscribe();
                       return;

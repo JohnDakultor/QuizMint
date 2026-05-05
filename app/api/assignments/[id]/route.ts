@@ -1,17 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-option";
 import { prisma } from "@/lib/prisma";
-
-async function getCurrentUser() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return null;
-
-  return prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true, email: true },
-  });
-}
+import {
+  buildOwnedOrMemberWhere,
+  buildOwnedOrWritableWhere,
+  getCurrentUserAccessContext,
+} from "@/lib/organization-access";
 
 function toOptionalDate(value: unknown) {
   if (value === undefined) return undefined;
@@ -21,14 +14,14 @@ function toOptionalDate(value: unknown) {
 }
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await context.params;
   const assignment = await prisma.assignment.findFirst({
-    where: { id, userId: user.id },
+    where: { id, ...buildOwnedOrMemberWhere(user) },
     select: {
       id: true,
       title: true,
@@ -89,15 +82,15 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
 }
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await context.params;
   const existing = await prisma.assignment.findFirst({
-    where: { id, userId: user.id },
-    select: { id: true },
+    where: { id, ...buildOwnedOrWritableWhere(user) },
+    select: { id: true, organizationId: true },
   });
 
   if (!existing) {
@@ -129,15 +122,19 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     const classRecord = await prisma.class.findFirst({
       where: {
         id: nextClassId,
-        userId: user.id,
         archived: false,
+        ...buildOwnedOrWritableWhere(user),
       },
       select: {
         id: true,
+        organizationId: true,
       },
     });
     if (!classRecord) {
       return NextResponse.json({ error: "Class not found" }, { status: 404 });
+    }
+    if (existing.organizationId && classRecord.organizationId !== existing.organizationId) {
+      return NextResponse.json({ error: "Class belongs to a different organization" }, { status: 400 });
     }
   }
 
@@ -203,14 +200,14 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 }
 
 export async function DELETE(_: Request, context: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserAccessContext();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await context.params;
   const existing = await prisma.assignment.findFirst({
-    where: { id, userId: user.id },
+    where: { id, ...buildOwnedOrWritableWhere(user) },
     select: {
       id: true,
       title: true,

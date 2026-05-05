@@ -8,6 +8,7 @@ import {
 } from "@/lib/lesson-plan-export";
 import { extractProviderErrorDetails, trackGenerationEvent } from "@/lib/generation-events";
 import { apiError, createRequestId, logApiError } from "@/lib/api-error";
+import { hasPremiumFeaturePlan } from "@/lib/organization-subscription";
 
 export const runtime = "nodejs";
 const PROVIDER_ISSUE_MESSAGE =
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (targetJob.format === "pptx" && user.subscriptionPlan !== "premium") {
+    if (targetJob.format === "pptx" && !hasPremiumFeaturePlan(user.subscriptionPlan)) {
       return apiError(403, "Premium required for PPTX exports", requestId);
     }
 

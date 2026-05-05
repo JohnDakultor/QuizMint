@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StudentGamifiedQuestion } from "@/components/quiz/student-gamified-question";
 import { StudentMatchingLineRenderer } from "@/components/quiz/student-matching-line-renderer";
 import { StudentWorksheetQuestion } from "@/components/quiz/student-worksheet-question";
+import { MathText } from "@/components/quiz/math-text";
+import { isStudentAnswerComplete as isAnswerComplete } from "@/lib/student-answer-completion";
 
 type SharedQuestion = {
   id: number;
@@ -27,9 +29,6 @@ type SharedQuestion = {
     | {
         type: "gamified";
         mode?: "bingo" | "timeline" | "puzzle";
-        puzzleKey?: string;
-        answerKey?: string;
-        timelineItems?: string[];
       }
     | null;
   questionType:
@@ -134,6 +133,8 @@ export default function StudentQuizPage() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [showReloadWarning, setShowReloadWarning] = useState(false);
   const timeoutSubmitTriggeredRef = useRef(false);
+  const completedRef = useRef(false);
+  const intentionalFullscreenExitRef = useRef(false);
 
   useEffect(() => {
     const load = async () => {
@@ -165,8 +166,8 @@ export default function StudentQuizPage() {
   }, [token]);
 
   const answeredCount = useMemo(
-    () => Object.values(answers).filter(Boolean).length,
-    [answers]
+    () => quiz?.questions.filter((question) => isAnswerComplete(question, answers[String(question.id)] || "")).length ?? 0,
+    [answers, quiz]
   );
   const progressPercent = quiz ? Math.round((answeredCount / quiz.questions.length) * 100) : 0;
   const xp = answeredCount * 10;
@@ -200,7 +201,7 @@ export default function StudentQuizPage() {
     !result;
   const hasInProgressWork = quizStarted && !result;
 
-  const expireQuizSession = async () => {
+  const expireQuizSession = useCallback(async () => {
     if (!token) return;
     try {
       await fetch(`/api/quiz-share/${encodeURIComponent(token)}/expire`, {
@@ -211,7 +212,7 @@ export default function StudentQuizPage() {
     } catch {
       // ignore session expiration failures
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (!showSubmittedDialog) return;
@@ -243,15 +244,6 @@ export default function StudentQuizPage() {
   }, [quiz, result, quizStarted, sessionStartedAt]);
 
   useEffect(() => {
-    if (!quizStarted || !assessmentEndsAt || result || sessionExpired) return;
-    if (remainingSeconds === null || remainingSeconds > 0) return;
-    if (timeoutSubmitTriggeredRef.current) return;
-    timeoutSubmitTriggeredRef.current = true;
-    setError("Time is up. Submitting your quiz now...");
-    void submitQuiz({ autoSubmit: true });
-  }, [assessmentEndsAt, quizStarted, remainingSeconds, result, sessionExpired]);
-
-  useEffect(() => {
     if (!quizStarted) {
       timeoutSubmitTriggeredRef.current = false;
     }
@@ -261,26 +253,36 @@ export default function StudentQuizPage() {
     if (!quizStarted || result) return;
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
+        if (intentionalFullscreenExitRef.current || completedRef.current) return;
         void expireQuizSession();
         setSessionExpired(true);
-        setShowFullscreenWarning(true);
+        setError("This quiz session expired because fullscreen was exited before submission.");
+        setShowFullscreenWarning(false);
       }
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, [quizStarted, result, token]);
+  }, [expireQuizSession, quizStarted, result]);
 
   useEffect(() => {
     if (!hasInProgressWork) return;
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (token && navigator.sendBeacon) {
+    const expireOnLeave = () => {
+      if (completedRef.current || !token) return;
+      if (navigator.sendBeacon) {
         navigator.sendBeacon(`/api/quiz-share/${encodeURIComponent(token)}/expire`);
       }
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      expireOnLeave();
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", expireOnLeave);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", expireOnLeave);
+    };
   }, [hasInProgressWork, token]);
 
   useEffect(() => {
@@ -357,7 +359,7 @@ export default function StudentQuizPage() {
     setSessionExpired(false);
   };
 
-  const submitQuiz = async (options?: { autoSubmit?: boolean }) => {
+  const submitQuiz = useCallback(async (options?: { autoSubmit?: boolean }) => {
     if (!quiz) return;
     setSubmitting(true);
     if (!options?.autoSubmit) {
@@ -382,17 +384,24 @@ export default function StudentQuizPage() {
         );
         return;
       }
+      completedRef.current = true;
+      intentionalFullscreenExitRef.current = true;
+      setResult(data.result as SubmitResult);
+      setShowSubmittedDialog(true);
+      setShowFullscreenWarning(false);
+      setSessionExpired(false);
+      setAssessmentEndsAt(null);
       try {
         if (document.fullscreenElement) {
           await document.exitFullscreen();
         }
       } catch {
         // ignore fullscreen exit failures
+      } finally {
+        window.setTimeout(() => {
+          intentionalFullscreenExitRef.current = false;
+        }, 0);
       }
-      setResult(data.result as SubmitResult);
-      setShowSubmittedDialog(true);
-      setShowFullscreenWarning(false);
-      setAssessmentEndsAt(null);
     } catch {
       setError(
         options?.autoSubmit
@@ -402,7 +411,16 @@ export default function StudentQuizPage() {
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [answers, quiz, studentEmail, studentName, token]);
+
+  useEffect(() => {
+    if (!quizStarted || !assessmentEndsAt || result || sessionExpired) return;
+    if (remainingSeconds === null || remainingSeconds > 0) return;
+    if (timeoutSubmitTriggeredRef.current) return;
+    timeoutSubmitTriggeredRef.current = true;
+    setError("Time is up. Submitting your quiz now...");
+    void submitQuiz({ autoSubmit: true });
+  }, [assessmentEndsAt, quizStarted, remainingSeconds, result, sessionExpired, submitQuiz]);
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-slate-50">
@@ -444,7 +462,9 @@ export default function StudentQuizPage() {
                         Press start to begin the quiz in fullscreen mode. This gives students a cleaner, more focused test-taking screen.
                       </p>
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
-                        <p>{quiz.instructions}</p>
+                        <p>
+                          <MathText>{quiz.instructions}</MathText>
+                        </p>
                         <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-300">
                           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
                             {quiz.questions.length} questions
@@ -521,7 +541,9 @@ export default function StudentQuizPage() {
               <div className="mx-auto w-full max-w-6xl space-y-4">
                 <div className="rounded-md border bg-zinc-50 p-3 text-sm">
                   <div className="font-semibold">{quiz.title}</div>
-                  <div className="mt-1 text-zinc-600">{quiz.instructions}</div>
+                  <div className="mt-1 text-zinc-600">
+                    <MathText>{quiz.instructions}</MathText>
+                  </div>
                   <div className="mt-2 text-xs text-zinc-500">
                     {answeredCount}/{quiz.questions.length} answered
                   </div>
@@ -589,7 +611,7 @@ export default function StudentQuizPage() {
                       <div key={q.id} className="rounded-lg border bg-white p-4 shadow-xs">
                         <div className="flex flex-wrap items-start gap-2">
                           <p className="max-w-4xl font-medium leading-relaxed">
-                            {idx + 1}. {questionDisplay.text}
+                            {idx + 1}. <MathText inline>{questionDisplay.text}</MathText>
                             <span className="ml-1 text-red-500">*</span>
                           </p>
                           {questionDisplay.indicator && (
@@ -608,21 +630,6 @@ export default function StudentQuizPage() {
                               mode={
                                 q.structure?.type === "gamified"
                                   ? q.structure.mode
-                                  : undefined
-                              }
-                              answerKey={
-                                q.structure?.type === "gamified"
-                                  ? q.structure.answerKey
-                                  : undefined
-                              }
-                              puzzleKey={
-                                q.structure?.type === "gamified"
-                                  ? q.structure.puzzleKey
-                                  : undefined
-                              }
-                              timelineItems={
-                                q.structure?.type === "gamified"
-                                  ? q.structure.timelineItems
                                   : undefined
                               }
                               value={answers[String(q.id)] || ""}
@@ -653,7 +660,9 @@ export default function StudentQuizPage() {
                                   }
                                   disabled={Boolean(result)}
                                 />
-                                <span>{opt}</span>
+                                <span>
+                                  <MathText inline>{opt}</MathText>
+                                </span>
                               </label>
                             ))}
                           {useShortInputMode && q.questionType !== "gamified" && (

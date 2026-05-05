@@ -6,6 +6,7 @@ import {
   parseMatchingColumns,
   serializeMatchingAnswer,
 } from "@/lib/matching-renderer";
+import { MathText } from "@/components/quiz/math-text";
 
 type Props = {
   question: string;
@@ -104,6 +105,10 @@ export function StudentMatchingLineRenderer({
   }, [left, right, parsed]);
 
   useEffect(() => {
+    if (Object.keys(mapping).length === 0) {
+      onChangeRef.current("");
+      return;
+    }
     if (structure?.type === "matching") {
       const selected = JSON.stringify({
         kind: "matching_map",
@@ -258,7 +263,7 @@ export function StudentMatchingLineRenderer({
               style={{ minWidth: "min(100%, 220px)" }}
             >
               <span className="mr-1 font-semibold text-sky-700">{l.label}.</span>
-              {l.text}
+              <MathText inline>{l.text}</MathText>
             </button>
           ))}
         </div>
@@ -289,7 +294,7 @@ export function StudentMatchingLineRenderer({
               style={{ minWidth: "min(100%, 220px)" }}
             >
               <span className="mr-1 font-semibold text-indigo-700">{r.label}.</span>
-              {r.text}
+              <MathText inline>{r.text}</MathText>
             </button>
           ))}
         </div>
